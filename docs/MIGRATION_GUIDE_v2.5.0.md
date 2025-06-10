@@ -211,4 +211,4 @@ The migration should be seamless for most users, with immediate improvements in 
 - 📖 [Full Documentation](../README.md)
 - 🔧 [Tools Documentation](./TOOLS.md)
 - 🏗️ [Architecture Guide](../ARCHITECTURE.md)
-- 🐛 [Report Issues](https://github.com/quibitai/Quibit_RAG/issues) 
+- 🐛 [Report Issues](https://github.com/quibitai/ET_v1/issues) 
