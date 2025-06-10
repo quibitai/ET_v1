@@ -9,8 +9,9 @@ export async function POST(request: NextRequest) {
   try {
     const session = await auth();
     const userId = session?.user?.id;
+    const clientId = session?.user?.clientId as string;
 
-    if (!userId) {
+    if (!userId || !clientId) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
@@ -23,7 +24,10 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Invalid request body', { status: 400 });
     }
 
-    const { content, title = 'Untitled Document' } = body;
+    const {
+      content,
+      title = 'Untitled Document',
+    }: { content: string; title?: string } = body;
     console.log(
       `POST document - Content length: ${content ? content.length : 'undefined'}`,
     );
@@ -54,6 +58,7 @@ export async function POST(request: NextRequest) {
       .values({
         id: documentId,
         userId,
+        clientId,
         title,
         content,
         createdAt: now,

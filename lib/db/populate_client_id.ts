@@ -16,6 +16,7 @@ async function populateClientId() {
       .values({
         id: 'default',
         name: 'Default Client',
+        client_display_name: 'Default Client',
         createdAt: new Date(),
       })
       .onConflictDoNothing();

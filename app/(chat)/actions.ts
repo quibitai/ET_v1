@@ -24,7 +24,6 @@ import {
 import type { VisibilityType } from '@/components/visibility-selector';
 import { myProvider } from '@/lib/ai/providers';
 import { eq, and } from 'drizzle-orm';
-import { unstable_serialize } from 'next/navigation';
 
 export async function saveChatModelAsCookie(model: string) {
   const cookieStore = await cookies();
@@ -102,6 +101,7 @@ export async function createNewChatAndSaveFirstMessage(formData: FormData) {
       parts: [{ type: 'text', text: input }],
       attachments: [],
       createdAt: new Date(),
+      clientId: session.user.clientId as string,
     };
 
     // Generate title from the user message
@@ -124,6 +124,7 @@ export async function createNewChatAndSaveFirstMessage(formData: FormData) {
       createdAt: new Date(),
       userId: userId,
       title,
+      clientId: session.user.clientId as string,
     });
 
     // Save the First User Message
@@ -217,7 +218,7 @@ export async function createChatAndSaveFirstMessages(params: {
         const words = userContent.split(' ');
         title = words.slice(0, 5).join(' ');
         if (title.length > 50) {
-          title = title.substring(0, 47) + '...';
+          title = `${title.substring(0, 47)}...`;
         }
       }
     } catch (error) {

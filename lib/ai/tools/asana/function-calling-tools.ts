@@ -512,8 +512,7 @@ export function createAsanaFunctionCallingTools(
           // Create request context for formatting
           const requestContext: RequestContext = {
             requestId: context.requestId || generateRequestId(),
-            sessionId: context.sessionId,
-            operation: 'list_users',
+            startTime: Date.now(),
           };
 
           // Use the proper formatter

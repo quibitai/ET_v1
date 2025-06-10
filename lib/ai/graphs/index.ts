@@ -31,10 +31,7 @@ export type { LangGraphWrapperConfig } from './simpleLangGraphWrapper';
  * This factory function will grow to support different graph types
  * based on the detected patterns from QueryClassifier
  */
-export function createGraphForPatterns(
-  patterns: string[],
-  config: any,
-): SimpleLangGraphWrapper {
+export function createGraphForPatterns(patterns: string[], config: any) {
   // For now, we'll use the simple wrapper for all patterns
   // In the future, this could route to:
   // - MultiStepReasoningGraph for MULTI_STEP patterns
@@ -42,6 +39,7 @@ export function createGraphForPatterns(
   // - WorkflowGraph for WORKFLOW patterns
   // - etc.
 
+  const { createLangGraphWrapper } = require('./simpleLangGraphWrapper');
   return createLangGraphWrapper(config);
 }
 

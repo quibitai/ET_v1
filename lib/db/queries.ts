@@ -30,7 +30,7 @@ import {
   type Chat,
   clients,
 } from './schema';
-import type { ArtifactKind } from '@/components/artifact';
+// ArtifactKind removed as part of Echo Tango v1 simplification
 import type { ChatSummary } from '@/lib/types';
 import {
   GLOBAL_ORCHESTRATOR_CONTEXT_ID,
@@ -493,7 +493,7 @@ export async function saveDocument({
 }: {
   id: string;
   title: string;
-  kind: ArtifactKind;
+  kind: 'text' | 'code' | 'image' | 'sheet';
   content: string;
   userId: string;
 }) {

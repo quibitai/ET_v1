@@ -204,7 +204,7 @@ export class TimezoneService {
       let displayName = timezone;
       let abbreviation = '';
 
-      if (typeof window !== 'undefined' && window.Intl?.DateTimeFormat) {
+      if (typeof window !== 'undefined' && window.Intl) {
         try {
           const formatter = new Intl.DateTimeFormat('en', {
             timeZone: timezone,
@@ -270,7 +270,7 @@ export class TimezoneService {
   ): Promise<TimezoneInfo | null> {
     try {
       // Test if timezone is valid by creating a date with it
-      if (typeof window !== 'undefined' && window.Intl?.DateTimeFormat) {
+      if (typeof window !== 'undefined' && window.Intl) {
         new Intl.DateTimeFormat('en', { timeZone: timezone });
       }
 
@@ -307,7 +307,7 @@ export class TimezoneService {
       const now = new Date();
       const utc = new Date(now.getTime() + now.getTimezoneOffset() * 60000);
 
-      if (typeof window !== 'undefined' && window.Intl?.DateTimeFormat) {
+      if (typeof window !== 'undefined' && window.Intl) {
         const formatter = new Intl.DateTimeFormat('en', {
           timeZone: timezone,
           year: 'numeric',
@@ -414,7 +414,7 @@ export class TimezoneService {
     toTimezone: string,
   ): Date {
     try {
-      if (typeof window !== 'undefined' && window.Intl?.DateTimeFormat) {
+      if (typeof window !== 'undefined' && window.Intl) {
         // Use Intl API for accurate conversion
         const formatter = new Intl.DateTimeFormat('en', {
           timeZone: toTimezone,

@@ -1,7 +1,7 @@
 import { auth } from '@/app/(auth)/auth';
 import { redirect } from 'next/navigation';
 import { SessionProvider } from 'next-auth/react';
-import ClientLayout from '@/components/ClientLayout';
+import { ClientLayout } from '@/components/ClientLayout';
 import TimezoneDetector from '@/components/timezone/TimezoneDetector';
 
 export default async function MainLayout({
