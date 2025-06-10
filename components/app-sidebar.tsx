@@ -155,18 +155,6 @@ const SidebarHeaderContent = memo(
           sidebarState={state}
         />
       </div>
-
-      {/* Dashboard */}
-      <div className="mt-2">
-        <NavLink
-          href="/dashboard"
-          setOpenMobile={setOpenMobile}
-          isActive={pathname === '/dashboard'}
-          icon={LayoutDashboard}
-          label="Dashboard"
-          sidebarState={state}
-        />
-      </div>
     </SidebarMenu>
   ),
 );

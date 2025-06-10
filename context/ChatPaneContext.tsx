@@ -25,29 +25,16 @@ import {
   ECHO_TANGO_SPECIALIST_ID,
   CHAT_BIT_GENERAL_CONTEXT_ID,
 } from '@/lib/constants';
-
-// Reduced logging
-
-import { useQueryState } from 'nuqs';
 import { logger } from '@/lib/logger';
-import { validateClients } from '@/lib/validation';
-
-// Add a logger for frontend-specific debugging
-const logger = {
-  info: (...args: any[]) => console.log('[ChatPaneContext]', ...args),
-  warn: (...args: any[]) => console.warn('[ChatPaneContext]', ...args),
-  error: (...args: any[]) => console.error('[ChatPaneContext]', ...args),
-};
 
 import type { DBMessage } from '@/lib/db/schema';
-import { useDocumentState } from './DocumentContext';
-import { useArtifact, initialArtifactData } from '@/hooks/use-artifact';
 
 type MessageOptions = {
   message?: string;
   data?: Record<string, any>;
 };
 
+// Updated interface to include centralized artifact state and controls
 export interface ChatPaneContextType {
   chatState: Omit<UseChatHelpers, 'handleSubmit'> & {
     handleSubmit: (options?: MessageOptions) => Promise<void>;
@@ -102,25 +89,12 @@ export const ChatPaneProvider: FC<{ children: ReactNode }> = ({ children }) => {
   // Get session status from NextAuth
   const { data: session, status: sessionStatus } = useSession();
 
-  // Reduced session logging
-
   // Debug: Check if server action is correctly identified
   // Only log once during development
   const hasLoggedServerActionCheck = useRef(false);
 
-  // Removed verbose server action logging
-
-  // Add useArtifact hook to handle artifact opening
-  const {
-    setArtifact,
-    startStreamingArtifact,
-    updateStreamingContent,
-    finishStreamingArtifact,
-  } = useArtifact();
-
   // Use a single chatPaneState object to hold state
   const [chatPaneState, setChatPaneState] = useState<ChatPaneState>(() => {
-    // Reduced logging
     return {
       isPaneOpen: true,
       currentActiveSpecialistId: ECHO_TANGO_SPECIALIST_ID,
@@ -170,8 +144,12 @@ export const ChatPaneProvider: FC<{ children: ReactNode }> = ({ children }) => {
     setChatPaneState((prev) => ({ ...prev, activeDocId: id }));
   }, []);
 
+  // Modified setMainUiChatId
   const setMainUiChatId = useCallback((id: string | null) => {
     setChatPaneState((prev) => ({ ...prev, mainUiChatId: id }));
+    logger.info('ChatPaneContext', 'Chat ID changed', {
+      newChatId: id,
+    });
   }, []);
 
   const setGlobalPaneChatId = useCallback((id: string | null) => {
@@ -642,280 +620,65 @@ export const ChatPaneProvider: FC<{ children: ReactNode }> = ({ children }) => {
     },
   });
 
-  // Use refs for artifact functions to prevent infinite loops in useEffect
-  const setArtifactRef = useRef(setArtifact);
-  const startStreamingArtifactRef = useRef(startStreamingArtifact);
-  const updateStreamingContentRef = useRef(updateStreamingContent);
-  const finishStreamingArtifactRef = useRef(finishStreamingArtifact);
+  // Track processed data index to prevent reprocessing
+  const processedDataIndex = useRef(0);
 
-  // Keep refs up to date
+  // Reset processed data index when chat changes
   useEffect(() => {
-    setArtifactRef.current = setArtifact;
-    startStreamingArtifactRef.current = startStreamingArtifact;
-    updateStreamingContentRef.current = updateStreamingContent;
-    finishStreamingArtifactRef.current = finishStreamingArtifact;
-  });
+    processedDataIndex.current = 0;
+  }, [mainUiChatId]);
 
-  // ADD: Debug baseState to check if data is available
+  // STREAM PROCESSOR - Handles tool responses and other data events (artifacts removed)
   useEffect(() => {
-    console.log('[CHATPANE_CONTEXT_DEBUG] baseState changed:', {
-      hasData: !!baseState.data,
-      dataLength: baseState.data?.length || 0,
-      isLoading: baseState.isLoading,
-      error: baseState.error,
-      messagesCount: baseState.messages.length,
-      timestamp: new Date().toISOString(),
+    const data = baseState.data;
+    // Exit if there's no new data to process
+    if (
+      !data ||
+      !Array.isArray(data) ||
+      data.length <= processedDataIndex.current
+    ) {
+      return;
+    }
+
+    const newItems = data.slice(processedDataIndex.current);
+
+    newItems.forEach((item: any, relativeIndex: number) => {
+      const absoluteIndex = processedDataIndex.current + relativeIndex;
+
+      const processSingleEvent = (event: any) => {
+        // Skip artifact-related events (we no longer support artifacts)
+        if (event.type === 'artifact' && event.componentName === 'document') {
+          console.log(
+            `[${absoluteIndex}] 🚫 [ChatPaneContext] Skipping artifact event (artifacts removed)`,
+          );
+          return;
+        }
+
+        // Process other types of events here if needed
+        // For now, we just log them for debugging
+        if (event.type && event.type !== 'artifact') {
+          console.log(
+            `[${absoluteIndex}] 📋 [ChatPaneContext] Processing event:`,
+            event.type,
+            event,
+          );
+        }
+      };
+
+      // Check if the item from the stream is an array (from LangGraph) or a single object
+      if (Array.isArray(item)) {
+        console.log(
+          `[${absoluteIndex}] 📦 [ChatPaneContext] Processing event array with ${item.length} items.`,
+        );
+        item.forEach(processSingleEvent);
+      } else {
+        processSingleEvent(item);
+      }
     });
 
-    // Enhanced analysis of data array for artifact detection
-    if (baseState.data && baseState.data.length > 0) {
-      console.group('[CHATPANE_CONTEXT_DEBUG] 🔍 Data Array Analysis');
-
-      baseState.data.forEach((item, index) => {
-        console.log(`[${index}] Type: ${typeof item}`, {
-          item,
-          stringified: JSON.stringify(item),
-          isArray: Array.isArray(item),
-          hasType: item && typeof item === 'object' && 'type' in item,
-          type:
-            item && typeof item === 'object' && 'type' in item
-              ? item.type
-              : 'unknown',
-        });
-
-        // Enhanced artifact detection for LangGraph UI events
-        if (item && typeof item === 'object' && !Array.isArray(item)) {
-          // Check for new artifact format from LangGraph UI streaming
-          if (
-            (item as any).type === 'artifact' &&
-            (item as any).componentName === 'document'
-          ) {
-            console.log(`[${index}] 🎨 LANGGRAPH ARTIFACT DETECTED:`, {
-              type: (item as any).type,
-              componentName: (item as any).componentName,
-              documentId: (item as any).props?.documentId,
-              title: (item as any).props?.title,
-              status: (item as any).props?.status,
-              eventType: (item as any).props?.eventType,
-              eventId: (item as any).id,
-            });
-
-            // Handle document artifacts with refined event type processing
-            if ((item as any).props?.documentId) {
-              const artifactData = item as any;
-              const { documentId, title, status, eventType, contentChunk } =
-                artifactData.props;
-
-              console.log(`[${index}] 📄 PROCESSING DOCUMENT ARTIFACT:`, {
-                documentId,
-                title,
-                status,
-                eventType,
-                hasContentChunk: !!contentChunk,
-                contentChunkLength: contentChunk?.length || 0,
-              });
-
-              // Process different event types appropriately
-              if (eventType === 'artifact-start') {
-                console.log(`[${index}] 🚀 STARTING ARTIFACT STREAM:`, {
-                  documentId,
-                  title,
-                });
-
-                // Use ref to avoid dependency issues
-                setArtifactRef.current((current) => ({
-                  ...current,
-                  documentId: documentId, // Set the real documentId from the event
-                  kind: 'text',
-                  title: title || 'Document',
-                  content: '', // Start with empty content
-                  status: 'streaming',
-                  isVisible: true,
-                  boundingBox: initialArtifactData.boundingBox,
-                }));
-
-                console.log(`[${index}] ✅ ARTIFACT STREAM STARTED for:`, {
-                  documentId,
-                  title,
-                });
-              } else if (eventType === 'artifact-chunk' && contentChunk) {
-                console.log(
-                  `[${index}] 💨 STREAMING ARTIFACT CHUNK:`,
-                  contentChunk,
-                );
-
-                // Add critical debugging for contentChunk structure
-                console.log(`[${index}] 🔍 CHUNK TYPE ANALYSIS:`, {
-                  contentChunkType: typeof contentChunk,
-                  contentChunkValue: contentChunk,
-                  isString: typeof contentChunk === 'string',
-                  chunkLength: contentChunk?.length,
-                  chunkPreview:
-                    typeof contentChunk === 'string'
-                      ? contentChunk.substring(0, 50)
-                      : 'NOT_STRING',
-                  artifactEventProps: artifactData.props,
-                });
-
-                // Extract the actual text content if contentChunk is an object
-                let actualTextContent: string;
-                if (typeof contentChunk === 'string') {
-                  actualTextContent = contentChunk;
-                } else if (contentChunk && typeof contentChunk === 'object') {
-                  // Check if contentChunk is an object with a text property
-                  actualTextContent =
-                    contentChunk.contentChunk ||
-                    contentChunk.content ||
-                    contentChunk.text ||
-                    JSON.stringify(contentChunk);
-                  console.log(`[${index}] 🔧 EXTRACTED TEXT FROM OBJECT:`, {
-                    originalObject: contentChunk,
-                    extractedText: actualTextContent.substring(0, 50),
-                    extractedLength: actualTextContent.length,
-                  });
-                } else {
-                  actualTextContent = String(contentChunk);
-                }
-
-                // Use ref to avoid dependency issues
-                updateStreamingContentRef.current(actualTextContent);
-
-                console.log(
-                  `[${index}] ✅ CHUNK PROCESSED - Called updateStreamingContent with:`,
-                  typeof actualTextContent === 'string'
-                    ? actualTextContent.substring(0, 50)
-                    : actualTextContent,
-                );
-              } else if (eventType === 'artifact-chunk' && !contentChunk) {
-                console.warn(
-                  `[${index}] ⚠️ ARTIFACT-CHUNK EVENT MISSING contentChunk:`,
-                  {
-                    eventType,
-                    props: (item as any).props,
-                    hasContentChunk: !!contentChunk,
-                  },
-                );
-              } else if (eventType === 'artifact-end') {
-                console.log(`[${index}] ✅ FINISHING ARTIFACT STREAM:`, {
-                  documentId,
-                });
-
-                // Increase delay significantly to allow all chunks to be processed and prevent race condition with SWR
-                setTimeout(() => {
-                  finishStreamingArtifactRef.current(documentId);
-                }, 500); // Increased to 500ms delay to ensure all chunks are processed
-              } else if (
-                eventType === 'tool-invocation' &&
-                status === 'complete'
-              ) {
-                // This should NOT happen during streaming - only open artifact after all streaming is complete
-                console.log(`[${index}] 🚀 OPENING COMPLETED ARTIFACT:`, {
-                  documentId,
-                  title,
-                  status,
-                });
-
-                // Use ref to avoid dependency issues
-                setArtifactRef.current({
-                  documentId: documentId,
-                  title: title || 'Document',
-                  kind: 'text',
-                  content: '', // Will be fetched by SWR in Artifact.tsx
-                  status: 'idle',
-                  isVisible: true,
-                  boundingBox: initialArtifactData.boundingBox,
-                });
-
-                console.log(
-                  `[${index}] ✅ ARTIFACT UI OPENED for document:`,
-                  documentId,
-                );
-              } else if (
-                !eventType &&
-                status === 'complete' &&
-                documentId &&
-                title
-              ) {
-                // Handle events without explicit eventType but with complete status
-                console.log(`[${index}] 🚀 OPENING ARTIFACT (no eventType):`, {
-                  documentId,
-                  title,
-                  status,
-                });
-
-                // Use ref to avoid dependency issues
-                setArtifactRef.current({
-                  documentId: documentId,
-                  title: title || 'Document',
-                  kind: 'text',
-                  content: '',
-                  status: 'idle',
-                  isVisible: true,
-                  boundingBox: initialArtifactData.boundingBox,
-                });
-
-                console.log(
-                  `[${index}] ✅ ARTIFACT UI OPENED (fallback) for document:`,
-                  documentId,
-                );
-              } else {
-                console.warn(
-                  `[${index}] ⚠️ Unknown artifact eventType or incomplete data:`,
-                  {
-                    eventType,
-                    status,
-                    hasDocumentId: !!documentId,
-                    hasTitle: !!title,
-                    hasContentChunk: !!contentChunk,
-                    artifactProps: (item as any).props,
-                  },
-                );
-              }
-            } else {
-              console.warn(
-                `[${index}] ⚠️ ARTIFACT MISSING documentId:`,
-                (item as any).props,
-              );
-            }
-          }
-          // Check for tool status updates
-          else if (
-            (item as any).type === 'tool-status' &&
-            (item as any).componentName === 'toolStatus'
-          ) {
-            console.log(`[${index}] 🔧 TOOL STATUS:`, {
-              toolName: (item as any).props?.toolName,
-              status: (item as any).props?.status,
-              message: (item as any).props?.message,
-            });
-          }
-          // Legacy artifact detection
-          else {
-            const hasLegacyArtifactProps =
-              'toolInvocation' in item ||
-              'artifactId' in item ||
-              'documentId' in item;
-
-            if (hasLegacyArtifactProps) {
-              console.log(`[${index}] 🎨 LEGACY ARTIFACT DATA:`, item);
-            }
-          }
-        }
-      });
-
-      console.groupEnd();
-    }
-  }, [
-    baseState.data,
-    baseState.isLoading,
-    baseState.error,
-    baseState.messages,
-    // Removed function dependencies to prevent infinite loop:
-    // setArtifact,
-    // startStreamingArtifact,
-    // updateStreamingContent,
-    // finishStreamingArtifact,
-  ]);
+    // Update the processed index
+    processedDataIndex.current = data.length;
+  }, [baseState.data]);
 
   const { messages, setMessages } = baseState;
 
@@ -1213,90 +976,6 @@ export const ChatPaneProvider: FC<{ children: ReactNode }> = ({ children }) => {
     isCurrentChatCommitted,
     sidebarDataRevision,
   ]);
-
-  // This effect hook handles incoming data from the Vercel AI SDK stream.
-  // It's responsible for processing custom events, like artifact updates.
-  useEffect(() => {
-    // baseState.data contains the custom JSON payloads sent from the backend
-    const data = baseState.data;
-
-    if (data && Array.isArray(data)) {
-      data.forEach((item: any) => {
-        if (item.type === 'artifact' && item.props) {
-          const artifactProps = item.props;
-          const { documentId, eventType } = artifactProps;
-
-          if (!documentId || !eventType) {
-            logger.warn(
-              'Received artifact event without documentId or eventType',
-              item,
-            );
-            return;
-          }
-
-          switch (eventType) {
-            case 'artifact-start':
-              logger.info(
-                `[STREAM] Artifact Start: ${documentId}`,
-                artifactProps,
-              );
-              // Correctly call with kind and title
-              startStreamingArtifact(
-                artifactProps.kind || 'text',
-                artifactProps.title || 'Untitled',
-              );
-              break;
-
-            case 'artifact-chunk':
-              if (
-                artifactProps.contentChunk &&
-                typeof artifactProps.contentChunk === 'string'
-              ) {
-                logger.info(
-                  `✅ [STREAM] RECEIVED ARTIFACT CHUNK for ${documentId}: "${artifactProps.contentChunk.substring(0, 70)}..." (Length: ${artifactProps.contentChunk.length})`,
-                );
-                // Correctly call with just the chunk
-                updateStreamingContent(artifactProps.contentChunk);
-              } else {
-                logger.error(
-                  `⚠️ [STREAM] ARTIFACT-CHUNK EVENT RECEIVED BUT MISSING/INVALID contentChunk! Props:`,
-                  artifactProps,
-                );
-              }
-              break;
-
-            case 'artifact-end':
-              logger.info(
-                `[STREAM] Artifact End: ${documentId}`,
-                artifactProps,
-              );
-              // Correctly call with the final documentId
-              finishStreamingArtifact(documentId);
-              break;
-
-            case 'artifact-error':
-              logger.error(
-                `[STREAM] Artifact Error: ${documentId}`,
-                artifactProps,
-              );
-              // Here you could update the artifact state to show an error
-              break;
-
-            default:
-              logger.warn('Unknown artifact event type:', eventType, item);
-          }
-        }
-      });
-    }
-  }, [
-    baseState.data,
-    startStreamingArtifact,
-    updateStreamingContent,
-    finishStreamingArtifact,
-  ]);
-
-  // Add a throttled update to streamedContentMap to avoid excessive re-renders
-  const lastUpdateRef = useRef(0);
 
   return (
     <ChatPaneContext.Provider value={contextValue}>

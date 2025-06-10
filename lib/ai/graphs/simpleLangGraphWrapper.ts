@@ -151,11 +151,21 @@ export class SimpleLangGraphWrapper {
    */
   private async callModelNode(state: GraphState): Promise<Partial<GraphState>> {
     try {
+      // Check if this is a follow-up call after tool execution
+      const hasToolMessages = state.messages.some(
+        (m) => m._getType() === 'tool',
+      );
+      const lastMessage = state.messages[state.messages.length - 1];
+
       this.logger.info('[LangGraph Agent] Calling LLM...', {
         messageCount: state.messages.length,
         hasTools: this.tools.length > 0,
         toolCount: this.tools.length,
         forceToolCall: this.config.forceToolCall,
+        hasToolMessages,
+        lastMessageType: lastMessage?._getType(),
+        isFollowUpAfterTools:
+          hasToolMessages && lastMessage?._getType() === 'tool',
       });
 
       // Enhanced tool binding diagnostics
@@ -188,7 +198,14 @@ export class SimpleLangGraphWrapper {
       );
 
       // NEW: Apply tool forcing from QueryClassifier - bind with tool_choice
-      if (this.config.forceToolCall && !hasToolExecutions) {
+      // Only apply tool forcing on the initial call, not after tool execution
+      const isFollowUpAfterTools =
+        hasToolMessages && lastMessage?._getType() === 'tool';
+      if (
+        this.config.forceToolCall &&
+        !hasToolExecutions &&
+        !isFollowUpAfterTools
+      ) {
         this.logger.info(
           '[LangGraph Agent] 🚀 APPLYING TOOL FORCING from QueryClassifier',
           {
@@ -347,10 +364,10 @@ export class SimpleLangGraphWrapper {
               hasToolExecutions,
             },
           );
-        } else if (hasToolExecutions && !isInitialCall) {
+        } else if (hasToolExecutions || isFollowUpAfterTools) {
           // This is normal - final conversational response after tools were executed
           this.logger.info(
-            '[LangGraph Agent] ✅ Final conversational response (no tool calls expected after tool execution)',
+            '[LangGraph Agent] ✅ FINAL CONVERSATIONAL RESPONSE (no tool calls expected after tool execution)',
             {
               responseLength:
                 typeof response.content === 'string'
@@ -358,8 +375,11 @@ export class SimpleLangGraphWrapper {
                   : 0,
               responsePreview:
                 typeof response.content === 'string'
-                  ? response.content.substring(0, 100)
+                  ? response.content.substring(0, 200)
                   : 'Non-string content',
+              isFollowUpAfterTools,
+              hasToolExecutions,
+              lastMessageType: lastMessage?._getType(),
             },
           );
         } else {
@@ -562,18 +582,30 @@ export class SimpleLangGraphWrapper {
    * Determines whether to execute tools or end the conversation
    */
   private shouldExecuteTools(state: GraphState): 'use_tools' | 'finish' {
-    const agentOutcome = state.agent_outcome;
+    const lastMessage = state.messages[state.messages.length - 1];
 
-    if (agentOutcome?.tool_calls && agentOutcome.tool_calls.length > 0) {
+    // Check if the last message is an AI message with tool calls
+    if (
+      lastMessage?._getType() === 'ai' &&
+      (lastMessage as any).tool_calls?.length > 0
+    ) {
       this.logger.info(
-        '[LangGraph Router] Tools found, routing to tools node',
+        '[LangGraph Router] Tools found in last AI message, routing to tools node',
         {
-          toolCount: agentOutcome.tool_calls.length,
+          toolCount: (lastMessage as any).tool_calls.length,
+          lastMessageType: lastMessage._getType(),
         },
       );
       return 'use_tools';
     } else {
-      this.logger.info('[LangGraph Router] No tools found, routing to END');
+      this.logger.info(
+        '[LangGraph Router] No tools found in last message, routing to END',
+        {
+          lastMessageType: lastMessage?._getType(),
+          messageCount: state.messages.length,
+          hasAgentOutcome: !!state.agent_outcome,
+        },
+      );
       return 'finish';
     }
   }

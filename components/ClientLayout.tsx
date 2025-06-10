@@ -7,7 +7,7 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from '@/components/ui/resizable';
-import { GlobalChatPane } from '@/components/GlobalChatPane';
+
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { usePathname } from 'next/navigation';
 
@@ -43,24 +43,6 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
           >
             <div className="flex-1 overflow-hidden">{children}</div>
           </ResizablePanel>
-
-          {!isAuthPage && isPaneOpen && (
-            <>
-              <ResizableHandle withHandle />
-
-              <ResizablePanel
-                defaultSize={25}
-                minSize={15}
-                maxSize={40}
-                collapsible={true}
-                collapsedSize={4}
-                id="chat-pane"
-                className="flex flex-col min-w-0"
-              >
-                <GlobalChatPane title={chatTitle} />
-              </ResizablePanel>
-            </>
-          )}
         </ResizablePanelGroup>
       </div>
     </TooltipProvider>

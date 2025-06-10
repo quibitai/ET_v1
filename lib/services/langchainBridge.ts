@@ -427,8 +427,7 @@ export async function streamLangChainAgent(
         );
 
         let eventCount = 0;
-        const allUIEvents: any[] = [];
-        let isStreamingArtifact = false;
+        let isStreamingArtifact = false; // This flag is key
 
         for await (const event of langGraphStream) {
           eventCount++;
@@ -441,64 +440,59 @@ export async function streamLangChainAgent(
             );
           }
 
-          // Handle artifact events FIRST
+          // --- Primary Logic for Handling UI Events from Tools ---
           if (
             event.event === 'on_tool_end' &&
             event.name === 'tools' &&
             event.data?.output?.ui
           ) {
-            const uiEventsToStream: any[] = event.data.output.ui || [];
+            const uiEvents = (event.data.output.ui || []) as any[];
             logger.info(
-              `[LangchainBridge] Found ${uiEventsToStream.length} UI events from 'tools' node.`,
+              `[LangchainBridge] Found ${uiEvents.length} UI events from 'tools' node.`,
             );
 
-            for (const artifactEvent of uiEventsToStream) {
-              // Set the flag when artifact streaming starts and stops
-              if (artifactEvent.props?.eventType === 'artifact-start') {
+            for (const uiEvent of uiEvents) {
+              if (uiEvent.props?.eventType === 'artifact-start') {
                 isStreamingArtifact = true;
-                logger.info('[LangchainBridge] SET isStreamingArtifact = true');
-              } else if (artifactEvent.props?.eventType === 'artifact-end') {
-                isStreamingArtifact = false;
-                logger.info(
-                  '[LangchainBridge] SET isStreamingArtifact = false',
+                console.log(
+                  '[LangchainBridge] --> Artifact streaming STARTED.',
                 );
               }
 
-              // Write the UI event as a '2:' data part
-              await dataStreamWriter.writeData([artifactEvent]);
+              // Pass the UI event directly to the frontend
+              await dataStreamWriter.writeData([uiEvent]);
 
-              if (
-                artifactEvent.props?.eventType === 'artifact-chunk' &&
-                (!artifactEvent.props.contentChunk ||
-                  artifactEvent.props.contentChunk.length === 0)
-              ) {
-                logger.warn(
-                  '[LangchainBridge] Streaming artifact-chunk with empty content.',
-                  artifactEvent,
+              if (uiEvent.props?.eventType === 'artifact-end') {
+                isStreamingArtifact = false;
+                console.log(
+                  '[LangchainBridge] --> Artifact streaming FINISHED.',
                 );
               }
             }
+            // This part of the stream is fully handled, move to the next event
             continue;
           }
 
-          // Handle streaming text content from LLM
+          // --- Logic for Handling the Final LLM Text Answer ---
           if (
             event.event === 'on_chat_model_stream' &&
             event.data?.chunk?.content
           ) {
-            // Only stream text if we are NOT in the middle of artifact generation
+            // ---> THIS IS THE CRITICAL GATE <---
+            // ONLY stream text to the main chat window if an artifact is NOT active.
             if (!isStreamingArtifact) {
               const textContent = event.data.chunk.content;
               if (typeof textContent === 'string' && textContent.length > 0) {
-                // Write the text chunk as a '0:' part
+                // Use the correct method to stream text tokens
+                // writeData streams to the Vercel AI SDK protocol (0: prefix for text)
                 await dataStreamWriter.write(
                   `0:${JSON.stringify(textContent)}\n`,
                 );
               }
             } else {
-              logger.info(
-                '[LangchainBridge] Suppressed text stream due to active artifact streaming:',
-                `"${event.data.chunk.content.substring(0, 50)}..."`,
+              // Otherwise, we log that we are correctly suppressing the duplicate text
+              console.log(
+                '[LangchainBridge] Suppressing chat text because artifact is streaming.',
               );
             }
           }
@@ -506,7 +500,6 @@ export async function streamLangChainAgent(
 
         logger.info(`[LangchainBridge] Stream processing completed`, {
           totalEvents: eventCount,
-          totalUIEvents: allUIEvents.length,
         });
 
         // Return void since we're writing to the provided stream

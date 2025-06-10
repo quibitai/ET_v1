@@ -6,10 +6,6 @@ import { memo, useEffect, useCallback } from 'react';
 import type { Vote } from '@/lib/db/schema';
 import equal from 'fast-deep-equal';
 import type { UseChatHelpers } from '@ai-sdk/react';
-import { useArtifact } from '@/hooks/use-artifact';
-import { fetcher } from '@/lib/utils';
-import useSWR from 'swr';
-import type { Document } from '@/lib/db/schema';
 
 interface MessagesProps {
   chatId: string;
@@ -34,8 +30,6 @@ function PureMessages(props: MessagesProps) {
     isArtifactVisible,
   } = props;
 
-  const { setArtifact } = useArtifact();
-
   const [messagesContainerRef, messagesEndRef] =
     useScrollToBottom<HTMLDivElement>();
 
@@ -48,55 +42,13 @@ function PureMessages(props: MessagesProps) {
     }
   }, [messagesContainerRef]);
 
-  const handleArtifactExpand = useCallback(
-    async (artifactId: string) => {
-      console.log(
-        '[Messages] handleArtifactExpand called with ID:',
-        artifactId,
-      );
-
-      try {
-        // Fetch the document from the database
-        const documents = await fetcher(`/api/document?id=${artifactId}`);
-        console.log(
-          '[Messages] Fetched documents for ID:',
-          artifactId,
-          documents,
-        );
-
-        if (documents && documents.length > 0) {
-          const document = documents[0];
-          console.log('[Messages] Using document:', document);
-
-          // Set the artifact to visible with the document data
-          setArtifact({
-            documentId: document.id,
-            title: document.title,
-            kind: document.kind,
-            content: document.content || '',
-            status: 'idle',
-            isVisible: true,
-            boundingBox: {
-              top: 0,
-              left: 0,
-              width: 0,
-              height: 0,
-            },
-          });
-
-          console.log(
-            '[Messages] ✅ Artifact UI opened for document:',
-            document.id,
-          );
-        } else {
-          console.error('[Messages] ❌ No document found for ID:', artifactId);
-        }
-      } catch (error) {
-        console.error('[Messages] ❌ Error fetching document:', error);
-      }
-    },
-    [setArtifact],
-  );
+  const handleArtifactExpand = useCallback(async (artifactId: string) => {
+    console.log(
+      '[Messages] handleArtifactExpand called with ID (no-op):',
+      artifactId,
+    );
+    // Artifact functionality removed
+  }, []);
 
   return (
     <div
