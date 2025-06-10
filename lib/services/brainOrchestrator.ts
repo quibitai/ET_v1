@@ -232,19 +232,31 @@ export class BrainOrchestrator {
 
       if (shouldUseLangChain) {
         this.logger.info('Routing to LangChain path');
+        console.log('[DEBUG] About to call executeLangChainStreamingPath');
         response = await this.executeLangChainStreamingPath(
           brainRequest,
           context,
           userInput,
           conversationHistory,
         );
+        console.log(
+          '[DEBUG] LangChain path returned:',
+          !!response,
+          response?.status,
+        );
       } else {
         this.logger.info('Routing to Vercel AI path');
+        console.log('[DEBUG] About to call executeVercelAIStreamingPath');
         response = await this.executeVercelAIStreamingPath(
           userInput,
           conversationHistory,
           brainRequest,
           context,
+        );
+        console.log(
+          '[DEBUG] Vercel AI path returned:',
+          !!response,
+          response?.status,
         );
       }
 
@@ -293,50 +305,50 @@ export class BrainOrchestrator {
 
       // Check if chat already exists by trying to get the last message from it
       const messages = brainRequest.messages || [];
-      const isNewChat = messages.length <= 1; // Only user message means new chat
 
-      if (isNewChat) {
-        // Generate chat title from user input
-        const title =
-          userInput.substring(0, 100) + (userInput.length > 100 ? '...' : '');
+      // Always try to create the chat - if it exists, the database will ignore it
+      // This fixes the foreign key constraint issue when chats exist in frontend but not DB
 
-        // Get context information from the request
-        const bitContextId =
-          brainRequest.activeBitContextId ||
-          brainRequest.currentActiveSpecialistId ||
-          null;
-        const clientId = this.config.clientConfig?.id || 'default';
+      // Generate chat title from user input
+      const title =
+        userInput.substring(0, 100) + (userInput.length > 100 ? '...' : '');
 
-        this.logger.info('Creating new chat in database', {
-          chatId,
+      // Get context information from the request
+      const bitContextId =
+        brainRequest.activeBitContextId ||
+        brainRequest.currentActiveSpecialistId ||
+        null;
+      const clientId = this.config.clientConfig?.id || 'default';
+
+      this.logger.info('Ensuring chat exists in database', {
+        chatId,
+        userId,
+        title: title.substring(0, 50),
+        bitContextId,
+        clientId,
+      });
+
+      // Save chat metadata with proper context (will ignore if exists)
+      try {
+        await saveChat({
+          id: chatId,
           userId,
-          title: title.substring(0, 50),
+          title,
           bitContextId,
           clientId,
         });
-
-        // Save chat metadata with proper context
-        try {
-          await saveChat({
-            id: chatId,
-            userId,
-            title,
-            bitContextId,
-            clientId,
-          });
-          this.logger.info('Chat created successfully', {
-            chatId,
-            bitContextId,
-            clientId,
-          });
-        } catch (chatError) {
-          this.logger.error('Failed to create chat', {
-            chatId,
-            error:
-              chatError instanceof Error ? chatError.message : 'Unknown error',
-          });
-          // Continue even if chat creation fails
-        }
+        this.logger.info('Chat created or already exists', {
+          chatId,
+          bitContextId,
+          clientId,
+        });
+      } catch (chatError) {
+        this.logger.error('Failed to ensure chat exists', {
+          chatId,
+          error:
+            chatError instanceof Error ? chatError.message : 'Unknown error',
+        });
+        // Continue even if chat creation fails
       }
 
       // Save user message
