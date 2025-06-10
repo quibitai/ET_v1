@@ -1,73 +1,220 @@
-# Echo Tango RAG Application
+# Quibit RAG System - Advanced AI Orchestration Platform
 
-A production-ready, streamlined RAG (Retrieval-Augmented Generation) application built specifically for Echo Tango. This application provides intelligent conversation capabilities with integrated tool access including Google Calendar, Asana project management, web search, and internal knowledge base search.
+A production-ready, hybrid RAG (Retrieval-Augmented Generation) system with sophisticated AI orchestration, featuring intelligent routing between LangChain and LangGraph execution paths, dynamic specialist personas, and comprehensive tool integration.
 
-## 🚀 Features
+## 🎯 **System Overview**
 
-### Core RAG Capabilities
-- **Advanced AI Conversation**: Powered by multiple language models with intelligent routing
-- **Context-Aware Responses**: Retrieval-augmented generation for accurate, sourced answers
-- **Real-Time Streaming**: Progressive response generation with word-by-word streaming
-- **Memory Management**: Persistent conversation history and context retention
+This application implements a **hybrid brain orchestrator** that intelligently routes queries between different AI execution paths based on complexity analysis and pattern detection. The system combines the reliability of traditional LangChain agents with the advanced reasoning capabilities of LangGraph for complex multi-step workflows.
 
-### Integrated Tools
-- **🔍 Web Search**: Tavily-powered real-time web search capabilities
-- **📅 Google Calendar**: Full calendar integration for scheduling and event management
-- **📋 Asana Integration**: Project management and task tracking
-- **📚 Internal Knowledge Base**: Search through organizational documents and resources
-- **🌤️ Weather Information**: Current weather data and forecasts
+### **Core Innovation: Hybrid Brain Architecture**
+- **BrainOrchestrator**: Central coordination service with intelligent routing
+- **Query Classification**: Pattern-based analysis for optimal execution path selection
+- **LangGraph Integration**: Advanced state management for complex reasoning workflows
+- **Specialist System**: Dynamic AI personas with client-specific context and tool access
+- **Memory Management**: Sophisticated conversational memory with context bleeding prevention
 
-### Echo Tango Specialist
-- **Dedicated AI Specialist**: Custom-configured `echo-tango-specialist` with optimized parameters
-- **Tailored Responses**: Specialized for Echo Tango's specific needs and workflows
-- **Enhanced Context**: Deep understanding of organizational terminology and processes
+## 🏗️ **Architecture Deep Dive**
 
-## 🏗️ Architecture
+### **Brain Orchestrator - Central Coordination**
+```
+User Query → Query Classification → Path Selection → Execution → Response
+              ↓                     ↓              ↓
+         Pattern Analysis      LangChain vs    Tool Selection
+         (TOOL_OPERATION,      LangGraph vs    Context Injection
+          MULTI_STEP,          Vercel AI       Memory Management
+          REASONING, etc.)
+```
 
-### Technology Stack
+**Key Components:**
+- **BrainOrchestrator** (`lib/services/brainOrchestrator.ts`): Central routing and coordination
+- **QueryClassifier**: Pattern detection for execution path determination
+- **LangChain Bridge** (`lib/services/langchainBridge.ts`): Tool execution and agent management
+- **Context Services**: Memory, specialist, and client configuration management
+
+### **LangGraph Integration - Advanced Reasoning**
+For complex queries requiring multi-step reasoning, the system automatically routes to LangGraph:
+
+```typescript
+// Automatic LangGraph activation patterns:
+- TOOL_OPERATION: Complex tool workflows
+- MULTI_STEP: Sequential reasoning tasks  
+- REASONING: Analytical queries requiring deep thought
+- KNOWLEDGE_RETRIEVAL: Multi-source content synthesis
+- WORKFLOW: Multi-phase operations
+```
+
+**LangGraph Features:**
+- **State Management**: Proper graph state with message history and UI events
+- **Conditional Routing**: Smart transitions between agent and tool nodes
+- **Artifact Generation**: Real-time document and content creation
+- **Error Recovery**: Robust error handling with fallback strategies
+
+### **Specialist System - Dynamic AI Personas**
+```typescript
+// Specialist Configuration Example
+export const chatModelConfig: SpecialistConfig = {
+  id: 'chat-model',
+  name: 'General Chat Assistant',
+  persona: clientAwarePersonaPrompt, // Dynamically injected
+  defaultTools: [/* 26+ available tools */],
+  clientContext: {
+    displayName: '{client_display_name}',
+    mission: '{client_core_mission_statement}',
+    customInstructions: '...'
+  }
+};
+```
+
+## 🚀 **Core Features**
+
+### **🧠 Hybrid AI Orchestration**
+- **Intelligent Routing**: Automatic path selection based on query complexity
+- **Execution Strategies**: LangChain AgentExecutor, LangGraph workflows, or Vercel AI
+- **Pattern Recognition**: Advanced query classification for optimal processing
+- **Fallback Logic**: Robust error recovery with multiple execution paths
+
+### **🔧 Comprehensive Tool Ecosystem (26+ Tools)**
+
+**Document & Knowledge Management:**
+- `searchInternalKnowledgeBase` - Semantic search across knowledge base
+- `getFileContents` - Direct document access and retrieval
+- `createDocument` - Dynamic document generation
+- `updateDocument` - Content modification and versioning
+- `listDocuments` - Knowledge base exploration
+- `queryDocumentRows` - Structured data queries
+
+**Asana Project Management Suite (12 Tools):**
+- `asana_get_user_info` - User profile and permissions
+- `asana_list_projects` - Project discovery and listing
+- `asana_get_project_details` - Detailed project information
+- `asana_create_project` - New project creation
+- `asana_list_tasks` - Task management and filtering
+- `asana_get_task_details` - Comprehensive task information
+- `asana_create_task` - Task creation with dependencies
+- `asana_update_task` - Task modification and status updates
+- `asana_list_users` - Team member management
+- `asana_search_entity` - Cross-entity search capabilities
+- `asana_list_subtasks` - Hierarchical task management
+- `asana_add_followers` - Team collaboration features
+
+**External Integrations:**
+- `tavilySearch` - Real-time web search with source attribution
+- `tavilyExtract` - Deep content extraction from web sources
+- `googleCalendar` - Full calendar integration and scheduling
+- `getWeatherTool` - Location-based weather information
+
+**Cross-Context Communication:**
+- `getMessagesFromOtherChat` - Inter-conversation context sharing
+- `requestSuggestions` - AI-powered response suggestions
+
+### **💾 Advanced Memory Management**
+- **Conversational Memory**: Persistent context across sessions
+- **Context Bleeding Prevention**: Intelligent filtering of problematic patterns
+- **Cross-UI Context**: Seamless context sharing between interface components
+- **Client-Specific Memory**: Tailored memory management per client configuration
+
+### **🎭 Dynamic Specialist Personas**
+- **Client-Aware Branding**: Automatic injection of client display names and missions
+- **Custom Instructions**: Client-specific behavioral guidelines
+- **Tool Access Control**: Specialist-specific tool permissions and preferences
+- **Contextual Adaptation**: Dynamic persona adjustment based on conversation context
+
+## 🛠️ **Technology Stack**
+
+### **Core Technologies**
 - **Frontend**: Next.js 15 with React 18 and TypeScript
 - **Styling**: Tailwind CSS with custom component library
-- **AI/ML**: Vercel AI SDK with LangChain integration
+- **AI/ML**: Hybrid LangChain + LangGraph + Vercel AI SDK architecture
 - **Database**: PostgreSQL with Drizzle ORM
-- **Authentication**: NextAuth.js with multiple providers
-- **Deployment**: Optimized for Vercel with edge functions
+- **Authentication**: NextAuth.js with session management
+- **Deployment**: Vercel with edge functions
 
-### System Design
-- **Modular Architecture**: Clean separation of concerns with dedicated service layers
-- **Streaming-First**: Real-time response generation and tool execution
-- **Error Resilience**: Comprehensive error handling and recovery mechanisms
-- **Performance Optimized**: Efficient bundling and minimal dependencies
+### **AI Architecture**
+- **Orchestration**: Custom BrainOrchestrator with intelligent routing
+- **State Management**: LangGraph state graphs for complex reasoning
+- **Tool Integration**: 26+ specialized tools with context-aware selection
+- **Context Management**: Multi-tiered context with specialist personas
+- **Memory Systems**: Conversation persistence with bleeding prevention
 
-## 🛠️ Installation & Setup
+## 📁 **Project Structure**
 
-### Prerequisites
-- Node.js 18+ 
+```
+ET_v001/
+├── app/                          # Next.js app directory
+│   ├── (auth)/                  # Authentication routes
+│   ├── (chat)/                  # Chat interface and API routes
+│   │   └── api/
+│   │       ├── documents/       # Document management endpoints
+│   │       ├── files/           # File upload and processing
+│   │       └── history/         # Conversation history
+│   ├── api/
+│   │   ├── brain/              # 🧠 Main brain orchestrator endpoint
+│   │   ├── chat/               # Chat processing endpoints
+│   │   └── messages/           # Message management
+│   └── components/             # Page-level components
+├── components/                  # Reusable UI components
+│   ├── chat-header.tsx         # Specialist selection interface
+│   └── ui/                     # Base UI component library
+├── lib/                        # 🏗️ Core application logic
+│   ├── ai/                     # AI/ML functionality
+│   │   ├── graphs/             # 🔀 LangGraph implementations
+│   │   │   ├── base.ts         # Base graph factory
+│   │   │   ├── simpleLangGraphWrapper.ts  # Main LangGraph wrapper
+│   │   │   └── types.ts        # Graph state definitions
+│   │   ├── tools/              # 🛠️ 26+ Tool integrations
+│   │   │   ├── asana/          # Comprehensive Asana integration
+│   │   │   ├── document/       # Knowledge base tools
+│   │   │   ├── external/       # Web search, calendar, weather
+│   │   │   └── index.ts        # Tool registry and selection
+│   │   ├── prompts/            # 📝 Prompt management
+│   │   │   ├── core/           # Base prompt composition
+│   │   │   ├── specialists/    # Specialist persona definitions
+│   │   │   └── loader.ts       # Dynamic prompt loading
+│   │   └── executors/          # Agent execution logic
+│   ├── services/               # 🎯 Business logic services
+│   │   ├── brainOrchestrator.ts     # 🧠 Central coordination service
+│   │   ├── langchainBridge.ts       # LangChain integration bridge
+│   │   ├── contextService.ts        # Context processing and management
+│   │   ├── messageService.ts        # Message formatting and filtering
+│   │   ├── observabilityService.ts  # Logging and monitoring
+│   │   └── validationService.ts     # Request validation
+│   ├── db/                     # Database layer
+│   │   ├── queries.ts          # Database operations
+│   │   └── repositories/       # Data access patterns
+│   └── validation/             # Schema validation
+├── context/                    # React context providers
+├── hooks/                      # Custom React hooks
+└── types/                      # TypeScript type definitions
+```
+
+## 🚀 **Installation & Setup**
+
+### **Prerequisites**
+- Node.js 18+
 - PostgreSQL database
 - Required API keys (see Environment Variables)
 
-### Quick Start
+### **Quick Start**
 ```bash
 # Clone the repository
-git clone https://github.com/quibitai/ET_v1.git
-cd ET_v1
+git clone <repository-url>
+cd ET_v001
 
 # Install dependencies
-npm install
+pnpm install
 
 # Set up environment variables
 cp .env.example .env.local
 # Edit .env.local with your configurations
 
 # Run database migrations
-npm run db:migrate
+pnpm run db:migrate
 
 # Start development server
-npm run dev
+pnpm run dev
 ```
 
-### Environment Variables
-Create a `.env.local` file with the following variables:
-
+### **Environment Variables**
 ```env
 # Database
 DATABASE_URL="postgresql://..."
@@ -85,141 +232,175 @@ TAVILY_API_KEY="tvly-..."
 GOOGLE_CALENDAR_CLIENT_ID="..."
 GOOGLE_CALENDAR_CLIENT_SECRET="..."
 ASANA_ACCESS_TOKEN="..."
-
-# Weather Service
 WEATHER_API_KEY="..."
 ```
 
-## 📁 Project Structure
+## 🔧 **Configuration & Customization**
 
-```
-ET_v001/
-├── app/                    # Next.js app directory
-│   ├── (auth)/            # Authentication routes
-│   ├── (chat)/            # Chat interface routes
-│   ├── api/               # API endpoints
-│   └── components/        # Page components
-├── components/            # Reusable UI components
-├── lib/                   # Core application logic
-│   ├── ai/               # AI/ML related functionality
-│   │   ├── tools/        # Tool integrations
-│   │   ├── prompts/      # AI prompts and templates
-│   │   └── graphs/       # LangGraph workflow definitions
-│   ├── db/               # Database layer
-│   └── services/         # Business logic services
-├── context/              # React context providers
-├── hooks/                # Custom React hooks
-└── types/                # TypeScript type definitions
+### **Brain Orchestrator Configuration**
+```typescript
+const orchestratorConfig: BrainOrchestratorConfig = {
+  enableHybridRouting: true,           // Enable intelligent path selection
+  enableLangGraph: true,               // Enable complex reasoning
+  langGraphForComplexQueries: true,    // Pattern-based LangGraph routing
+  enableClassification: true,          // Query pattern analysis
+  fallbackToLangChain: true,          // Error recovery
+  maxRetries: 2,                      // Retry attempts
+  timeoutMs: 30000,                   // Request timeout
+};
 ```
 
-## 🔧 Key Components
+### **Specialist Configuration**
+```typescript
+// Add new specialists in lib/ai/prompts/specialists/
+export const customSpecialistConfig: SpecialistConfig = {
+  id: 'custom-specialist',
+  name: 'Custom Specialist',
+  description: 'Specialized for specific domain',
+  persona: `# Role: Custom Domain Expert...`,
+  defaultTools: ['tool1', 'tool2', ...],
+};
+```
 
-### AI Tools Integration
-Located in `lib/ai/tools/`, each tool provides specific functionality:
-- **Asana Tools**: Task management, project tracking, team collaboration
-- **Google Calendar**: Event scheduling, calendar management
-- **Tavily Search**: Real-time web search and information retrieval
-- **Weather Tools**: Location-based weather information
-- **Knowledge Base**: Internal document search and retrieval
+## 🧪 **Usage Examples**
 
-### Chat Interface
-- **Real-time Streaming**: Progressive response generation
-- **Tool Visualization**: Clear indication of tool usage and results
-- **Context Management**: Maintains conversation history and context
-- **Error Handling**: Graceful degradation with informative error messages
+### **Complex Multi-Step Reasoning (LangGraph)**
+```
+User: "Analyze our Q4 project timeline, check for conflicts with team calendars, 
+and create a summary document with recommendations"
 
-### Authentication & Security
-- **Multi-provider Auth**: Support for multiple authentication methods
-- **Session Management**: Secure session handling with NextAuth.js
-- **API Security**: Protected routes with proper authorization
-- **Data Privacy**: Secure handling of sensitive information
+System Flow:
+1. Query Classification → MULTI_STEP + TOOL_OPERATION patterns detected
+2. Route to LangGraph → Complex reasoning workflow activated
+3. Tool Sequence:
+   - asana_list_projects (Q4 projects)
+   - googleCalendar (team availability)
+   - createDocument (summary generation)
+4. State Management → Maintains context across tool calls
+5. Response → Comprehensive analysis with source attribution
+```
 
-## 🚀 Deployment
+### **Simple Information Retrieval (LangChain)**
+```
+User: "What's the weather in San Francisco?"
 
-### Vercel Deployment (Recommended)
+System Flow:
+1. Query Classification → Simple information request
+2. Route to LangChain → Direct tool execution
+3. Tool: getWeatherTool
+4. Response → Current weather data
+```
+
+### **Specialist Context Example**
+```
+User Context: Echo Tango client, chat-model specialist active
+System Behavior:
+- Injects "Echo Tango" branding in responses
+- Applies client-specific mission statement
+- Uses client custom instructions
+- Accesses full tool suite with Echo Tango context
+```
+
+## 📊 **Development & Monitoring**
+
+### **Available Scripts**
+```bash
+pnpm run dev          # Start development server
+pnpm run build        # Build for production  
+pnpm run start        # Start production server
+pnpm run test         # Run test suite
+pnpm run db:migrate   # Run database migrations
+pnpm run db:studio    # Open database studio
+pnpm run lint         # Run linting
+pnpm run type-check   # TypeScript type checking
+```
+
+### **Observability Features**
+- **Request Correlation**: Unique correlation IDs for request tracing
+- **Performance Metrics**: Execution time tracking per component
+- **Tool Usage Analytics**: Comprehensive tool usage statistics
+- **Error Tracking**: Structured error logging with context
+- **Pattern Analysis**: Query classification metrics and insights
+
+### **Testing Strategy**
+- **Unit Tests**: Individual service and component testing
+- **Integration Tests**: End-to-end workflow validation
+- **Tool Tests**: Comprehensive tool integration testing
+- **LangGraph Tests**: State graph execution validation
+
+## 🚀 **Deployment**
+
+### **Vercel Deployment (Recommended)**
 ```bash
 # Install Vercel CLI
-npm i -g vercel
+pnpm i -g vercel
 
 # Deploy to Vercel
 vercel
 
-# Set environment variables in Vercel dashboard
-# Configure database connection
-# Set up domain and SSL
+# Configure environment variables in Vercel dashboard
+# Set up database connection and API keys
 ```
 
-### Environment Configuration
-- **Production Database**: Configure PostgreSQL connection
+### **Production Configuration**
+- **Database**: Configure PostgreSQL with connection pooling
 - **API Keys**: Set all required service API keys
-- **Domain Setup**: Configure custom domain if needed
-- **Monitoring**: Set up error tracking and performance monitoring
+- **Monitoring**: Enable error tracking and performance monitoring
+- **Caching**: Configure edge caching for optimal performance
 
-## 🔍 Usage
+## 🎯 **Key Architectural Decisions**
 
-### Starting a Conversation
-1. Navigate to the chat interface
-2. Begin typing your question or request
-3. The AI will automatically determine which tools to use
-4. View real-time responses with source attribution
+### **Why Hybrid Orchestration?**
+- **Optimal Performance**: Route simple queries to fast paths, complex queries to advanced reasoning
+- **Reliability**: Multiple execution paths provide robust fallback options
+- **Scalability**: Different patterns can be optimized independently
+- **Flexibility**: Easy to add new execution strategies without breaking existing functionality
 
-### Tool Usage Examples
-- **Calendar**: "Schedule a meeting with the team next Tuesday at 2 PM"
-- **Asana**: "Show me my current tasks" or "Create a new project for Q4 planning"
-- **Web Search**: "What are the latest trends in AI development?"
-- **Weather**: "What's the weather like in San Francisco today?"
-- **Knowledge Base**: "Find documents about our company policies"
+### **Why LangGraph for Complex Reasoning?**
+- **State Management**: Proper state persistence across multi-step workflows
+- **Conditional Logic**: Smart routing between different processing nodes
+- **Error Recovery**: Robust error handling with retry and fallback strategies
+- **Observability**: Clear visibility into complex reasoning processes
 
-## 🧪 Development
+### **Why Specialist System?**
+- **Client Customization**: Tailored AI behavior per client without code changes
+- **Context Optimization**: Specialized prompts and tool access for specific use cases
+- **Maintainability**: Centralized persona management with dynamic composition
+- **Scalability**: Easy addition of new specialists without system changes
 
-### Available Scripts
-```bash
-npm run dev          # Start development server
-npm run build        # Build for production
-npm run start        # Start production server
-npm run test         # Run test suite
-npm run db:migrate   # Run database migrations
-npm run db:studio    # Open database studio
-npm run lint         # Run linting
-npm run type-check   # TypeScript type checking
-```
+## 📈 **Performance & Scalability**
 
-### Code Quality
-- **TypeScript**: Full type safety with strict configuration
-- **ESLint**: Code quality and consistency enforcement
-- **Prettier**: Automated code formatting
-- **Biome**: Fast linting and formatting
-
-## 📈 Performance & Monitoring
-
-### Optimization Features
-- **Efficient Bundling**: Minimal dependencies and optimized builds
-- **Streaming Responses**: Real-time AI response generation
+### **Optimization Features**
+- **Intelligent Routing**: Optimal execution path selection for performance
+- **Tool Selection**: Context-aware tool filtering reduces noise and latency
+- **Memory Management**: Efficient conversation history with smart truncation
+- **Streaming Responses**: Real-time response generation for better UX
 - **Edge Functions**: Fast response times with Vercel Edge Runtime
-- **Database Optimization**: Efficient queries and connection pooling
 
-### Monitoring
-- **Error Tracking**: Comprehensive error logging and reporting
-- **Performance Metrics**: Response time and resource usage monitoring
-- **Usage Analytics**: Tool usage and conversation analytics
+### **Monitoring & Analytics**
+- **Request Tracing**: Full request lifecycle visibility
+- **Tool Usage Metrics**: Comprehensive tool performance analytics
+- **Pattern Recognition**: Query classification effectiveness tracking
+- **Error Rates**: System reliability and failure pattern analysis
 
-## 🤝 Support & Maintenance
+## 🤝 **Contributing & Maintenance**
 
-### For Echo Tango Team
+### **Code Quality Standards**
+- **TypeScript**: Full type safety with strict configuration
+- **Modular Design**: Clean separation of concerns with service layers
 - **Documentation**: Comprehensive inline documentation and type definitions
-- **Error Handling**: Clear error messages and recovery guidance
-- **Logging**: Detailed logging for troubleshooting and optimization
-- **Updates**: Regular updates and security patches
+- **Testing**: Extensive test coverage for critical components
+- **Linting**: Biome for fast linting and consistent formatting
 
-### Technical Support
-- **Issue Tracking**: GitHub issues for bug reports and feature requests
-- **Documentation**: Detailed API documentation and usage guides
-- **Code Comments**: Extensive inline documentation for maintainability
-
-## 📄 License
-
-Proprietary software developed for Echo Tango. All rights reserved.
+### **Architecture Principles**
+- **Single Responsibility**: Each service has a clear, focused purpose
+- **Dependency Injection**: Services are composable and testable
+- **Error Boundaries**: Comprehensive error handling at all levels
+- **Observability**: Every component includes proper logging and metrics
+- **Scalability**: Architecture supports horizontal and vertical scaling
 
 ---
 
-**Built with ❤️ for Echo Tango** | **Last Updated**: January 2025
+**Built with ❤️ as a next-generation RAG platform** | **Last Updated**: January 2025
+
+*This system represents a significant advancement in RAG architecture, combining the reliability of traditional approaches with cutting-edge reasoning capabilities for production-ready AI applications.*
