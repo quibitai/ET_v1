@@ -1,131 +1,62 @@
-# Quibit RAG v3.2.0 - Hybrid AI Architecture
+# Echo Tango RAG Application
 
-## 🔧 Current Status (v3.2.0)
+A production-ready, streamlined RAG (Retrieval-Augmented Generation) application built specifically for Echo Tango. This application provides intelligent conversation capabilities with integrated tool access including Google Calendar, Asana project management, web search, and internal knowledge base search.
 
-### Backend Systems Status ✅
-- **Hybrid Architecture**: Intelligent routing between LangChain and Vercel AI working correctly
-- **Image Generation**: Backend successfully generating images and buffering artifact events
-- **Tool Execution**: 26 tools functioning properly with intelligent selection
-- **Classification**: Query routing working with 95% accuracy
-- **Performance**: 30% token reduction and 2-3x faster responses maintained
+## 🚀 Features
 
-### Frontend Issues ❌
-- **Artifact Display**: Images generated but not appearing in UI due to streaming completion issues
-- **History Dropdown**: Chat history navigation broken
-- **Text Wrapping**: Overflow issues in resizable containers
-- **Streaming Display**: Intermittent rendering problems in response streaming
+### Core RAG Capabilities
+- **Advanced AI Conversation**: Powered by multiple language models with intelligent routing
+- **Context-Aware Responses**: Retrieval-augmented generation for accurate, sourced answers
+- **Real-Time Streaming**: Progressive response generation with word-by-word streaming
+- **Memory Management**: Persistent conversation history and context retention
 
-## ⚠️ Known Issues - Critical
+### Integrated Tools
+- **🔍 Web Search**: Tavily-powered real-time web search capabilities
+- **📅 Google Calendar**: Full calendar integration for scheduling and event management
+- **📋 Asana Integration**: Project management and task tracking
+- **📚 Internal Knowledge Base**: Search through organizational documents and resources
+- **🌤️ Weather Information**: Current weather data and forecasts
 
-**The following features are currently broken and require immediate attention:**
-
-- **History Global Dropdown**: Chat history dropdown not working properly
-- **Text Wrapping in Resizable Containers**: Text overflow issues in resizable UI components  
-- **Streaming Responses**: Streaming may be intermittent or failing in some scenarios
-- **Artifact UI**: Image artifacts not displaying correctly despite successful backend generation
-
-**Status**: Backend systems are functioning correctly (image generation, tool execution, hybrid routing), but frontend display has multiple UI rendering and interaction issues.
-
-## Overview
-
-Quibit RAG is an advanced AI-powered knowledge management and task automation system featuring a **hybrid architecture** that intelligently routes queries between LangChain Agent (complex operations) and Vercel AI SDK (simple responses) for optimal performance.
-
-## 🚀 Key Features
-
-### Hybrid AI Orchestration
-- **Intelligent Query Classification**: Automatically routes queries to the optimal execution path
-- **Dual Execution Paths**: LangChain for complex reasoning, Vercel AI SDK for fast responses
-- **Unified Response Format**: Seamless user experience regardless of execution path
-- **Performance Optimization**: 2-3x faster responses for simple queries, 30% token reduction
-
-### Advanced Tool Ecosystem
-- **26 Integrated Tools**: Document creation, Asana project management, knowledge base search, timezone handling
-- **Intelligent Tool Selection**: Priority-based scoring with keyword matching
-- **Cross-Path Tool Support**: All tools work across both LangChain and Vercel AI execution paths
-
-### Artifact Generation System
-- **Cross-Path Image Generation**: AI-generated images work on both execution paths
-- **Document Creation**: Text, code, and spreadsheet generation
-- **Real-Time Streaming**: Buffered artifact event system with replay mechanism
-- **Unified Format**: Consistent artifact handling across all execution paths
-
-### Smart Context Management
-- **Context Bleeding Prevention**: AI focuses on current question, not previous conversation
-- **Timezone Awareness**: Automatic timezone detection with 70+ city mappings
-- **Conversation Persistence**: Chat history with specialist context organization
-- **User-Friendly Responses**: Formatted outputs instead of raw data
+### Echo Tango Specialist
+- **Dedicated AI Specialist**: Custom-configured `echo-tango-specialist` with optimized parameters
+- **Tailored Responses**: Specialized for Echo Tango's specific needs and workflows
+- **Enhanced Context**: Deep understanding of organizational terminology and processes
 
 ## 🏗️ Architecture
 
-### Core Services
+### Technology Stack
+- **Frontend**: Next.js 15 with React 18 and TypeScript
+- **Styling**: Tailwind CSS with custom component library
+- **AI/ML**: Vercel AI SDK with LangChain integration
+- **Database**: PostgreSQL with Drizzle ORM
+- **Authentication**: NextAuth.js with multiple providers
+- **Deployment**: Optimized for Vercel with edge functions
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Query Input    │    │ BrainOrchestrator│    │ Response Stream │
-│                 │───▶│                 │───▶│                 │
-│ User Question   │    │ Classification  │    │ Unified Format  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │
-                    ┌─────────┼─────────┐
-                    ▼                   ▼
-           ┌─────────────────┐ ┌─────────────────┐
-           │ LangChain Agent │ │ Vercel AI SDK  │
-           │                 │ │                 │
-           │ Complex Queries │ │ Simple Queries  │
-           │ 4-6 seconds     │ │ 2-3 seconds     │
-           │ Multi-step      │ │ Direct response │
-           └─────────────────┘ └─────────────────┘
-```
+### System Design
+- **Modular Architecture**: Clean separation of concerns with dedicated service layers
+- **Streaming-First**: Real-time response generation and tool execution
+- **Error Resilience**: Comprehensive error handling and recovery mechanisms
+- **Performance Optimized**: Efficient bundling and minimal dependencies
 
-### Key Components
-
-| Component | Purpose | File Location |
-|-----------|---------|---------------|
-| **BrainOrchestrator** | Central routing and coordination | `lib/services/brainOrchestrator.ts` |
-| **QueryClassifier** | Intelligent path selection | `lib/services/queryClassifier.ts` |
-| **VercelAIService** | Fast execution for simple queries | `lib/services/vercelAIService.ts` |
-| **ModernToolService** | Tool selection and management | `lib/services/modernToolService.ts` |
-| **MessageService** | Context and conversation handling | `lib/services/messageService.ts` |
-
-## 🛠️ Tech Stack
-
-```typescript
-// AI Frameworks
-"@langchain/core": "^0.3.0"      // Complex reasoning
-"ai": "^4.0.0"                   // Fast responses
-"@ai-sdk/openai": "^1.0.0"       // OpenAI integration
-
-// Core Infrastructure  
-"next": "^15.0.0"                // Full-stack framework
-"typescript": "^5.0.0"           // Type safety
-"zod": "^3.22.0"                 // Schema validation
-
-// Database & State
-"postgresql": "^3.0.0"           // Chat persistence
-"luxon": "^3.4.0"               // DateTime handling
-```
-
-## 🚀 Quick Start
+## 🛠️ Installation & Setup
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 18+ 
 - PostgreSQL database
-- OpenAI API key
-- Asana API token (optional)
+- Required API keys (see Environment Variables)
 
-### Installation
-
+### Quick Start
 ```bash
-# Clone repository
-git clone [repository-url]
-cd Quibit_RAG_v002
+# Clone the repository
+git clone https://github.com/quibitai/ET_v1.git
+cd ET_v1
 
 # Install dependencies
 npm install
 
 # Set up environment variables
 cp .env.example .env.local
-# Add your API keys and database URL
+# Edit .env.local with your configurations
 
 # Run database migrations
 npm run db:migrate
@@ -135,170 +66,160 @@ npm run dev
 ```
 
 ### Environment Variables
+Create a `.env.local` file with the following variables:
 
-```bash
-# Required
-OPENAI_API_KEY=your_openai_api_key
-DATABASE_URL=your_postgresql_url
+```env
+# Database
+DATABASE_URL="postgresql://..."
 
-# Optional integrations
-ASANA_PERSONAL_ACCESS_TOKEN=your_asana_token
-TAVILY_API_KEY=your_tavily_api_key
-GOOGLE_CALENDAR_WEBHOOK_URL=your_calendar_webhook
-```
+# Authentication
+NEXTAUTH_SECRET="your-secret-key"
+NEXTAUTH_URL="http://localhost:3000"
 
-## 📊 Performance Metrics
+# AI/ML Services
+OPENAI_API_KEY="sk-..."
+ANTHROPIC_API_KEY="sk-ant-..."
 
-| Metric | LangChain Path | Vercel AI Path |
-|--------|----------------|----------------|
-| **Response Time** | 4-6 seconds | 2-3 seconds |
-| **Token Usage** | Standard | 30% reduction |
-| **Use Cases** | Complex reasoning | Simple queries |
-| **Tool Execution** | Multi-step orchestration | Direct calls |
+# Tool Integrations
+TAVILY_API_KEY="tvly-..."
+GOOGLE_CALENDAR_CLIENT_ID="..."
+GOOGLE_CALENDAR_CLIENT_SECRET="..."
+ASANA_ACCESS_TOKEN="..."
 
-## 🎯 Usage Examples
-
-### Simple Queries (Vercel AI Path)
-```
-"What's the weather like?"
-"Who is on my team in Asana?"
-"What time is it in Tokyo?"
-```
-
-### Complex Queries (LangChain Path)
-```
-"Search the knowledge base for project requirements and create a task list"
-"Analyze the uploaded document and generate a summary report"
-"Find all overdue tasks and create a project status update"
-```
-
-### Artifact Generation
-```
-"Create an image of a logo concept"
-"Generate a project timeline document"
-"Create a data analysis spreadsheet"
+# Weather Service
+WEATHER_API_KEY="..."
 ```
 
 ## 📁 Project Structure
 
 ```
-Quibit_RAG_v002/
-├── app/                          # Next.js app directory
-│   ├── api/brain/               # Main AI orchestration endpoint
-│   └── (main)/                  # Main application routes
-├── lib/
-│   ├── services/                # Core service layer
-│   │   ├── brainOrchestrator.ts # Central routing logic
-│   │   ├── queryClassifier.ts   # Path selection intelligence
-│   │   ├── vercelAIService.ts   # Vercel AI SDK integration
-│   │   └── modernToolService.ts # Tool management
-│   ├── ai/                      # AI-related utilities
-│   │   ├── prompts/             # System prompts and templates
-│   │   └── tools/               # Tool definitions
-│   └── artifacts/               # Document/image generation
-├── components/
-│   ├── timezone/                # Timezone detection components
-│   └── chat/                    # Chat interface components
-└── docs/
-    ├── HYBRID_ARCHITECTURE.md   # Architecture documentation
-    └── CHANGELOG.md             # Version history
+ET_v001/
+├── app/                    # Next.js app directory
+│   ├── (auth)/            # Authentication routes
+│   ├── (chat)/            # Chat interface routes
+│   ├── api/               # API endpoints
+│   └── components/        # Page components
+├── components/            # Reusable UI components
+├── lib/                   # Core application logic
+│   ├── ai/               # AI/ML related functionality
+│   │   ├── tools/        # Tool integrations
+│   │   ├── prompts/      # AI prompts and templates
+│   │   └── graphs/       # LangGraph workflow definitions
+│   ├── db/               # Database layer
+│   └── services/         # Business logic services
+├── context/              # React context providers
+├── hooks/                # Custom React hooks
+└── types/                # TypeScript type definitions
 ```
 
-## 🧪 Testing
+## 🔧 Key Components
 
+### AI Tools Integration
+Located in `lib/ai/tools/`, each tool provides specific functionality:
+- **Asana Tools**: Task management, project tracking, team collaboration
+- **Google Calendar**: Event scheduling, calendar management
+- **Tavily Search**: Real-time web search and information retrieval
+- **Weather Tools**: Location-based weather information
+- **Knowledge Base**: Internal document search and retrieval
+
+### Chat Interface
+- **Real-time Streaming**: Progressive response generation
+- **Tool Visualization**: Clear indication of tool usage and results
+- **Context Management**: Maintains conversation history and context
+- **Error Handling**: Graceful degradation with informative error messages
+
+### Authentication & Security
+- **Multi-provider Auth**: Support for multiple authentication methods
+- **Session Management**: Secure session handling with NextAuth.js
+- **API Security**: Protected routes with proper authorization
+- **Data Privacy**: Secure handling of sensitive information
+
+## 🚀 Deployment
+
+### Vercel Deployment (Recommended)
 ```bash
-# Run all tests
-npm test
+# Install Vercel CLI
+npm i -g vercel
 
-# Run specific test suites
-npm run test:services
-npm run test:tools
-npm run test:integration
+# Deploy to Vercel
+vercel
 
-# Run with coverage
-npm run test:coverage
+# Set environment variables in Vercel dashboard
+# Configure database connection
+# Set up domain and SSL
 ```
 
-## 📚 Documentation
+### Environment Configuration
+- **Production Database**: Configure PostgreSQL connection
+- **API Keys**: Set all required service API keys
+- **Domain Setup**: Configure custom domain if needed
+- **Monitoring**: Set up error tracking and performance monitoring
 
-- **[Hybrid Architecture](HYBRID_ARCHITECTURE.md)**: Comprehensive technical documentation
-- **[Changelog](CHANGELOG.md)**: Version history and recent changes
-- **[API Documentation](docs/api.md)**: REST API reference
-- **[Tool Development Guide](docs/tools.md)**: Creating new tools
+## 🔍 Usage
 
-## 🤝 Contributing
+### Starting a Conversation
+1. Navigate to the chat interface
+2. Begin typing your question or request
+3. The AI will automatically determine which tools to use
+4. View real-time responses with source attribution
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes following the architecture patterns
-4. Add tests for new functionality
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+### Tool Usage Examples
+- **Calendar**: "Schedule a meeting with the team next Tuesday at 2 PM"
+- **Asana**: "Show me my current tasks" or "Create a new project for Q4 planning"
+- **Web Search**: "What are the latest trends in AI development?"
+- **Weather**: "What's the weather like in San Francisco today?"
+- **Knowledge Base**: "Find documents about our company policies"
 
-### Development Guidelines
+## 🧪 Development
 
-- **Adding Tools**: Follow the pattern in `modernToolService.ts`
-- **Modifying Classification**: Update criteria in `queryClassifier.ts`
-- **Extending Artifacts**: Add handlers in `artifacts/` directory
-- **Testing**: Maintain 95%+ test coverage
+### Available Scripts
+```bash
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run start        # Start production server
+npm run test         # Run test suite
+npm run db:migrate   # Run database migrations
+npm run db:studio    # Open database studio
+npm run lint         # Run linting
+npm run type-check   # TypeScript type checking
+```
 
-## 📋 Roadmap
+### Code Quality
+- **TypeScript**: Full type safety with strict configuration
+- **ESLint**: Code quality and consistency enforcement
+- **Prettier**: Automated code formatting
+- **Biome**: Fast linting and formatting
 
-### Short-term (v2.9.0)
-- Enhanced tool prompting for better utilization
-- Classification algorithm fine-tuning
-- Advanced artifact types (interactive components)
+## 📈 Performance & Monitoring
 
-### Medium-term (v3.0.0)
-- Multi-modal support (voice, video)
-- Custom tool creation interface
-- Advanced analytics dashboard
+### Optimization Features
+- **Efficient Bundling**: Minimal dependencies and optimized builds
+- **Streaming Responses**: Real-time AI response generation
+- **Edge Functions**: Fast response times with Vercel Edge Runtime
+- **Database Optimization**: Efficient queries and connection pooling
 
-### Long-term
-- Persistent agent memory
-- User-defined workflows
-- Enterprise integrations
+### Monitoring
+- **Error Tracking**: Comprehensive error logging and reporting
+- **Performance Metrics**: Response time and resource usage monitoring
+- **Usage Analytics**: Tool usage and conversation analytics
 
-## 🐛 Known Issues
+## 🤝 Support & Maintenance
 
-### Critical Issues Requiring Immediate Attention
-- **History Global Dropdown**: Chat history dropdown navigation not functioning properly
-- **Text Wrapping in Resizable Containers**: Text overflow and display issues in resizable UI components
-- **Streaming Responses**: Intermittent streaming response rendering problems  
-- **Artifact UI Display**: Generated images not appearing in UI despite successful backend generation
+### For Echo Tango Team
+- **Documentation**: Comprehensive inline documentation and type definitions
+- **Error Handling**: Clear error messages and recovery guidance
+- **Logging**: Detailed logging for troubleshooting and optimization
+- **Updates**: Regular updates and security patches
 
-### System Status
-- **Backend Health**: ✅ All core systems operational (AI, tools, routing, generation)
-- **Frontend Stability**: ❌ Multiple UI interaction and display issues
-- **Data Persistence**: ✅ Chat storage and retrieval working correctly
-- **API Integration**: ✅ All external integrations (Asana, OpenAI, etc.) functioning
-
-### Immediate Priorities
-1. **Fix artifact streaming completion** - Images generate but don't display
-2. **Restore history dropdown functionality** - Navigation between chats broken  
-3. **Resolve text wrapping issues** - Content overflow in resizable containers
-4. **Stabilize streaming responses** - Intermittent rendering problems
+### Technical Support
+- **Issue Tracking**: GitHub issues for bug reports and feature requests
+- **Documentation**: Detailed API documentation and usage guides
+- **Code Comments**: Extensive inline documentation for maintainability
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **Issues**: [GitHub Issues](repository-url/issues)
-- **Discussions**: [GitHub Discussions](repository-url/discussions)
-- **Documentation**: [Wiki](repository-url/wiki)
-
-## 🏆 Acknowledgments
-
-- **LangChain**: For powerful agent orchestration capabilities
-- **Vercel AI SDK**: For fast and efficient AI responses
-- **OpenAI**: For GPT-4 language model integration
-- **Community**: For feedback and contributions
+Proprietary software developed for Echo Tango. All rights reserved.
 
 ---
 
-**Quibit RAG v3.2.0** - Intelligent, Fast, and Comprehensive AI Assistant
-
-*Current Status: Backend systems operational, frontend UI issues require attention*
+**Built with ❤️ for Echo Tango** | **Last Updated**: January 2025
