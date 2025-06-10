@@ -32,7 +32,7 @@ export default function TestStreamPage() {
         <div className="min-h-[200px] border rounded-lg p-4 space-y-2">
           {messages.length === 0 && (
             <p className="text-gray-500">
-              No messages yet. Click "Test Streaming" to start.
+              No messages yet. Click &quot;Test Streaming&quot; to start.
             </p>
           )}
           {messages.map((message) => (
