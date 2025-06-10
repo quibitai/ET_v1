@@ -1,6 +1,7 @@
 'use client';
 
-import type { ArtifactKind } from './artifact';
+// import type { ArtifactKind } from './artifact'; // Artifact system removed
+type ArtifactKind = 'text' | 'code' | 'image' | 'sheet';
 
 export const DocumentSkeleton = ({
   artifactKind,

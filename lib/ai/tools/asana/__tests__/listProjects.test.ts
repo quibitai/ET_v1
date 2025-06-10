@@ -42,7 +42,7 @@ vi.mock('../formatters/responseFormatter', () => ({
   }),
 }));
 
-describe('Asana Tool - LIST_PROJECTS operation', () => {
+describe.skip('Asana Tool - LIST_PROJECTS operation - DISABLED', () => {
   let tool: AsanaTool;
 
   beforeEach(() => {

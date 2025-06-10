@@ -1,7 +1,7 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
-import { ArtifactRenderer } from './artifacts/artifact-renderer';
+// Artifact system has been removed - no longer needed
 
 export function ChatSimple() {
   const { messages, input, handleInputChange, handleSubmit, isLoading } =
@@ -29,28 +29,25 @@ export function ChatSimple() {
               <div>{message.content}</div>
             </div>
 
-            {/* Tool invocations (artifacts) */}
+            {/* Tool invocations - artifact system removed */}
             {message.toolInvocations?.map((toolInvocation) => {
               const { toolName, toolCallId, state } = toolInvocation;
 
               if (state === 'result') {
-                if (
-                  toolName === 'createArtifact' ||
-                  toolName === 'updateArtifact'
-                ) {
-                  const { result } = toolInvocation;
-                  return (
-                    <div key={toolCallId} className="my-4">
-                      <ArtifactRenderer
-                        artifact={result}
-                        onEdit={(id) => {
-                          // TODO: Implement edit functionality
-                          console.log('Edit artifact:', id);
-                        }}
-                      />
+                // Simple display for tool results without artifact rendering
+                return (
+                  <div
+                    key={toolCallId}
+                    className="my-4 p-4 bg-green-50 border border-green-200 rounded-lg"
+                  >
+                    <div className="font-medium text-green-800">
+                      Tool Result: {toolName}
                     </div>
-                  );
-                }
+                    <div className="text-sm text-green-700 mt-1">
+                      {JSON.stringify(toolInvocation.result, null, 2)}
+                    </div>
+                  </div>
+                );
               } else {
                 // Show loading state for pending tool calls
                 return (
@@ -59,12 +56,8 @@ export function ChatSimple() {
                     className="my-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
                   >
                     <div className="flex items-center gap-2">
-                      <div className="animate-spin h-4 w-4 border-2 border-yellow-600 border-t-transparent rounded-full"></div>
-                      <span>
-                        Creating{' '}
-                        {toolName === 'createArtifact' ? 'artifact' : 'update'}
-                        ...
-                      </span>
+                      <div className="animate-spin h-4 w-4 border-2 border-yellow-600 border-t-transparent rounded-full" />
+                      <span>Running tool: {toolName}...</span>
                     </div>
                   </div>
                 );

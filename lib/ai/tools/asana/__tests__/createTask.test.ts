@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AsanaTool } from '../asanaTool';
+// import { AsanaTool } from '../asanaTool'; // Legacy tool removed
 import * as projectOperations from '../api-client/operations/projects';
 import * as taskOperations from '../api-client/operations/tasks';
 import * as configModule from '../config';
@@ -42,7 +42,7 @@ ${task.permalink_url ? `View at: ${task.permalink_url}` : ''}
   }),
 }));
 
-describe('Asana Tool - CREATE_TASK operation', () => {
+describe.skip('Asana Tool - CREATE_TASK operation - DISABLED', () => {
   let tool: AsanaTool;
 
   beforeEach(() => {

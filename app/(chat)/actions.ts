@@ -25,7 +25,6 @@ import type { VisibilityType } from '@/components/visibility-selector';
 import { myProvider } from '@/lib/ai/providers';
 import { eq, and } from 'drizzle-orm';
 import { unstable_serialize } from 'next/navigation';
-import { mutate } from 'react-query';
 
 export async function saveChatModelAsCookie(model: string) {
   const cookieStore = await cookies();

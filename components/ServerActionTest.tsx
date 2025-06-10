@@ -1,37 +1,48 @@
 'use client';
 
+// TEMPORARILY DISABLED: Missing @/app/actions file
+/*
 import React, { useEffect } from 'react';
-import { testServerAction } from '@/app/actions';
+// import { testServerAction } from '@/app/actions'; // File doesn't exist
 
 export function ServerActionTest() {
   useEffect(() => {
-    console.log('[TEST] Server action check:', {
-      isFunction: typeof testServerAction === 'function',
-      hasServerRef:
-        typeof testServerAction === 'object' &&
-        (testServerAction as any)?.__$SERVER_REFERENCE,
-      serverActionId: (testServerAction as any).__next_action_id,
-    });
+    const runTest = async () => {
+      try {
+        const result = await testServerAction();
+        console.log('Server action result:', result);
+      } catch (error) {
+        console.error('Server action error:', error);
+      }
+    };
+
+    runTest();
   }, []);
 
-  const handleTest = async () => {
+  const handleClick = async () => {
     try {
       const result = await testServerAction();
-      console.log('[TEST] Server action result:', result);
+      console.log('Button click result:', result);
     } catch (error) {
-      console.error('[TEST] Server action error:', error);
+      console.error('Button click error:', error);
     }
   };
 
   return (
-    <div className="p-4 border rounded mb-4">
-      <h2 className="font-bold">Server Action Test</h2>
-      <button
-        onClick={handleTest}
-        className="px-3 py-1 bg-blue-500 text-white rounded mt-2"
-      >
-        Test Server Action
-      </button>
+    <div>
+      <h2>Server Action Test</h2>
+      <button onClick={handleClick}>Test Server Action</button>
+    </div>
+  );
+}
+*/
+
+// Placeholder component
+export function ServerActionTest() {
+  return (
+    <div>
+      <h2>Server Action Test - Disabled</h2>
+      <p>Component disabled due to missing dependencies</p>
     </div>
   );
 }
