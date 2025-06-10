@@ -1,6 +1,6 @@
 {
-  "name": "quibit-rag",
-  "version": "3.1.0",
+  "name": "echo-tango-rag",
+  "version": "1.0.0",
   "private": true,
   "engines": {
     "node": ">=18.0.0",
