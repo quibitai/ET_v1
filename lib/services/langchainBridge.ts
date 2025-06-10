@@ -357,6 +357,7 @@ export async function streamLangChainAgent(
   contextConfig?: {
     dataStream?: any;
     session?: any;
+    responseCollector?: { fullResponse: string };
   },
 ): Promise<Response | undefined> {
   logger.info('Streaming LangChain agent', {
@@ -428,6 +429,7 @@ export async function streamLangChainAgent(
 
         let eventCount = 0;
         let isStreamingArtifact = false; // This flag is key
+        let collectedResponse = ''; // Collect the complete response for saving
 
         for await (const event of langGraphStream) {
           eventCount++;
@@ -483,6 +485,9 @@ export async function streamLangChainAgent(
             if (!isStreamingArtifact) {
               const textContent = event.data.chunk.content;
               if (typeof textContent === 'string' && textContent.length > 0) {
+                // Collect the response for saving later
+                collectedResponse += textContent;
+
                 // Use the correct method to stream text tokens
                 // writeData streams to the Vercel AI SDK protocol (0: prefix for text)
                 await dataStreamWriter.write(
@@ -501,6 +506,14 @@ export async function streamLangChainAgent(
         logger.info(`[LangchainBridge] Stream processing completed`, {
           totalEvents: eventCount,
         });
+
+        // Store the collected response for saving later
+        if (contextConfig?.responseCollector && collectedResponse) {
+          contextConfig.responseCollector.fullResponse = collectedResponse;
+          logger.info('Collected response for saving', {
+            responseLength: collectedResponse.length,
+          });
+        }
 
         // Return void since we're writing to the provided stream
         return;
