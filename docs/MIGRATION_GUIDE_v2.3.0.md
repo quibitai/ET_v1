@@ -199,7 +199,7 @@ If you encounter issues and need to rollback:
 ### Getting Help
 
 - **Documentation**: Check the updated [TOOLS.md](./TOOLS.md) for comprehensive tool documentation
-- **GitHub Issues**: Report bugs or request help at [GitHub Issues](https://github.com/quibitai/Quibit_RAG/issues)
+- **GitHub Issues**: Report bugs or request help at [GitHub Issues](https://github.com/quibitai/ET_v1/issues)
 - **Environment Setup**: Refer to the main [README.md](../README.md) for setup guidance
 
 ### Known Issues

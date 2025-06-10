@@ -50,8 +50,8 @@ Enhancement suggestions are tracked as GitHub issues. When suggesting an enhance
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/quibitai/Quibit_RAG.git
-cd Quibit_RAG
+git clone https://github.com/quibitai/ET_v1.git
+cd ET_v1
 ```
 
 2. Install dependencies:

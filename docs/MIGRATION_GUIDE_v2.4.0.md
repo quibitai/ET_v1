@@ -217,8 +217,8 @@ Check the console for detailed operation logs:
 - **[API Reference](./api/)** - Complete endpoint documentation
 
 ### Getting Help
-- **GitHub Issues**: [Report bugs and request features](https://github.com/quibitai/Quibit_RAG/issues)
-- **Discussions**: [Community support](https://github.com/quibitai/Quibit_RAG/discussions)
+- **GitHub Issues**: [Report bugs and request features](https://github.com/quibitai/ET_v1/issues)
+- **Discussions**: [Community support](https://github.com/quibitai/ET_v1/discussions)
 
 ## Next Steps
 

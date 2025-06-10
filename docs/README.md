@@ -75,8 +75,8 @@ Please follow our [Documentation Style Guide](../DOCUMENTATION_STYLE_GUIDE.md) w
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/quibitai/Quibit_RAG/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/quibitai/Quibit_RAG/discussions)
+- **Issues**: [GitHub Issues](https://github.com/quibitai/ET_v1/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/quibitai/ET_v1/discussions)
 - **Documentation**: This directory contains comprehensive guides
 
 ---
