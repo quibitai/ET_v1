@@ -108,10 +108,41 @@ export function Chat({
   // --- REMOVE the local useEffect that processes `data` for artifacts ---
   // This is now handled globally in ChatPaneContext.
 
+  // Add state for attachments for MultimodalInput
+  const [attachments, setAttachments] = useState<Array<Attachment>>([]);
+
+  // Add state for file context to pass to AI
+  const [fileContext, setFileContext] = useState<FileContext | null>(null);
+
+  // Add file processed callback
+  const handleFileProcessed = useCallback(
+    (fileMeta: {
+      filename: string;
+      contentType: string;
+      url: string;
+      extractedText: string;
+    }) => {
+      console.log('[Chat] File processed:', fileMeta);
+      setFileContext({
+        filename: fileMeta.filename,
+        contentType: fileMeta.contentType,
+        url: fileMeta.url,
+        extractedText: fileMeta.extractedText,
+      });
+    },
+    [],
+  );
+
+  // Clear file context when starting a new message (after successful submit)
+  const clearFileContext = useCallback(() => {
+    setFileContext(null);
+  }, []);
+
   const handleSubmitFromUi = useCallback(async () => {
     if (!input.trim()) return;
 
     const currentInputVal = input.trim();
+    const currentFileContext = fileContext;
     setInput('');
 
     // No artifact context needed anymore
@@ -120,21 +151,22 @@ export function Chat({
       await submitMessage({
         message: currentInputVal,
         data: {
-          fileContext: null,
+          fileContext: currentFileContext,
           artifactContext: null,
           collapsedArtifactsContext: null,
           id: id,
           chatId: id,
         },
       });
+
+      // Clear file context after successful submission
+      clearFileContext();
     } catch (err) {
       console.error('[Chat] Error in handleSubmitFromUi:', err);
       setInput(currentInputVal);
+      // Don't clear file context on error so user can retry
     }
-  }, [input, setInput, submitMessage, id]);
-
-  // Add state for attachments for MultimodalInput
-  const [attachments, setAttachments] = useState<Array<Attachment>>([]);
+  }, [input, setInput, submitMessage, id, fileContext, clearFileContext]);
 
   // JSX rendering part
   return (
@@ -179,6 +211,7 @@ export function Chat({
               append={append}
               attachments={attachments}
               setAttachments={setAttachments}
+              onFileProcessed={handleFileProcessed}
             />
           )}
         </form>

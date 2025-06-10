@@ -967,18 +967,44 @@ export class BrainOrchestrator {
       await this.generateEnhancedDateTimeContext(brainRequest);
 
     // Load system prompt with date/time context
-    const systemPrompt = loadPrompt({
+    let systemPrompt = loadPrompt({
       modelId: context.selectedChatModel || 'global-orchestrator',
       contextId: context.activeBitContextId || null,
       clientConfig: this.config.clientConfig,
       currentDateTime: dateTimeContext.currentDateTime,
     });
 
+    // Add file context to the prompt if available
+    if (brainRequest.fileContext?.extractedText) {
+      const fileContextPrompt = `
+
+UPLOADED FILE CONTENT:
+====================
+Filename: ${brainRequest.fileContext.filename}
+Content Type: ${brainRequest.fileContext.contentType}
+File URL: ${brainRequest.fileContext.url}
+
+File Content:
+${brainRequest.fileContext.extractedText}
+====================
+
+The user has uploaded the above file. You can reference this content in your response. When the user asks to "summarize this file" or similar, they are referring to this uploaded content.`;
+
+      systemPrompt += fileContextPrompt;
+
+      this.logger.info('Added file context to system prompt', {
+        filename: brainRequest.fileContext.filename,
+        contentType: brainRequest.fileContext.contentType,
+        extractedTextLength: brainRequest.fileContext.extractedText.length,
+      });
+    }
+
     this.logger.info('Loaded system prompt with enhanced date/time context', {
       promptLength: systemPrompt.length,
       contextId: context.activeBitContextId,
       selectedModel: context.selectedChatModel,
       hasDateTime: systemPrompt.includes('Current date and time:'),
+      hasFileContext: !!brainRequest.fileContext,
       chatInterface: context.activeBitContextId
         ? 'Chat Bit Specialist'
         : 'Quibit',
