@@ -520,11 +520,8 @@ export class VercelAIService {
 
             // Stream the text response and forward to dataStream
             for await (const chunk of result.textStream) {
-              dataStream.write(chunk);
+              dataStream.writeData(chunk);
             }
-
-            // Close the stream
-            dataStream.close();
           } catch (streamError) {
             serviceLogger.error('Error during streaming execution', {
               error:

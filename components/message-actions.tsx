@@ -1,6 +1,7 @@
 import type { Message } from 'ai';
 import { useSWRConfig } from 'swr';
 import { useCopyToClipboard } from 'usehooks-ts';
+import { useSession } from 'next-auth/react';
 
 import type { Vote } from '@/lib/db/schema';
 
@@ -29,6 +30,8 @@ export function PureMessageActions({
 }) {
   const { mutate } = useSWRConfig();
   const [_, copyToClipboard] = useCopyToClipboard();
+  const { data: session } = useSession();
+  const clientId = session?.user?.clientId as string;
 
   if (isLoading) return null;
   if (message.role === 'user') return null;
@@ -100,6 +103,7 @@ export function PureMessageActions({
                         ...votesWithoutCurrent,
                         {
                           chatId,
+                          clientId,
                           messageId: message.id,
                           isUpvoted: true,
                         },
@@ -158,6 +162,7 @@ export function PureMessageActions({
                         ...votesWithoutCurrent,
                         {
                           chatId,
+                          clientId,
                           messageId: message.id,
                           isUpvoted: false,
                         },

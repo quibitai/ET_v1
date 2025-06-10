@@ -13,19 +13,22 @@ import type {
   DocumentHistory,
   GroupedChats,
   ExpandedSections,
+  ChatSummary,
 } from '@/lib/types';
 
 const PAGE_SIZE = 20;
 
 // Helper functions for chat history (not tied to component state)
-export const groupChatsByDate = (chats: Chat[]): GroupedChats => {
+export const groupChatsByDate = (
+  chats: Chat[] | ChatSummary[],
+): GroupedChats => {
   const now = new Date();
   const oneWeekAgo = subWeeks(now, 1);
   const oneMonthAgo = subMonths(now, 1);
 
   return chats.reduce(
     (groups, chat) => {
-      const chatDate = new Date(chat.createdAt);
+      const chatDate = new Date(chat.createdAt || new Date());
 
       if (isToday(chatDate)) {
         groups.today.push(chat);
@@ -52,7 +55,9 @@ export const groupChatsByDate = (chats: Chat[]): GroupedChats => {
 };
 
 // Update the separateChatsByType function with more inclusive filtering
-export const separateChatsByType = (chats: Chat[]): GroupedChats => {
+export const separateChatsByType = (
+  chats: Chat[] | ChatSummary[],
+): GroupedChats => {
   // Include ALL chats in the sidebar now, regardless of bitContextId
   console.log('[useChatHistory] Total chats to filter:', chats.length);
 
@@ -61,7 +66,7 @@ export const separateChatsByType = (chats: Chat[]): GroupedChats => {
     console.log('[useChatHistory] Sample of incoming chats (first 3):');
     chats.slice(0, 3).forEach((chat, idx) => {
       console.log(`[useChatHistory] Chat ${idx + 1}:`, {
-        id: chat.id.substring(0, 8) + '...',
+        id: `${chat.id.substring(0, 8)}...`,
         title: chat.title,
         bitContextId: chat.bitContextId,
         createdAt: chat.createdAt,

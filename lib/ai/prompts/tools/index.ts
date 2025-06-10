@@ -2,7 +2,7 @@
 import { knowledgeToolInstructions } from './knowledge';
 import { webSearchToolInstructions } from './web-search';
 import { dataAnalysisToolInstructions } from './data-analysis';
-import { documentToolInstructions } from './documents';
+// Document tool instructions removed as part of Echo Tango v1 simplification
 // Import instructions for other tools as they are created
 
 /**
@@ -23,8 +23,7 @@ const toolInstructionMap: Record<string, string> = {
   queryDocumentRows: dataAnalysisToolInstructions,
 
   // Document Management Tools
-  createDocument: documentToolInstructions,
-  updateDocument: documentToolInstructions,
+  // createDocument and updateDocument removed as part of Echo Tango v1 simplification
 
   // Integration Tools
   googleCalendar: `Use this tool ONLY for Google Calendar related tasks and operations. This tool is now dedicated to calendar management. For any calendar-related requests, provide a clear natural language description of what you need.`,

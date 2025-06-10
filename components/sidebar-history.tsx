@@ -39,7 +39,7 @@ import { useTransition } from 'react';
 import { useChatPane } from '@/context/ChatPaneContext';
 import {
   GroupedChats,
-  ChatHistory,
+  type ChatHistory,
   ExpandedSections,
   type ChatSummary,
 } from '@/lib/types';
@@ -345,7 +345,8 @@ export const SidebarHistory = memo(function SidebarHistory({
   console.log('[SidebarHistory] Component rendering');
 
   const { setOpenMobile } = useSidebar();
-  const { id: chatId } = useParams();
+  const { id } = useParams();
+  const chatId = typeof id === 'string' ? id : undefined;
   const router = useRouter();
   const pathname = usePathname();
   const {

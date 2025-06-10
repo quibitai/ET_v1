@@ -23,6 +23,7 @@ export class ChatRepository {
       createdAt: Date;
       visibility?: 'public' | 'private';
       bitContextId?: string | null;
+      clientId?: string;
     },
     messageData: Array<{
       id: string;
@@ -49,6 +50,7 @@ export class ChatRepository {
           createdAt: chatData.createdAt,
           visibility: chatData.visibility || 'private',
           bitContextId: chatData.bitContextId,
+          clientId: chatData.clientId || 'default',
         });
 
         // Insert message records with all required fields
@@ -58,6 +60,7 @@ export class ChatRepository {
             ...msg,
             parts: msg.parts || [{ type: 'text', text: msg.content }],
             attachments: msg.attachments || [],
+            clientId: chatData.clientId || 'default',
           }));
 
           await tx.insert(message).values(messagesWithAttachments);
@@ -175,6 +178,7 @@ export class ChatRepository {
         ...msg,
         parts: msg.parts || [{ type: 'text', text: msg.content }],
         attachments: msg.attachments || [],
+        clientId: 'default', // Add default clientId for message inserts
       }));
 
       await db.insert(message).values(messagesWithAllFields);
