@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { MessageEditor } from './message-editor';
-import { DocumentPreview } from './document-preview';
+// DocumentPreview component removed with artifact system
 import { MessageReasoning } from './message-reasoning';
 import { MessageThinking } from './message-thinking';
 import type { UseChatHelpers } from '@ai-sdk/react';

@@ -3,7 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import RichTextEditor from './RichTextEditor';
+// RichTextEditor component removed with artifact system
 import { generateDocumentId, createDocumentUrl } from '@/lib/utils/document';
 import { Spinner } from './ui/spinner';
 
@@ -107,21 +107,21 @@ const NewDocumentEditor: React.FC = () => {
 
       {/* Editor container */}
       <div className="flex-grow p-4 overflow-auto">
-        <RichTextEditor
-          initialContent={content}
-          onSaveContent={handleContentChange}
-          docId="new"
-          streamedContent={null}
-          streamTimestamp={null}
+        <textarea
+          value={content}
+          onChange={(e) => handleContentChange(e.target.value)}
+          className="w-full h-64 p-3 border border-gray-300 dark:border-gray-600 rounded-md resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:text-white"
+          placeholder="Start typing your document here..."
+          disabled={isCreating}
         />
 
         {/* Information box */}
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 text-blue-800 dark:text-blue-200 rounded-md">
           <p className="font-medium">This is a new document</p>
           <p className="text-sm mt-1">
-            Click the "Create Document" button above to save this document with
-            a unique ID. Your changes won't be saved until you create the
-            document.
+            Click the &quot;Create Document&quot; button above to save this
+            document with a unique ID. Your changes won&apos;t be saved until
+            you create the document.
           </p>
         </div>
       </div>

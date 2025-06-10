@@ -5,9 +5,23 @@
 -- 3. Makes client_id NOT NULL in all tables
 
 -- 1. Create a default client if it doesn't exist
-INSERT INTO "Clients" ("id", "name", "createdAt")
-VALUES ('default', 'Default Client', NOW())
-ON CONFLICT DO NOTHING;
+DO $$ BEGIN
+  -- First, check if the table has createdAt or created_at column
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Clients' AND column_name = 'createdAt') THEN
+    INSERT INTO "Clients" ("id", "name", "createdAt")
+    VALUES ('default', 'Default Client', NOW())
+    ON CONFLICT DO NOTHING;
+  ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Clients' AND column_name = 'created_at') THEN
+    INSERT INTO "Clients" ("id", "name", "created_at")
+    VALUES ('default', 'Default Client', NOW())
+    ON CONFLICT DO NOTHING;
+  ELSE
+    -- Fallback: insert without timestamp column
+    INSERT INTO "Clients" ("id", "name")
+    VALUES ('default', 'Default Client')
+    ON CONFLICT DO NOTHING;
+  END IF;
+END $$;
 
 -- 2. Populate empty client_id values with 'default'
 UPDATE "User" SET "client_id" = 'default' WHERE "client_id" IS NULL;
