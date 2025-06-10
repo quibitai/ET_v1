@@ -82,7 +82,7 @@ export async function POST(request: Request) {
           uploadFormData.append('file', file);
 
           // Get the host and protocol for the internal API call
-          const host = request.headers.get('host') || 'localhost:3000';
+          const host = request.headers.get('host') || 'et-v1-am1p.vercel.app';
           const protocol = host.includes('localhost') ? 'http' : 'https';
           const uploadUrl = `${protocol}://${host}/api/files/upload`;
 

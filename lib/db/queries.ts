@@ -196,15 +196,21 @@ export async function saveChat({
       bitContextId,
       clientId,
     });
-    const result = await db.insert(chat).values({
+    const result = await db
+      .insert(chat)
+      .values({
+        id,
+        createdAt: new Date(),
+        userId,
+        title,
+        clientId,
+        bitContextId,
+      })
+      .onConflictDoNothing();
+    console.log('[DB] Successfully saved chat (or already exists):', {
       id,
-      createdAt: new Date(),
-      userId,
-      title,
-      clientId,
-      bitContextId,
+      result,
     });
-    console.log('[DB] Successfully saved chat:', { id, result });
     return result;
   } catch (error) {
     console.error('[DB] Failed to save chat in database:', error);
