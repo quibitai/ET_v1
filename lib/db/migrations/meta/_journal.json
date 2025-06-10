@@ -76,7 +76,14 @@
       "idx": 10,
       "version": "7",
       "when": 1748123449547,
-      "tag": "0010_green_spirit",
+      "tag": "0010_context_management_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1748123459547,
+      "tag": "0011_cascade_delete_and_conversational_memory",
       "breakpoints": true
     }
   ]
