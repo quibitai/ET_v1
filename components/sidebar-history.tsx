@@ -611,8 +611,18 @@ export const SidebarHistory = memo(function SidebarHistory({
         {shouldShowSpecialistGroups ? (
           // Display specialist-grouped view
           <div className="px-1 my-2">
-            <div className="text-xs font-medium text-primary mb-1 px-2">
+            <div className="flex items-center justify-between text-xs font-medium text-primary mb-1 px-2">
               Chat History by Specialist
+              <button
+                type="button"
+                onClick={() => refreshHistory()}
+                className="p-1 hover:bg-muted rounded-sm"
+                title="Refresh chat history"
+              >
+                <RotateCw
+                  className={`h-3 w-3 ${isLoadingSidebarChats ? 'animate-spin' : ''}`}
+                />
+              </button>
             </div>
             {specialistGroupedChats.map((specialist) => (
               <SpecialistSection
@@ -634,8 +644,18 @@ export const SidebarHistory = memo(function SidebarHistory({
         ) : (
           // Fallback to date-grouped view
           <div className="px-1 my-2">
-            <div className="text-xs font-medium text-muted-foreground mb-1 px-2">
+            <div className="flex items-center justify-between text-xs font-medium text-muted-foreground mb-1 px-2">
               Recent Chats
+              <button
+                type="button"
+                onClick={() => refreshHistory()}
+                className="p-1 hover:bg-muted rounded-sm"
+                title="Refresh chat history"
+              >
+                <RotateCw
+                  className={`h-3 w-3 ${isLoadingSidebarChats ? 'animate-spin' : ''}`}
+                />
+              </button>
             </div>
             {groupedChats && (
               <>
