@@ -1,7 +1,7 @@
 import { openai } from '@ai-sdk/openai';
 import { streamText, generateText } from 'ai';
 import { auth } from '@/app/(auth)/auth';
-import { artifactTools } from '@/lib/ai/tools/artifacts';
+// import { artifactTools } from '@/lib/ai/tools/artifacts'; // Removed - artifacts system deleted
 import { saveDocument, getDocumentById } from '@/lib/db/queries';
 
 // Generate content prompts based on artifact type
