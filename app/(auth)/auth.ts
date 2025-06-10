@@ -50,7 +50,7 @@ interface ExtendedSession extends Session {
   user: {
     id: string;
     email: string;
-    name?: string;
+    name?: string | null;
     clientId?: string;
   };
 }
@@ -116,13 +116,7 @@ export const {
       return token;
     },
 
-    async session({
-      session,
-      token,
-    }: {
-      session: ExtendedSession;
-      token: any;
-    }) {
+    async session({ session, token }: any) {
       if (session.user) {
         session.user.id = token.id as string;
         // Add clientId to the session.user object if available in token
