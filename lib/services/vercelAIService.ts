@@ -12,6 +12,10 @@ import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
 import type { RequestLogger } from './observabilityService';
 import type { ClientConfig } from '@/lib/db/queries';
+import { randomUUID } from 'node:crypto';
+import { auth } from '@/app/(auth)/auth';
+import { saveMessages } from '@/lib/db/queries';
+import type { DBMessage } from '@/lib/db/schema';
 
 // Import date/time and prompt loading utilities
 import { DateTime } from 'luxon';
@@ -19,6 +23,9 @@ import { loadPrompt } from '@/lib/ai/prompts/loader';
 
 // Import modern tool service for proper tool selection
 import { selectRelevantTools, type ToolContext } from './modernToolService';
+
+// Import BrainRequest type
+import type { BrainRequest } from '@/lib/validation/brainValidation';
 
 /**
  * Configuration for VercelAI service
@@ -396,6 +403,7 @@ export class VercelAIService {
     systemPrompt: string,
     userInput: string,
     conversationHistory: any[] = [],
+    brainRequest?: BrainRequest,
   ): Promise<Response> {
     this.logger.info('Streaming query with VercelAI', {
       inputLength: userInput.length,
@@ -484,7 +492,7 @@ export class VercelAIService {
         maxSteps: 5, // Allow multiple steps for tool execution and response generation
         maxTokens: this.config.maxTokens,
         temperature: this.config.temperature,
-        onFinish: (event) => {
+        onFinish: async (event) => {
           // Track token usage
           if (event.usage) {
             this.logger.logTokenUsage({
@@ -500,6 +508,36 @@ export class VercelAIService {
             finishReason: event.finishReason,
             usage: event.usage,
           });
+
+          // Save assistant message to database
+          if (brainRequest?.chatId && event.text) {
+            try {
+              const session = await auth();
+              if (session?.user?.id) {
+                const assistantMessage: DBMessage = {
+                  id: randomUUID(),
+                  chatId: brainRequest.chatId,
+                  role: 'assistant',
+                  parts: [{ type: 'text', text: event.text }],
+                  attachments: [],
+                  createdAt: new Date(),
+                  clientId: 'default',
+                };
+
+                await saveMessages({ messages: [assistantMessage] });
+                this.logger.info('Assistant message saved successfully', {
+                  messageId: assistantMessage.id,
+                  chatId: assistantMessage.chatId,
+                  responseLength: event.text.length,
+                });
+              }
+            } catch (error) {
+              this.logger.error('Failed to save assistant message', {
+                chatId: brainRequest.chatId,
+                error: error instanceof Error ? error.message : 'Unknown error',
+              });
+            }
+          }
         },
       });
 

@@ -515,6 +515,7 @@ export class BrainOrchestrator {
         systemPrompt,
         userInput,
         conversationHistory,
+        brainRequest,
       );
 
       const executionTime = performance.now() - startTime;
@@ -643,10 +644,14 @@ export class BrainOrchestrator {
                 artifactContextCleanupTimeout;
             }
 
+            // Create response collector for saving assistant message
+            const responseCollector = { fullResponse: '' };
+
             // Pass real context configuration
             const contextConfig = {
               dataStream: dataStreamWriter, // Real writer from createDataStreamResponse
               session: session,
+              responseCollector: responseCollector,
             };
 
             this.logger.info('Calling streamLangChainAgent with real context', {
@@ -668,6 +673,26 @@ export class BrainOrchestrator {
               undefined, // callbacks
               contextConfig,
             );
+
+            // Save assistant message if we collected a response
+            if (responseCollector.fullResponse && brainRequest.chatId) {
+              try {
+                await this.saveAssistantMessage(
+                  brainRequest,
+                  responseCollector.fullResponse,
+                  [],
+                );
+              } catch (error) {
+                this.logger.error(
+                  'Failed to save LangChain assistant message',
+                  {
+                    chatId: brainRequest.chatId,
+                    error:
+                      error instanceof Error ? error.message : 'Unknown error',
+                  },
+                );
+              }
+            }
 
             // Cleanup resources after streaming completes
             cleanupLangChainAgent(langchainAgent, this.logger);
