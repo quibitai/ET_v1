@@ -8,8 +8,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 
 // Import all tools
-import { createDocumentTool } from './create-document';
-import { updateDocumentTool } from './update-document';
+
 import { listDocumentsTool } from './listDocumentsTool';
 import { getFileContentsTool } from './getFileContentsTool';
 import { queryDocumentRowsTool } from './query-document-rows';
@@ -67,8 +66,6 @@ const getRecentlyUploadedContentTool = new DynamicStructuredTool({
 });
 
 export const availableTools = [
-  createDocumentTool,
-  updateDocumentTool,
   listDocumentsTool,
   getFileContentsTool,
   queryDocumentRowsTool,
@@ -89,9 +86,7 @@ export {
   listDocumentsTool,
   searchInternalKnowledgeBase,
   getWeatherTool,
-  createDocumentTool,
   requestSuggestionsTool,
-  updateDocumentTool,
   tavilySearchTool,
   getMessagesFromOtherChatTool,
   googleCalendarTool,

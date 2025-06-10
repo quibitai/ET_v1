@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { ThemeProvider } from '@/components/theme-provider';
 import { ChatPaneProvider } from '@/context/ChatPaneContext';
-import { DocumentProvider } from '@/context/DocumentContext';
+
 import { ClientLayout } from '@/components/ClientLayout';
 import { Toaster } from 'sonner';
 import NextAuthProvider from '@/components/session-provider';
@@ -82,11 +82,9 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             <Toaster position="top-right" richColors closeButton />
-            <DocumentProvider>
-              <ChatPaneProvider>
-                <ClientLayout>{children}</ClientLayout>
-              </ChatPaneProvider>
-            </DocumentProvider>
+            <ChatPaneProvider>
+              <ClientLayout>{children}</ClientLayout>
+            </ChatPaneProvider>
           </ThemeProvider>
         </NextAuthProvider>
       </body>

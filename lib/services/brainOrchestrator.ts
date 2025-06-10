@@ -47,7 +47,6 @@ import { loadPrompt } from '@/lib/ai/prompts/loader';
 import { createTimezoneService, type TimezoneInfo } from './timezoneService';
 
 // Import document handlers for image generation support
-import { documentHandlersByArtifactKind } from '@/lib/artifacts/server';
 
 // Add artifact context imports
 import type { Session } from 'next-auth';
@@ -77,7 +76,6 @@ export interface BrainOrchestratorConfig {
 export interface ArtifactContext {
   dataStream?: any;
   session?: Session | null;
-  handlers?: typeof documentHandlersByArtifactKind;
   toolInvocationsTracker?: Array<{
     type: 'tool-invocation';
     toolInvocation: {
@@ -143,7 +141,7 @@ export class BrainOrchestrator {
       timeoutMs: 30000,
       enableClassification: true,
       // LangGraph defaults
-      enableLangGraph: false, // Conservative default
+      enableLangGraph: true, // Enable LangGraph for tool operations and artifacts
       langGraphForComplexQueries: true,
       ...config,
     };
@@ -176,6 +174,13 @@ export class BrainOrchestrator {
    */
   public async processRequest(brainRequest: BrainRequest): Promise<Response> {
     const startTime = performance.now();
+
+    console.log('[DEBUG] BrainOrchestrator.processRequest called!', {
+      chatId: brainRequest.chatId,
+      messageCount: brainRequest.messages?.length,
+      enableClassification: this.config.enableClassification,
+      enableLangGraph: this.config.enableLangGraph,
+    });
 
     try {
       // Process context and format messages
@@ -212,6 +217,7 @@ export class BrainOrchestrator {
           confidence: classification?.confidence,
           reasoning: classification?.reasoning,
           patterns: classification?.detectedPatterns,
+          forceToolCall: classification?.forceToolCall,
           classificationTime: `${classificationTime.toFixed(2)}ms`,
         });
       }
@@ -954,7 +960,6 @@ export class BrainOrchestrator {
     this.artifactContext = {
       dataStream,
       session,
-      handlers: documentHandlersByArtifactKind,
       toolInvocationsTracker: [],
     };
 
@@ -964,7 +969,6 @@ export class BrainOrchestrator {
     this.logger.info('Artifact context initialized', {
       hasDataStream: !!dataStream,
       hasSession: !!session,
-      handlerCount: documentHandlersByArtifactKind.length,
     });
   }
 

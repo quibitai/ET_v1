@@ -1,18 +1,15 @@
 'use client';
 
 import type { Attachment, UIMessage } from 'ai';
-import { useChat } from '@ai-sdk/react';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { ChatHeader } from '@/components/chat-header';
-import { Artifact } from './artifact';
+
 import { MultimodalInput } from './multimodal-input';
 import { Messages } from './messages';
 import type { VisibilityType } from './visibility-selector';
-import { ChatPaneToggle } from './ChatPaneToggle';
+
 import { useChatPane } from '@/context/ChatPaneContext';
-import type { ArtifactKind } from '@/components/artifact';
 import React from 'react';
-import { useArtifact } from '@/hooks/use-artifact';
 
 // Define the ChatRequestOptions interface based on the actual structure
 interface ChatRequestOptions {
@@ -70,7 +67,7 @@ export function Chat({
   selectedVisibilityType: VisibilityType;
   isReadonly: boolean;
 }) {
-  // Access the ChatPaneContext to use the shared chat state
+  // Access the ChatPaneContext to use the shared chat state and centralized artifact state
   const {
     setMainUiChatId,
     chatState,
@@ -79,8 +76,7 @@ export function Chat({
     submitMessage,
   } = useChatPane();
 
-  // Use the global artifact hook (single source of truth)
-  const { artifact, setArtifact } = useArtifact();
+  // --- NO MORE LOCAL useArtifact() HOOK ---
 
   const {
     messages,
@@ -109,200 +105,36 @@ export function Chat({
     }
   }, [initialMessagesFromProps, messages.length, setMessages]);
 
-  const processedDataIndexRef = useRef<number>(0);
-
-  useEffect(() => {
-    processedDataIndexRef.current = 0;
-
-    // For new chats, clear any stale artifact state
-    if (!initialMessagesFromProps || initialMessagesFromProps.length === 0) {
-      setArtifact({
-        documentId: 'init',
-        content: '',
-        kind: 'text',
-        title: '',
-        status: 'idle',
-        isVisible: false,
-        boundingBox: {
-          top: 0,
-          left: 0,
-          width: 0,
-          height: 0,
-        },
-      });
-    }
-  }, [id, initialMessagesFromProps, setArtifact]);
-
-  // Simplified data processing - only handle artifact-related events
-  useEffect(() => {
-    if (!data || data.length === 0) {
-      return;
-    }
-
-    if (data.length <= processedDataIndexRef.current) {
-      return;
-    }
-
-    const newDataItems = data.slice(processedDataIndexRef.current);
-    let artifactUpdate: any = null;
-
-    newDataItems.forEach((dataObject) => {
-      if (
-        typeof dataObject === 'object' &&
-        dataObject !== null &&
-        'type' in dataObject
-      ) {
-        const typedDataObject = dataObject as any;
-
-        switch (typedDataObject.type) {
-          case 'artifact-start':
-            artifactUpdate = {
-              documentId: typedDataObject.documentId || 'streaming',
-              kind: typedDataObject.kind as ArtifactKind,
-              title: typedDataObject.title,
-              content: '',
-              status: 'streaming',
-              isVisible: true,
-              boundingBox: {
-                top: 0,
-                left: 0,
-                width: 0,
-                height: 0,
-              },
-            };
-            break;
-
-          case 'id':
-            if (artifactUpdate || artifact.status === 'streaming') {
-              artifactUpdate = {
-                ...(artifactUpdate || artifact),
-                documentId: typedDataObject.content,
-              };
-            }
-            break;
-
-          case 'text-delta':
-          case 'sheet-delta':
-            if (artifactUpdate || artifact.status === 'streaming') {
-              const currentContent =
-                artifactUpdate?.content || artifact.content || '';
-              artifactUpdate = {
-                ...(artifactUpdate || artifact),
-                content: currentContent + typedDataObject.content,
-              };
-            }
-            break;
-
-          case 'finish':
-            if (artifactUpdate || artifact.status === 'streaming') {
-              artifactUpdate = {
-                ...(artifactUpdate || artifact),
-                status: 'idle',
-              };
-            }
-            if (stop) stop();
-            break;
-
-          case 'error':
-            if (artifactUpdate || artifact.status === 'streaming') {
-              artifactUpdate = {
-                ...(artifactUpdate || artifact),
-                status: 'idle',
-                content:
-                  typedDataObject.error ||
-                  typedDataObject.message ||
-                  'An error occurred.',
-              };
-            }
-            if (stop) stop();
-            break;
-        }
-      }
-    });
-
-    processedDataIndexRef.current = data.length;
-
-    // Apply artifact update if any
-    if (artifactUpdate) {
-      setArtifact(artifactUpdate);
-    }
-  }, [data, artifact, setArtifact, stop]);
+  // --- REMOVE the local useEffect that processes `data` for artifacts ---
+  // This is now handled globally in ChatPaneContext.
 
   const handleSubmitFromUi = useCallback(async () => {
     if (!input.trim()) return;
 
     const currentInputVal = input.trim();
     setInput('');
-    let artifactContextPayload = null;
-    if (artifact?.documentId && artifact.documentId !== 'init') {
-      artifactContextPayload = {
-        documentId: artifact.documentId,
-        title: artifact.title,
-        kind: artifact.kind,
-        content: artifact.content || '',
-      };
-    }
+
+    // No artifact context needed anymore
 
     try {
       await submitMessage({
         message: currentInputVal,
         data: {
           fileContext: null,
-          artifactContext: artifactContextPayload,
-          collapsedArtifactsContext: null, // Removed
+          artifactContext: null,
+          collapsedArtifactsContext: null,
           id: id,
           chatId: id,
-          currentActiveSpecialistId,
-          globalPaneChatId,
-          isFromGlobalPane: false,
         },
       });
     } catch (err) {
       console.error('[Chat] Error in handleSubmitFromUi:', err);
       setInput(currentInputVal);
     }
-  }, [
-    input,
-    setInput,
-    submitMessage,
-    artifact,
-    id,
-    currentActiveSpecialistId,
-    globalPaneChatId,
-  ]);
+  }, [input, setInput, submitMessage, id]);
 
   // Add state for attachments for MultimodalInput
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
-
-  const isArtifactVisible = artifact?.isVisible || false;
-
-  // Add enhanced artifact state debugging
-  useEffect(() => {
-    console.log('[CHAT_ARTIFACT_DEBUG] Artifact state changed:', {
-      documentId: artifact?.documentId,
-      title: artifact?.title,
-      isVisible: artifact?.isVisible,
-      status: artifact?.status,
-      kind: artifact?.kind,
-      contentLength: artifact?.content?.length || 0,
-      timestamp: new Date().toISOString(),
-    });
-
-    // Log specifically when artifact becomes visible
-    if (artifact?.isVisible) {
-      console.log('[CHAT_ARTIFACT_DEBUG] 🎨 ARTIFACT SHOULD BE VISIBLE NOW!', {
-        documentId: artifact.documentId,
-        title: artifact.title,
-      });
-    } else {
-      console.log('[CHAT_ARTIFACT_DEBUG] 📦 Artifact is hidden or not set');
-    }
-  }, [
-    artifact?.documentId,
-    artifact?.title,
-    artifact?.isVisible,
-    artifact?.status,
-  ]);
 
   // JSX rendering part
   return (
@@ -314,9 +146,7 @@ export function Chat({
           selectedVisibilityType={selectedVisibilityType}
           isReadonly={isReadonly}
         />
-        <div className="absolute top-4 right-4 z-10">
-          <ChatPaneToggle />
-        </div>
+
         <div className="flex-1 min-h-0">
           <Messages
             chatId={id}
@@ -325,7 +155,7 @@ export function Chat({
             setMessages={setMessages}
             reload={reload}
             isReadonly={isReadonly}
-            isArtifactVisible={isArtifactVisible}
+            isArtifactVisible={false}
             votes={undefined}
           />
         </div>
@@ -353,26 +183,6 @@ export function Chat({
           )}
         </form>
       </div>
-
-      <Artifact
-        chatId={id}
-        input={input}
-        setInput={setInput}
-        handleSubmit={handleSubmitFromUi}
-        status={isLoading ? 'streaming' : error ? 'error' : 'ready'}
-        stop={stop}
-        append={append}
-        messages={messages}
-        setMessages={setMessages}
-        reload={reload}
-        isReadonly={isReadonly}
-        documentId={artifact?.documentId}
-        onClose={() => setArtifact({ ...artifact, isVisible: false })}
-        onContentSaved={() => {}}
-        attachments={attachments}
-        setAttachments={setAttachments}
-        votes={undefined}
-      />
     </>
   );
 }

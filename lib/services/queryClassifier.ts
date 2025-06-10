@@ -246,11 +246,31 @@ export class QueryClassifier {
         this.analyzeContextComplexity(conversationHistory);
 
       // 5. Make routing decision
-      const shouldUseLangChain = this.determineRoutingDecision(
+      let shouldUseLangChain = this.determineRoutingDecision(
         complexityScore,
         detectedPatterns,
         contextComplexity,
       );
+
+      // OVERRIDE: If any tool forcing is detected, always use LangChain
+      // This ensures document creation, web search, etc. go through the proper tool system
+      if (
+        documentIntent.hasIntent ||
+        webSearchIntent.hasIntent ||
+        asanaIntent.hasIntent ||
+        knowledgeBaseIntent.hasIntent
+      ) {
+        shouldUseLangChain = true;
+        this.logger.info(
+          'Overriding routing decision: tool intent detected, forcing LangChain',
+          {
+            documentIntent: documentIntent.hasIntent,
+            webSearchIntent: webSearchIntent.hasIntent,
+            asanaIntent: asanaIntent.hasIntent,
+            knowledgeBaseIntent: knowledgeBaseIntent.hasIntent,
+          },
+        );
+      }
 
       // 6. Calculate confidence
       const confidence = this.calculateConfidence(
