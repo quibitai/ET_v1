@@ -8,17 +8,17 @@
 DO $$ BEGIN
   -- First, check if the table has createdAt or created_at column
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Clients' AND column_name = 'createdAt') THEN
-    INSERT INTO "Clients" ("id", "name", "createdAt")
-    VALUES ('default', 'Default Client', NOW())
+    INSERT INTO "Clients" ("id", "name", "client_display_name", "createdAt")
+    VALUES ('default', 'Default Client', 'Default Client', NOW())
     ON CONFLICT DO NOTHING;
   ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Clients' AND column_name = 'created_at') THEN
-    INSERT INTO "Clients" ("id", "name", "created_at")
-    VALUES ('default', 'Default Client', NOW())
+    INSERT INTO "Clients" ("id", "name", "client_display_name", "created_at")
+    VALUES ('default', 'Default Client', 'Default Client', NOW())
     ON CONFLICT DO NOTHING;
   ELSE
     -- Fallback: insert without timestamp column
-    INSERT INTO "Clients" ("id", "name")
-    VALUES ('default', 'Default Client')
+    INSERT INTO "Clients" ("id", "name", "client_display_name")
+    VALUES ('default', 'Default Client', 'Default Client')
     ON CONFLICT DO NOTHING;
   END IF;
 END $$;

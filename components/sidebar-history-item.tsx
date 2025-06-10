@@ -70,9 +70,7 @@ const PureChatItem = ({
         <Link href={itemPath} onClick={handleNavigation}>
           <div className="flex items-center w-full overflow-hidden">
             {/* Icon removed as requested */}
-            <span className="truncate overflow-hidden text-ellipsis whitespace-nowrap">
-              {chat.title}
-            </span>
+            <span className="truncate">{chat.title}</span>
           </div>
         </Link>
       </SidebarMenuButton>

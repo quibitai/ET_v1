@@ -540,6 +540,7 @@ export const MultimodalInput = memo(
     );
   },
 );
+MultimodalInput.displayName = 'MultimodalInput';
 
 function PureAttachmentsButton({
   fileInputRef,
