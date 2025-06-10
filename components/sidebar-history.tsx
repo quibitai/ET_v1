@@ -185,6 +185,14 @@ const DaySection = memo(
     setOpenMobile: (open: boolean) => void;
     currentChatId: string | undefined;
   }) => {
+    const handleToggle = useCallback(() => {
+      onToggleExpansion(day);
+    }, [day, onToggleExpansion]);
+
+    const handleToggleCount = useCallback(() => {
+      onToggleCountExpansion(day);
+    }, [day, onToggleCountExpansion]);
+
     // Skip rendering if there are no chats for this day
     if (chats.length === 0) return null;
 
@@ -193,14 +201,6 @@ const DaySection = memo(
       ? chats
       : chats.slice(0, MAX_INITIAL_CHATS);
     const hasMoreChats = chats.length > MAX_INITIAL_CHATS;
-
-    const handleToggle = useCallback(() => {
-      onToggleExpansion(day);
-    }, [day, onToggleExpansion]);
-
-    const handleToggleCount = useCallback(() => {
-      onToggleCountExpansion(day);
-    }, [day, onToggleCountExpansion]);
 
     return (
       <SidebarGroup className="compact-sidebar-group">
@@ -274,6 +274,14 @@ const SpecialistSection = memo(
     setOpenMobile: (open: boolean) => void;
     currentChatId: string | undefined;
   }) => {
+    const handleToggle = useCallback(() => {
+      onToggleExpansion(specialistId);
+    }, [specialistId, onToggleExpansion]);
+
+    const handleToggleCount = useCallback(() => {
+      onToggleCountExpansion(specialistId);
+    }, [specialistId, onToggleCountExpansion]);
+
     // Skip rendering if there are no chats for this specialist
     if (chats.length === 0) return null;
 
@@ -282,14 +290,6 @@ const SpecialistSection = memo(
       ? chats
       : chats.slice(0, MAX_INITIAL_CHATS);
     const hasMoreChats = chats.length > MAX_INITIAL_CHATS;
-
-    const handleToggle = useCallback(() => {
-      onToggleExpansion(specialistId);
-    }, [specialistId, onToggleExpansion]);
-
-    const handleToggleCount = useCallback(() => {
-      onToggleCountExpansion(specialistId);
-    }, [specialistId, onToggleCountExpansion]);
 
     return (
       <SidebarGroup className="compact-sidebar-group">
