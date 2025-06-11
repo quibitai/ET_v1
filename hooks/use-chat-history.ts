@@ -7,7 +7,8 @@ import { toast } from 'sonner';
 
 import { fetcher } from '@/lib/utils';
 import { deleteChat } from '@/app/(chat)/actions';
-import type { Chat, Document } from '@/lib/db/schema';
+import type { Chat } from '@/lib/db/schema';
+// Document type removed in Phase 1, Task 1.2
 import type {
   ChatHistory,
   DocumentHistory,
@@ -115,7 +116,7 @@ export function getChatHistoryPaginationKey(
 ) {
   // CRITICAL: Check where this function is being called from
   const caller = new Error().stack?.split('\n')[2] || 'unknown';
-  console.error(`[SWR Key Gen] CALLER >>> ${caller.trim()}`);
+  console.log(`[SWR Key Gen] CALLER >>> ${caller.trim()}`);
 
   console.log(
     `[getChatHistoryPaginationKey] Function called with pageIndex=${pageIndex}, previousPageData=`,
@@ -142,18 +143,26 @@ export function getChatHistoryPaginationKey(
     // For now, we're hard-coding type=sidebar here to ensure we get sidebar requests
     const type = 'sidebar';
 
-    // Get contextId from localStorage
+    // Get contextId from localStorage - only if we're in the browser
     const activeContextId =
-      localStorage.getItem('current-active-specialist') || 'chat-model';
+      typeof window !== 'undefined'
+        ? localStorage.getItem('current-active-specialist') ||
+          'echo-tango-specialist'
+        : 'echo-tango-specialist';
 
     // Add uniqueness tracker to prevent repeated fetches
     // This creates a stable key that will only change when the specialist changes
     const lastFetchTimestamp =
-      localStorage.getItem('last-sidebar-fetch-timestamp') || '0';
+      typeof window !== 'undefined'
+        ? localStorage.getItem('last-sidebar-fetch-timestamp') || '0'
+        : '0';
     const now = Date.now();
 
     // Only update the timestamp for new fetches, not for SWR internal validation
-    if (Number(lastFetchTimestamp) + 5000 < now) {
+    if (
+      typeof window !== 'undefined' &&
+      Number(lastFetchTimestamp) + 5000 < now
+    ) {
       // 5 second minimum between actual fetches
       localStorage.setItem('last-sidebar-fetch-timestamp', now.toString());
       console.log(
@@ -165,7 +174,7 @@ export function getChatHistoryPaginationKey(
       );
     }
 
-    console.error(
+    console.log(
       `[SWR Key Gen] >> Using type=${type}, contextId=${activeContextId}`,
     );
 
@@ -175,8 +184,10 @@ export function getChatHistoryPaginationKey(
     if (pageIndex === 0) {
       // Create a very clear, unmissable log about the key being generated
       url = `/api/history?type=${type}&contextId=${activeContextId}&limit=${PAGE_SIZE}`;
-      console.error(
-        `[SWR Key Gen] SIDEBAR ATTEMPT >> Type: ${type}, ContextID: ${activeContextId}, Page: ${pageIndex + 1}, Limit: ${PAGE_SIZE} || FINAL KEY: ${url}`,
+      console.log(
+        `[SWR Key Gen] SIDEBAR ATTEMPT >> Type: ${type}, ContextID: ${activeContextId}, Page: ${
+          pageIndex + 1
+        }, Limit: ${PAGE_SIZE} || FINAL KEY: ${url}`,
       );
       return url;
     }
@@ -192,14 +203,19 @@ export function getChatHistoryPaginationKey(
 
     // Include the same parameters as the first page, plus the cursor
     url = `/api/history?type=${type}&contextId=${activeContextId}&limit=${PAGE_SIZE}&cursor=${firstChatFromPage.id}`;
-    console.error(
-      `[SWR Key Gen] SIDEBAR PAGINATION ATTEMPT >> Type: ${type}, ContextID: ${activeContextId}, Page: ${pageIndex + 1}, Limit: ${PAGE_SIZE}, Cursor: ${firstChatFromPage.id.substring(0, 8)}... || FINAL KEY: ${url}`,
+    console.log(
+      `[SWR Key Gen] SIDEBAR PAGINATION ATTEMPT >> Type: ${type}, ContextID: ${activeContextId}, Page: ${
+        pageIndex + 1
+      }, Limit: ${PAGE_SIZE}, Cursor: ${firstChatFromPage.id.substring(
+        0,
+        8,
+      )}... || FINAL KEY: ${url}`,
     );
     return url;
   } catch (error) {
     console.error('[getChatHistoryPaginationKey] Error generating key:', error);
     // In case of error, return a sane default that will at least load some data
-    const url = `/api/history?type=sidebar&contextId=chat-model&limit=${PAGE_SIZE}`;
+    const url = `/api/history?type=sidebar&contextId=echo-tango-specialist&limit=${PAGE_SIZE}`;
     console.error(
       `[SWR Key Gen] ERROR FALLBACK >> FINAL KEY: ${url}, Error: ${error}`,
     );

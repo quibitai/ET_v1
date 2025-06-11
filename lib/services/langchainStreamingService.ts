@@ -7,7 +7,6 @@
  */
 
 import type { RequestLogger } from './observabilityService';
-import type { LangChainAgent } from './langchainBridge';
 
 /**
  * Streaming configuration for LangChain

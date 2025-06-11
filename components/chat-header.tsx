@@ -2,8 +2,6 @@
 import { useRouter } from 'next/navigation';
 import { useWindowSize } from 'usehooks-ts';
 import React, { useEffect, useState, useMemo, memo } from 'react';
-
-import { ModelSelector } from '@/components/model-selector';
 import { SidebarToggle } from '@/components/sidebar-toggle';
 import { Button } from '@/components/ui/button';
 import { PlusIcon, ChevronDown, CheckIcon } from 'lucide-react';
@@ -16,12 +14,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useChatPane } from '@/context/ChatPaneContext';
-import { toast } from 'sonner';
 import { getAvailableSpecialists } from '@/lib/ai/prompts/specialists';
 import {
   CHAT_BIT_GENERAL_CONTEXT_ID,
-  ECHO_TANGO_SPECIALIST_ID,
 } from '@/lib/constants';
 
 // Default option for general chat
@@ -188,19 +183,20 @@ function PureChatHeader({
   selectedModelId,
   selectedVisibilityType,
   isReadonly,
+  currentActiveSpecialistId,
+  setCurrentActiveSpecialistId,
+  isCurrentChatCommitted,
 }: {
   chatId: string;
   selectedModelId: string;
   selectedVisibilityType: VisibilityType;
   isReadonly: boolean;
+  currentActiveSpecialistId?: string;
+  setCurrentActiveSpecialistId: (id: string) => void;
+  isCurrentChatCommitted: boolean;
 }) {
   const router = useRouter();
   const { open } = useSidebar();
-  const {
-    currentActiveSpecialistId,
-    setCurrentActiveSpecialistId,
-    isCurrentChatCommitted,
-  } = useChatPane();
 
   const { width: windowWidth } = useWindowSize();
 
@@ -230,15 +226,54 @@ function PureChatHeader({
 
   // Fetch specialists only once on component mount
   useEffect(() => {
-    try {
-      // Get specialists from the registry
-      const registeredSpecialists = getAvailableSpecialists();
-      console.log('[ChatHeader] Loaded specialists:', registeredSpecialists);
-      setSpecialists(registeredSpecialists);
-    } catch (error) {
-      console.error('[ChatHeader] Error loading specialists:', error);
-      toast.error('Failed to load specialists');
-    }
+    const loadSpecialists = async () => {
+      try {
+        // Get specialists from the registry
+        const registeredSpecialists = await getAvailableSpecialists();
+        console.log('[ChatHeader] Loaded specialists:', registeredSpecialists);
+
+        // If we get an empty array (e.g., client-side fallback), provide basic defaults
+        if (registeredSpecialists.length === 0) {
+          console.warn(
+            '[ChatHeader] No specialists loaded, using fallback defaults',
+          );
+          const fallbackSpecialists = [
+            {
+              id: 'chat-model',
+              name: 'General Chat',
+              description: 'General conversational assistant',
+            },
+            {
+              id: 'echo-tango-specialist',
+              name: 'Echo Tango',
+              description: 'Creative agency brand voice specialist',
+            },
+          ];
+          setSpecialists(fallbackSpecialists);
+        } else {
+          setSpecialists(registeredSpecialists);
+        }
+      } catch (error) {
+        console.error('[ChatHeader] Error loading specialists:', error);
+        // Provide fallback specialists on error
+        const fallbackSpecialists = [
+          {
+            id: 'chat-model',
+            name: 'General Chat',
+            description: 'General conversational assistant',
+          },
+          {
+            id: 'echo-tango-specialist',
+            name: 'Echo Tango',
+            description: 'Creative agency brand voice specialist',
+          },
+        ];
+        setSpecialists(fallbackSpecialists);
+        console.warn('[ChatHeader] Using fallback specialists due to error');
+      }
+    };
+
+    loadSpecialists();
   }, []);
 
   return (
@@ -294,5 +329,10 @@ function PureChatHeader({
 }
 
 export const ChatHeader = memo(PureChatHeader, (prevProps, nextProps) => {
-  return prevProps.selectedModelId === nextProps.selectedModelId;
+  return (
+    prevProps.selectedModelId === nextProps.selectedModelId &&
+    prevProps.currentActiveSpecialistId ===
+      nextProps.currentActiveSpecialistId &&
+    prevProps.isCurrentChatCommitted === nextProps.isCurrentChatCommitted
+  );
 });

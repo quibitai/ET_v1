@@ -2,7 +2,7 @@
  * Mock setup utilities for Asana API tests
  */
 
-import { vi, expect, beforeEach } from 'vitest';
+import { vi, expect, } from 'vitest';
 
 /**
  * Mock Asana API response for testing

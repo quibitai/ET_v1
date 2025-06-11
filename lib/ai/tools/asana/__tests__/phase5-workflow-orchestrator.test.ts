@@ -8,8 +8,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Import Phase 5 components
 import {
   WorkflowOrchestrator,
-  type WorkflowExecution,
-  type WorkflowSuggestion,
 } from '../workflows/orchestrator';
 
 // Import test utilities

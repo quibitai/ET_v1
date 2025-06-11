@@ -1,12 +1,17 @@
 /**
- * Search Internal Knowledge Base Tool (Supabase Vector Search Version)
+ * Search and Retrieve Internal Knowledge Base Tool (Supabase Vector Search Version)
  *
  * Performs semantic search using embeddings and calls the match_documents Supabase function.
+ * This tool now returns the FULL content of the best matching document.
  */
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { OpenAIEmbeddings } from '@langchain/openai'; // Using OpenAI for embeddings
+import {
+  trackEvent,
+  ANALYTICS_EVENTS,
+} from '@/lib/services/observabilityService';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -49,9 +54,9 @@ type SearchResponse = {
   metadata?: Record<string, any>;
 };
 
-export const searchInternalKnowledgeBase = new DynamicStructuredTool({
+export const searchAndRetrieveKnowledgeBase = new DynamicStructuredTool({
   name: 'searchInternalKnowledgeBase',
-  description: `Search the internal knowledge base for documents, examples, templates, client research, case studies, and other relevant content. Use immediately when users request research, examples, or need information from internal documents. Essential for finding relevant examples and templates.`,
+  description: `Searches the internal knowledge base and returns the FULL CONTENT of the most relevant document. Use this to answer questions, retrieve examples, get templates, or find client research. When a user asks for "the contents of a file," this is the primary tool to use.`,
   schema: z.object({
     query: z
       .string()
@@ -61,8 +66,10 @@ export const searchInternalKnowledgeBase = new DynamicStructuredTool({
       .int()
       .positive()
       .optional()
-      .default(5)
-      .describe('Max number of results to return.'),
+      .default(1)
+      .describe(
+        'Number of results to consider. The tool will return the content of the top result.',
+      ),
     filter: z
       .record(z.unknown())
       .optional()
@@ -70,12 +77,39 @@ export const searchInternalKnowledgeBase = new DynamicStructuredTool({
         'Optional JSONB filter for metadata (e.g., {"file_title": "Specific Title"}).',
       ),
   }),
-  func: async ({ query, match_count = 5, filter = {} }): Promise<string> => {
+  func: async ({ query, match_count = 1, filter = {} }): Promise<string> => {
+    const startTime = performance.now();
     console.log(
-      `[searchInternalKnowledgeBase] Searching "${query}" (k=${match_count}, filter=${JSON.stringify(filter)})`,
+      `[searchAndRetrieveKnowledgeBase] Searching "${query}" (k=${match_count}, filter=${JSON.stringify(filter)})`,
     );
 
+    // Track tool usage analytics
+    await trackEvent({
+      eventName: ANALYTICS_EVENTS.TOOL_USED,
+      properties: {
+        toolName: 'searchInternalKnowledgeBase',
+        query: query.substring(0, 100), // Limit for privacy
+        matchCount: match_count,
+        hasFilter: Object.keys(filter).length > 0,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
     if (!supabaseUrl || !supabaseKey) {
+      const duration = performance.now() - startTime;
+
+      // Track error
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'searchInternalKnowledgeBase',
+          success: false,
+          error: 'Missing Supabase credentials',
+          duration: Math.round(duration),
+          timestamp: new Date().toISOString(),
+        },
+      });
+
       return JSON.stringify({
         success: false,
         error: 'Supabase credentials are not configured.',
@@ -84,6 +118,20 @@ export const searchInternalKnowledgeBase = new DynamicStructuredTool({
     }
 
     if (!process.env.OPENAI_API_KEY) {
+      const duration = performance.now() - startTime;
+
+      // Track error
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'searchInternalKnowledgeBase',
+          success: false,
+          error: 'Missing OpenAI API key',
+          duration: Math.round(duration),
+          timestamp: new Date().toISOString(),
+        },
+      });
+
       return JSON.stringify({
         success: false,
         error: 'OpenAI API key is not configured for embeddings.',
@@ -106,7 +154,22 @@ export const searchInternalKnowledgeBase = new DynamicStructuredTool({
       );
 
       if (rpcError) {
-        console.error('[searchInternalKnowledgeBase] RPC error', rpcError);
+        const duration = performance.now() - startTime;
+
+        console.error('[searchAndRetrieveKnowledgeBase] RPC error', rpcError);
+
+        // Track error
+        await trackEvent({
+          eventName: ANALYTICS_EVENTS.TOOL_USED,
+          properties: {
+            toolName: 'searchInternalKnowledgeBase',
+            success: false,
+            error: `RPC error: ${rpcError.message}`,
+            duration: Math.round(duration),
+            timestamp: new Date().toISOString(),
+          },
+        });
+
         return JSON.stringify({
           success: false,
           error: `Error during vector search: ${rpcError.message}`,
@@ -119,49 +182,74 @@ export const searchInternalKnowledgeBase = new DynamicStructuredTool({
       }
 
       // 3) format results
+      const duration = performance.now() - startTime;
+
       if (!Array.isArray(docs) || docs.length === 0) {
-        return JSON.stringify({
-          success: true,
-          results: [],
-          metadata: {
-            query,
-            matchCount: match_count,
-            filter: Object.keys(filter).length ? filter : undefined,
+        // Track no results
+        await trackEvent({
+          eventName: ANALYTICS_EVENTS.TOOL_USED,
+          properties: {
+            toolName: 'searchInternalKnowledgeBase',
+            success: true,
+            duration: Math.round(duration),
+            resultsCount: 0,
+            timestamp: new Date().toISOString(),
           },
         });
+
+        return `No documents found in the knowledge base matching the query: "${query}". Try a broader search term.`;
       }
 
-      // Format the results as structured data
-      const formattedResults = docs.map((d: any) => {
-        const title = d.metadata?.file_title || 'Unknown';
-        const similarity = d.similarity ?? 0;
-        const content = d.content || '';
+      // Take the top result
+      const topDoc = docs[0];
+      const title = topDoc.metadata?.file_title || 'Unknown Title';
+      const content = topDoc.content || 'No content found.';
+      const similarity = topDoc.similarity ?? 0;
 
-        return {
-          title,
-          similarity,
-          content: content.slice(0, 500) + (content.length > 500 ? '...' : ''),
-          metadata: d.metadata || {},
-        };
+      // Track successful completion
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'searchInternalKnowledgeBase',
+          success: true,
+          duration: Math.round(duration),
+          resultsCount: docs.length,
+          topSimilarity: Math.round(similarity * 100) / 100,
+          documentTitle: title.substring(0, 50), // Limit for privacy
+          timestamp: new Date().toISOString(),
+        },
       });
 
-      const response = {
-        success: true,
-        results: formattedResults,
-        metadata: {
-          query,
-          matchCount: match_count,
-          resultCount: formattedResults.length,
-          filter: Object.keys(filter).length ? filter : undefined,
-        },
+      const result = {
+        title: title,
+        content: content, // Return the FULL content
+        similarity: similarity,
+        metadata: topDoc.metadata || {},
       };
 
+      const response = `Successfully retrieved document titled "${title}" (Similarity: ${similarity.toFixed(2)}).\n\nFULL CONTENT:\n${content}`;
+
       console.log(
-        `[searchInternalKnowledgeBase] Returning ${formattedResults.length} results as JSON string`,
+        `[searchAndRetrieveKnowledgeBase] Returning full content of "${title}"`,
       );
-      return JSON.stringify(response);
+      return response;
     } catch (err: any) {
-      console.error('[searchInternalKnowledgeBase] Unexpected error:', err);
+      const duration = performance.now() - startTime;
+
+      console.error('[searchAndRetrieveKnowledgeBase] Unexpected error:', err);
+
+      // Track unexpected error
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'searchInternalKnowledgeBase',
+          success: false,
+          error: `Unexpected error: ${err.message}`,
+          duration: Math.round(duration),
+          timestamp: new Date().toISOString(),
+        },
+      });
+
       return JSON.stringify({
         success: false,
         error: `Unexpected error during search: ${err.message}`,

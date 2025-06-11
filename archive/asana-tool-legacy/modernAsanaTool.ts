@@ -7,11 +7,9 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import {
   LLMFunctionExtractor,
-  type ConversationContext,
 } from './intent-parser/llmFunctionExtractor';
-import {
-  ASANA_FUNCTION_SCHEMAS,
-  type AsanaFunctionName,
+import type {
+  AsanaFunctionName,
 } from './schemas/functionSchemas';
 import { createAsanaClient } from './api-client';
 import type { AsanaApiClient } from './api-client';
@@ -32,9 +30,6 @@ import {
   findTaskGidByName,
   updateTask,
   addFollowerToTask,
-  removeFollowerFromTask,
-  addDependency,
-  removeDependency,
   deleteTask,
   getSubtasks,
   type UpdateTaskParams,
@@ -44,7 +39,6 @@ import {
   listProjects,
   findProjectGidByName,
   createProject,
-  verifyProjectVisibility,
   getProjectDetails,
 } from './api-client/operations/projects';
 import {
@@ -57,7 +51,6 @@ import { typeaheadSearch } from './api-client/operations/search';
 
 // Import formatters
 import {
-  formatUserInfo,
   formatTaskCreation,
   formatProjectList,
   formatTaskList,
@@ -65,7 +58,6 @@ import {
   formatTaskUpdate,
   formatSearchResults,
   formatAddFollowerResponse,
-  formatRemoveFollowerResponse,
   formatSectionList,
   formatSectionCreation,
   formatTaskMoveToSection,
@@ -79,7 +71,6 @@ import { parseDateTime } from './utils/dateTimeParser';
 import { taskContextManager } from './context/taskContext';
 import {
   conversationContextManager,
-  type ConversationMessage,
 } from './context/conversationContext';
 import { contextResolver } from './context/contextResolver';
 

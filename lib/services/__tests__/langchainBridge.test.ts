@@ -164,7 +164,7 @@ describe('LangChain Bridge Service', () => {
     });
 
     it('should handle missing OPENAI_API_KEY', async () => {
-      delete process.env.OPENAI_API_KEY;
+      process.env.OPENAI_API_KEY = undefined;
 
       const config = {};
 

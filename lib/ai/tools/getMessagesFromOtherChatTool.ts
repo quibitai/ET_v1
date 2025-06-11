@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { sql } from '@/lib/db/client';
+import {
+  trackEvent,
+  ANALYTICS_EVENTS,
+} from '@/lib/services/observabilityService';
 
 // Define types
 type MessageResult = {
@@ -59,6 +63,8 @@ Retrieve messages from other chat sessions to provide context and continuity. Th
       ),
   }),
   func: async ({ targetChatId }) => {
+    const startTime = performance.now();
+
     // Check if this request is from the Global Orchestrator
     let isFromOrchestrator = false;
     let requestContext = '';
@@ -71,11 +77,38 @@ Retrieve messages from other chat sessions to provide context and continuity. Th
       requestContext = contextId || 'unknown';
     }
 
+    // Track tool usage
+    await trackEvent({
+      eventName: ANALYTICS_EVENTS.TOOL_USED,
+      properties: {
+        toolName: 'getMessagesFromOtherChat',
+        targetChatId: targetChatId.substring(0, 30), // Limit for privacy
+        isFromOrchestrator,
+        requestContext,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
     // Restrict access to orchestrator only
     if (!isFromOrchestrator) {
+      const duration = performance.now() - startTime;
+
       console.log(
         `[getMessagesFromOtherChatTool] Access denied - tool restricted to Global Orchestrator only. Current context: ${requestContext}`,
       );
+
+      // Track access denied
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'getMessagesFromOtherChat',
+          success: false,
+          error: 'Access denied - orchestrator only',
+          duration: Math.round(duration),
+          timestamp: new Date().toISOString(),
+        },
+      });
+
       return {
         error: 'Access Restricted',
         message:
@@ -412,11 +445,40 @@ Retrieve messages from other chat sessions to provide context and continuity. Th
 
         // If no results from search, return a helpful message
         if (!messagesResult || messagesResult.length === 0) {
+          const duration = performance.now() - startTime;
+
+          // Track no results
+          await trackEvent({
+            eventName: ANALYTICS_EVENTS.TOOL_USED,
+            properties: {
+              toolName: 'getMessagesFromOtherChat',
+              success: true,
+              duration: Math.round(duration),
+              messagesFound: 0,
+              timestamp: new Date().toISOString(),
+            },
+          });
+
           return `I couldn't find any messages related to ${targetChatId}. Please check the chat history in the main UI panel to see what was discussed.`;
         }
       }
 
       if (!messagesResult || messagesResult.length === 0) {
+        const duration = performance.now() - startTime;
+
+        // Track no results
+        await trackEvent({
+          eventName: ANALYTICS_EVENTS.TOOL_USED,
+          properties: {
+            toolName: 'getMessagesFromOtherChat',
+            success: true,
+            duration: Math.round(duration),
+            messagesFound: 0,
+            hasReferencedChatId: !!referencedChatId,
+            timestamp: new Date().toISOString(),
+          },
+        });
+
         // If we're using a referenced chat but found no messages
         if (referencedChatId) {
           return `I couldn't find any messages in the referenced chat ${referencedChatId}. It might be a new conversation or the messages haven't been saved yet.`;
@@ -525,9 +587,39 @@ Retrieve messages from other chat sessions to provide context and continuity. Th
         }
       }
 
+      const duration = performance.now() - startTime;
+
+      // Track successful completion
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'getMessagesFromOtherChat',
+          success: true,
+          duration: Math.round(duration),
+          messagesFound: uniqueMessages.length,
+          sourceType: sourceDescription.substring(0, 30),
+          timestamp: new Date().toISOString(),
+        },
+      });
+
       return result;
     } catch (error: any) {
+      const duration = performance.now() - startTime;
+
       console.error(`[getMessagesFromOtherChatTool] Error:`, error);
+
+      // Track error
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'getMessagesFromOtherChat',
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          duration: Math.round(duration),
+          timestamp: new Date().toISOString(),
+        },
+      });
+
       return `Error fetching messages: ${error.message || 'Unknown error'}. Please try again with the main UI conversation or provide a valid chat UUID.`;
     }
   },

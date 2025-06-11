@@ -6,7 +6,8 @@ import { python } from '@codemirror/lang-python';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { basicSetup } from 'codemirror';
 import React, { memo, useEffect, useRef } from 'react';
-import type { Suggestion } from '@/lib/db/schema';
+// Suggestion type removed in Phase 1, Task 1.2
+type Suggestion = any; // Placeholder for legacy compatibility
 
 type EditorProps = {
   content: string;

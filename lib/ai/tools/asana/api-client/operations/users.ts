@@ -3,7 +3,7 @@
  */
 
 import type { AsanaApiClient } from '../client';
-import type { AsanaNamedResource, TypeaheadSearchParams } from './search'; // Assuming search operations are in 'search.ts'
+import type { AsanaNamedResource, } from './search'; // Assuming search operations are in 'search.ts'
 import { getOrSetCache, CacheKeys } from '../cache';
 
 /**

@@ -1,58 +1,34 @@
 import { cookies } from 'next/headers';
-
-import { Chat } from '@/components/chat';
+import { auth } from '@/app/(auth)/auth';
+import { ChatWrapper } from '@/components/chat-wrapper';
 import { DEFAULT_CHAT_MODEL } from '@/lib/ai/models';
 import { generateUUID } from '@/lib/utils';
-import { ChatPageWrapper } from '@/components/chat-page-wrapper';
+import { ECHO_TANGO_SPECIALIST_ID } from '@/lib/constants';
+
+export const dynamic = 'force-dynamic';
 
 export default async function Page() {
   const id = generateUUID();
-  console.log('[DEBUG] New chat page loaded, generated UUID:', id);
-  console.log(
-    '[DEBUG] This UUID should be used to create a new chat in the database',
-  );
+  const cookieStore = cookies();
+  const session = await auth();
 
-  // This would be the perfect place to save the new chat to the database
-  // using the saveChat function, but it's missing!
-  // Example of what should happen:
-  // try {
-  //   const session = await auth();
-  //   if (session?.user?.id) {
-  //     console.log('[DEBUG] Attempting to save new chat with ID:', id, 'for user:', session.user.id);
-  //     await saveChat({ id, userId: session.user.id, title: "New Chat" });
-  //   }
-  // } catch (error) {
-  //   console.error('[DEBUG] Failed to save new chat:', error);
-  // }
+  const modelIdFromCookie = (await cookieStore).get('chat-model');
+  const contextId =
+    (await cookieStore).get('current-active-specialist')?.value ||
+    ECHO_TANGO_SPECIALIST_ID;
 
-  const cookieStore = await cookies();
-  const modelIdFromCookie = cookieStore.get('chat-model');
-
-  if (!modelIdFromCookie) {
-    return (
-      <ChatPageWrapper>
-        <Chat
-          key={id}
-          id={id}
-          initialMessages={[]}
-          selectedChatModel={DEFAULT_CHAT_MODEL}
-          selectedVisibilityType="private"
-          isReadonly={false}
-        />
-      </ChatPageWrapper>
-    );
-  }
+  // Chat will be created automatically when the first message is sent via the brain orchestrator
+  // This ensures proper title generation from the actual user message
 
   return (
-    <ChatPageWrapper>
-      <Chat
-        key={id}
-        id={id}
-        initialMessages={[]}
-        selectedChatModel={modelIdFromCookie.value}
-        selectedVisibilityType="private"
-        isReadonly={false}
-      />
-    </ChatPageWrapper>
+    <ChatWrapper
+      key={id}
+      id={id}
+      initialMessages={[]}
+      selectedChatModel={modelIdFromCookie?.value || DEFAULT_CHAT_MODEL}
+      selectedVisibilityType="private"
+      isReadonly={false}
+      activeBitContextId={contextId}
+    />
   );
 }

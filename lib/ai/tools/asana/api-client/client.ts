@@ -7,7 +7,6 @@ import { ASANA_PAT, ASANA_REQUEST_TIMEOUT_MS } from '../config';
 import {
   AsanaIntegrationError,
   handleAsanaApiError,
-  logAndFormatError,
 } from '../utils/errorHandler';
 import { withRetry, type RetryOptions } from './retryHandler';
 

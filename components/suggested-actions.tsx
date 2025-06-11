@@ -15,12 +15,12 @@ function PureSuggestedActions({ chatId, append }: SuggestedActionsProps) {
     {
       title: 'List files',
       label: 'in Google Drive Folder',
-      action: 'List files',
+      action: 'List files in the knowledge base.',
     },
     {
       title: "Show me Echo Tango's",
       label: 'Core Values',
-      action: "Give me the complete contents of Echo Tango's core values file",
+      action: "Give me the complete contents of Echo Tango's core values file.",
     },
     {
       title: 'Create a Research Report',

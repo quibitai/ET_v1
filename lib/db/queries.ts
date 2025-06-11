@@ -21,9 +21,6 @@ import {
   user,
   chat,
   type User,
-  document,
-  type Suggestion,
-  suggestion,
   message,
   type DBMessage,
   vote,
@@ -55,7 +52,6 @@ export type ClientConfig = {
   client_core_mission?: string | null; // Short client business description
   customInstructions?: string | null;
   configJson?: {
-    specialistPrompts?: Record<string, string> | null;
     orchestrator_client_context?: string | null;
     available_bit_ids?: string[] | null;
     tool_configs?: Record<string, any> | null;
@@ -246,14 +242,23 @@ export async function getChatsByUserId({
 
     const query = (whereCondition?: SQL<any>) =>
       db
-        .select()
+        .select({
+          id: chat.id,
+          title: chat.title,
+          updatedAt: chat.updatedAt,
+          createdAt: chat.createdAt,
+          visibility: chat.visibility,
+          bitContextId: chat.bitContextId,
+          userId: chat.userId,
+          clientId: chat.clientId,
+        })
         .from(chat)
         .where(
           whereCondition
             ? and(whereCondition, eq(chat.userId, id))
             : eq(chat.userId, id),
         )
-        .orderBy(desc(chat.createdAt))
+        .orderBy(desc(chat.updatedAt))
         .limit(extendedLimit);
 
     let filteredChats: Array<Chat> = [];
@@ -490,131 +495,6 @@ export async function getVotesByChatId({ id }: { id: string }) {
   }
 }
 
-export async function saveDocument({
-  id,
-  title,
-  kind,
-  content,
-  userId,
-}: {
-  id: string;
-  title: string;
-  kind: 'text' | 'code' | 'image' | 'sheet';
-  content: string;
-  userId: string;
-}) {
-  try {
-    console.log(`[DB] Saving document ${id} with kind=${kind}`);
-    return await db.insert(document).values({
-      id,
-      title,
-      kind,
-      content,
-      userId,
-      createdAt: new Date(),
-      clientId: 'default',
-    });
-  } catch (error) {
-    console.error('Failed to save document in database', error);
-    throw error;
-  }
-}
-
-export async function getDocumentsById({ id }: { id: string }) {
-  try {
-    const documents = await db
-      .select()
-      .from(document)
-      .where(eq(document.id, id))
-      .orderBy(asc(document.createdAt));
-
-    return documents;
-  } catch (error) {
-    console.error('Failed to get document by id from database');
-    throw error;
-  }
-}
-
-export async function getDocumentById({ id }: { id: string }) {
-  try {
-    const [selectedDocument] = await db
-      .select()
-      .from(document)
-      .where(eq(document.id, id))
-      .orderBy(desc(document.createdAt));
-
-    return selectedDocument;
-  } catch (error) {
-    console.error('Failed to get document by id from database');
-    throw error;
-  }
-}
-
-export async function deleteDocumentsByIdAfterTimestamp({
-  id,
-  timestamp,
-}: {
-  id: string;
-  timestamp: Date;
-}) {
-  try {
-    await db
-      .delete(suggestion)
-      .where(
-        and(
-          eq(suggestion.documentId, id),
-          gt(suggestion.documentCreatedAt, timestamp),
-        ),
-      );
-
-    return await db
-      .delete(document)
-      .where(and(eq(document.id, id), gt(document.createdAt, timestamp)));
-  } catch (error) {
-    console.error(
-      'Failed to delete documents by id after timestamp from database',
-    );
-    throw error;
-  }
-}
-
-export async function saveSuggestions({
-  suggestions,
-}: {
-  suggestions: Array<Suggestion>;
-}) {
-  try {
-    // Ensure all suggestions have a clientId
-    const suggestionsWithClientId = suggestions.map((suggestion) => ({
-      ...suggestion,
-      clientId: suggestion.clientId || 'default',
-    }));
-
-    return await db.insert(suggestion).values(suggestionsWithClientId);
-  } catch (error) {
-    console.error('Failed to save suggestions in database');
-    throw error;
-  }
-}
-
-export async function getSuggestionsByDocumentId({
-  documentId,
-}: {
-  documentId: string;
-}) {
-  try {
-    return await db
-      .select()
-      .from(suggestion)
-      .where(and(eq(suggestion.documentId, documentId)));
-  } catch (error) {
-    console.error(
-      'Failed to get suggestions by document version from database',
-    );
-    throw error;
-  }
-}
-
 export async function getMessageById({ id }: { id: string }) {
   try {
     return await db.select().from(message).where(eq(message.id, id));
@@ -750,78 +630,6 @@ export async function ensureChatExists({
   }
 }
 
-export async function getDocumentsByUserId({
-  id,
-  limit = 10,
-  startingAfter,
-  endingBefore,
-}: {
-  id: string;
-  limit?: number;
-  startingAfter?: string | null;
-  endingBefore?: string | null;
-}) {
-  try {
-    const extendedLimit = limit + 1;
-
-    const query = (whereCondition?: SQL<unknown>) =>
-      db
-        .select()
-        .from(document)
-        .where(
-          whereCondition
-            ? and(whereCondition, eq(document.userId, id))
-            : eq(document.userId, id),
-        )
-        .orderBy(desc(document.createdAt))
-        .limit(extendedLimit);
-
-    let docs: (typeof document.$inferSelect)[] = [];
-
-    if (startingAfter) {
-      const afterDocument = await db
-        .select()
-        .from(document)
-        .where(eq(document.id, startingAfter))
-        .limit(1);
-
-      if (afterDocument.length > 0) {
-        docs = await query(lt(document.createdAt, afterDocument[0].createdAt));
-      } else {
-        docs = await query();
-      }
-    } else if (endingBefore) {
-      const beforeDocument = await db
-        .select()
-        .from(document)
-        .where(eq(document.id, endingBefore))
-        .limit(1);
-
-      if (beforeDocument.length > 0) {
-        docs = await query(gt(document.createdAt, beforeDocument[0].createdAt));
-      } else {
-        docs = await query();
-      }
-    } else {
-      docs = await query();
-    }
-
-    const hasMore = docs.length > limit;
-
-    if (hasMore) {
-      docs.pop();
-    }
-
-    return {
-      documents: docs,
-      hasMore,
-    };
-  } catch (error) {
-    console.error('Failed to get documents by user id from database');
-    throw error;
-  }
-}
-
 interface GetChatSummariesParams {
   userId: string;
   clientId: string;
@@ -864,7 +672,7 @@ export async function getChatSummaries({
       conditions.push(eq(chat.bitContextId, CHAT_BIT_CONTEXT_ID));
     }
 
-    // Fetch chats with most recent messages in a single query
+    // Optimized query - use updatedAt for sorting instead of expensive subqueries
     const groupedAndFilteredChats = await db
       .select({
         id: chat.id,
@@ -873,21 +681,10 @@ export async function getChatSummaries({
         updatedAt: chat.updatedAt,
         bitContextId: chat.bitContextId,
         visibility: chat.visibility,
-        // Subquery to get the timestamp of the last message for sorting/display
-        lastMessageTimestamp: sql`(
-          SELECT MAX(m."createdAt")
-          FROM ${message} m
-          WHERE m."chatId" = ${chat.id}
-        )`,
       })
       .from(chat)
       .where(and(...conditions))
-      .orderBy(
-        desc(sql`COALESCE(
-        (SELECT MAX(m."createdAt") FROM ${message} m WHERE m."chatId" = ${chat.id}), 
-        ${chat.updatedAt}
-      )`),
-      ) // Repeat the subquery in the ORDER BY clause instead of using the alias
+      .orderBy(desc(chat.updatedAt))
       .limit(limit)
       .offset(offset);
 
@@ -903,8 +700,7 @@ export async function getChatSummaries({
       (chat) => ({
         id: chat.id,
         title: chat.title || 'Untitled Chat',
-        lastMessageTimestamp:
-          (chat.lastMessageTimestamp as Date | null) ?? chat.updatedAt, // Provide a fallback
+        lastMessageTimestamp: chat.updatedAt, // Use updatedAt as the last activity timestamp
         lastMessageSnippet: undefined, // We'll implement this in a separate step if needed
         bitContextId: chat.bitContextId,
         // Derive isGlobal based on bitContextId using the constant
@@ -976,7 +772,7 @@ export async function getAllSpecialistChatSummaries({
         eq(chat.bitContextId, specialistId),
       ];
 
-      // Fetch chats for this specialist
+      // Optimized query for specialist chats - use updatedAt instead of expensive subqueries
       const specialistChats = await db
         .select({
           id: chat.id,
@@ -985,21 +781,10 @@ export async function getAllSpecialistChatSummaries({
           updatedAt: chat.updatedAt,
           bitContextId: chat.bitContextId,
           visibility: chat.visibility,
-          // Subquery to get the timestamp of the last message
-          lastMessageTimestamp: sql`(
-            SELECT MAX(m."createdAt")
-            FROM ${message} m
-            WHERE m."chatId" = ${chat.id}
-          )`,
         })
         .from(chat)
         .where(and(...conditions))
-        .orderBy(
-          desc(sql`COALESCE(
-          (SELECT MAX(m."createdAt") FROM ${message} m WHERE m."chatId" = ${chat.id}), 
-          ${chat.updatedAt}
-        )`),
-        )
+        .orderBy(desc(chat.updatedAt))
         .limit(limit)
         .offset((page - 1) * limit);
 
@@ -1007,8 +792,7 @@ export async function getAllSpecialistChatSummaries({
       const chatSummaries: ChatSummary[] = specialistChats.map((chat) => ({
         id: chat.id,
         title: chat.title || 'Untitled Chat',
-        lastMessageTimestamp:
-          (chat.lastMessageTimestamp as Date | null) ?? chat.updatedAt,
+        lastMessageTimestamp: chat.updatedAt, // Use updatedAt as the last activity timestamp
         lastMessageSnippet: undefined,
         bitContextId: chat.bitContextId,
         isGlobal: false, // These are specialist chats, not global

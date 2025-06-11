@@ -92,25 +92,6 @@ const COMPLEX_PATTERNS = {
   ],
 };
 
-// NEW: Document creation intent patterns (high confidence for tool forcing)
-const DOCUMENT_CREATION_PATTERNS = [
-  // Explicit document creation commands
-  /^(?:create|make|generate|build|write|draft)\s+(?:a\s+)?(?:document|doc|file|report|memo|note|paper|article)/i,
-  /(?:create|make|generate|build|write|draft).+(?:document|doc|file|report|memo|note|paper|article).+(?:about|on|for|regarding)/i,
-
-  // Report-specific patterns
-  /(?:create|make|generate|write|draft)\s+(?:a\s+)?(?:report|analysis|summary|overview|brief)/i,
-  /(?:write|draft|prepare)\s+(?:a\s+)?(?:comprehensive|detailed|professional|formal)\s+(?:report|document|analysis)/i,
-
-  // Content creation patterns
-  /(?:write|create|draft|compose)\s+(?:an?\s+)?(?:article|blog post|essay|whitepaper|proposal)/i,
-  /(?:generate|create|produce)\s+(?:content|text|copy)\s+(?:about|on|for)/i,
-
-  // Specific content requests
-  /(?:create|write|draft)\s+(?:something|content|text).+(?:about|on|regarding)/i,
-  /(?:can you|please|could you)\s+(?:create|write|draft|make|generate).+(?:document|report|file)/i,
-];
-
 // NEW: Web search intent patterns
 const WEB_SEARCH_PATTERNS = [
   // Explicit search commands
@@ -236,7 +217,6 @@ export class QueryClassifier {
       const detectedPatterns = this.detectPatterns(userInput);
 
       // 3. NEW: Detect multiple tool intents
-      const documentIntent = this.detectDocumentCreationIntent(userInput);
       const webSearchIntent = this.detectWebSearchIntent(userInput);
       const asanaIntent = this.detectAsanaIntent(userInput);
       const knowledgeBaseIntent = this.detectKnowledgeBaseIntent(userInput);
@@ -253,9 +233,8 @@ export class QueryClassifier {
       );
 
       // OVERRIDE: If any tool forcing is detected, always use LangChain
-      // This ensures document creation, web search, etc. go through the proper tool system
+      // This ensures web search, asana, etc. go through the proper tool system
       if (
-        documentIntent.hasIntent ||
         webSearchIntent.hasIntent ||
         asanaIntent.hasIntent ||
         knowledgeBaseIntent.hasIntent
@@ -264,7 +243,6 @@ export class QueryClassifier {
         this.logger.info(
           'Overriding routing decision: tool intent detected, forcing LangChain',
           {
-            documentIntent: documentIntent.hasIntent,
             webSearchIntent: webSearchIntent.hasIntent,
             asanaIntent: asanaIntent.hasIntent,
             knowledgeBaseIntent: knowledgeBaseIntent.hasIntent,
@@ -291,7 +269,6 @@ export class QueryClassifier {
 
       // Prioritize tool forcing by confidence level
       const toolIntents = [
-        { name: 'createDocument', intent: documentIntent },
         { name: 'tavilySearch', intent: webSearchIntent },
         { name: 'asanaGetMyTasks', intent: asanaIntent }, // Use most common Asana tool
         { name: 'searchInternalKnowledgeBase', intent: knowledgeBaseIntent },
@@ -328,28 +305,15 @@ export class QueryClassifier {
         }
       }
 
-      // Special case: Multi-tool workflow detection (like the LWCC prompt)
-      if (webSearchIntent.hasIntent && documentIntent.hasIntent) {
-        // Both search and document creation detected - force to use LangChain and require tools
+      // Special case: Multi-tool workflow detection
+      if (webSearchIntent.hasIntent && knowledgeBaseIntent.hasIntent) {
+        // Both search and knowledge base detected - force to use LangChain and require tools
         forceToolCall = 'required';
         this.logger.info(
-          'Multi-tool workflow detected (search + document) - forcing tool usage',
+          'Multi-tool workflow detected (search + knowledge base) - forcing tool usage',
           {
             webSearchConfidence: webSearchIntent.confidence,
-            documentConfidence: documentIntent.confidence,
-            inputPreview: userInput.substring(0, 100),
-          },
-        );
-      }
-
-      // Knowledge base + document creation workflow
-      if (knowledgeBaseIntent.hasIntent && documentIntent.hasIntent) {
-        forceToolCall = 'required';
-        this.logger.info(
-          'Multi-tool workflow detected (knowledge base + document) - forcing tool usage',
-          {
             knowledgeBaseConfidence: knowledgeBaseIntent.confidence,
-            documentConfidence: documentIntent.confidence,
             inputPreview: userInput.substring(0, 100),
           },
         );
@@ -376,7 +340,7 @@ export class QueryClassifier {
         confidence,
         complexityScore,
         patternCount: detectedPatterns.length,
-        documentIntentConfidence: documentIntent.confidence,
+
         webSearchIntentConfidence: webSearchIntent.confidence,
         asanaIntentConfidence: asanaIntent.confidence,
         knowledgeBaseIntentConfidence: knowledgeBaseIntent.confidence,

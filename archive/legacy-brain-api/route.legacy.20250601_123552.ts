@@ -35,8 +35,6 @@ import {
 import { EnhancedAgentExecutor } from '@/lib/ai/executors/EnhancedAgentExecutor';
 import {
   retrieveConversationalMemory,
-  storeConversationalMemory,
-  getConversationalMemoryCount,
 } from '@/lib/conversationalMemory';
 
 // State variables to track between requests/handler invocations
@@ -56,7 +54,7 @@ import { availableTools } from '@/lib/ai/tools/index';
 // Import database functions and types
 // import { db } from '@/lib/db'; // Unused
 import { sql } from '@/lib/db/client';
-import { getClientConfig, getDocumentById } from '@/lib/db/queries';
+import { getClientConfig, } from '@/lib/db/queries';
 import type { DBMessage } from '@/lib/db/schema';
 import type { ClientConfig } from '@/lib/db/queries'; // Import the correct ClientConfig type
 import { randomUUID } from 'node:crypto';

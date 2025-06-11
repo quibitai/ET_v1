@@ -1,71 +1,118 @@
 import type { SpecialistConfig } from './template';
-import { echoTangoConfig, echoTangoPrompt } from './echo-tango';
-import { chatModelConfig, chatModelPrompt } from './chat-model';
-// --- Import future specialists here ---
-// Example: import { dataAnalystConfig, dataAnalystPrompt } from './data-analyst';
 
-/**
- * Registry mapping specialist IDs to their full configuration objects.
- * This is the single source of truth for specialist definitions.
- *
- * IMPORTANT: When adding a new specialist:
- * 1. Create a new file for the specialist (e.g., data-analyst.ts)
- * 2. Implement the SpecialistConfig interface with client context placeholders
- * 3. Import the config and prompt at the top of this file
- * 4. Register the config here and the prompt in promptRegistry below
- */
-export const specialistRegistry: Record<string, SpecialistConfig> = {
-  [echoTangoConfig.id]: echoTangoConfig,
-  [chatModelConfig.id]: chatModelConfig,
-  // --- Register future specialists here ---
-  // [dataAnalystConfig.id]: dataAnalystConfig,
-};
+// Server-only imports with runtime protection
+let db: any = null;
+let specialists: any = null;
+let eq: any = null;
 
-/**
- * Registry mapping specialist IDs directly to their persona prompt strings.
- * Used for quick lookup by the prompt loader.
- *
- * IMPORTANT: Always keep this registry in sync with specialistRegistry above.
- * Every specialist config in specialistRegistry should have a corresponding
- * prompt entry here with the same key.
- */
-const promptRegistry: Record<string, string> = {
-  [echoTangoConfig.id]: echoTangoPrompt,
-  [chatModelConfig.id]: chatModelPrompt,
-  // --- Register future specialist prompts here ---
-  // [dataAnalystConfig.id]: dataAnalystPrompt,
-};
-
-/**
- * Retrieves the persona prompt string for a given specialist ID.
- * Returns an empty string if the specialist ID is not found.
- * @param specialistId - The unique ID of the specialist.
- * @returns The specialist's persona prompt string or an empty string.
- */
-export function getSpecialistPromptById(specialistId: string): string {
-  const prompt = promptRegistry[specialistId];
-  if (!prompt) {
-    console.warn(
-      `[SpecialistRegistry] Prompt not found for specialistId: ${specialistId}`,
-    );
-    return '';
+// Only import database dependencies on server-side
+if (typeof window === 'undefined') {
+  try {
+    const { db: dbInstance } = require('@/lib/db');
+    const { specialists: specialistsSchema } = require('@/lib/db/schema');
+    const { eq: eqOperator } = require('drizzle-orm');
+    db = dbInstance;
+    specialists = specialistsSchema;
+    eq = eqOperator;
+  } catch (error) {
+    console.warn('Database imports failed in specialists/index.ts', error);
   }
-  return prompt;
 }
 
 /**
- * Retrieves a list of available specialists (ID, name, description)
- * suitable for populating UI elements like dropdowns.
- * @returns An array of specialist info objects.
+ * @deprecated This file is deprecated. Specialist configurations are now stored in the database.
+ * Use the database-backed functions below for backward compatibility, but consider migrating
+ * to direct database queries where possible.
  */
-export function getAvailableSpecialists(): Array<{
-  id: string;
-  name: string;
-  description: string;
-}> {
-  return Object.values(specialistRegistry).map((config) => ({
-    id: config.id,
-    name: config.name,
-    description: config.description,
-  }));
+
+/**
+ * @deprecated Registry is now stored in the database. Use getAvailableSpecialists() instead.
+ */
+export const specialistRegistry: Record<string, SpecialistConfig> = {};
+
+/**
+ * Retrieves the persona prompt string for a given specialist ID from the database.
+ * @deprecated This function is deprecated. Use the database directly via loadPrompt() instead.
+ * @param specialistId - The unique ID of the specialist.
+ * @returns Promise resolving to the specialist's persona prompt string or an empty string.
+ */
+export async function getSpecialistPromptById(
+  specialistId: string,
+): Promise<string> {
+  console.warn(
+    `[SpecialistRegistry] getSpecialistPromptById is deprecated. Use loadPrompt() instead.`,
+  );
+
+  // Check if we're on server-side and have database access
+  if (!db || !specialists || !eq) {
+    console.warn(
+      `[SpecialistRegistry] Database not available (client-side or import failed). Cannot load specialist '${specialistId}'.`,
+    );
+    return '';
+  }
+
+  try {
+    const result = await db
+      .select()
+      .from(specialists)
+      .where(eq(specialists.id, specialistId))
+      .limit(1);
+
+    if (result.length === 0) {
+      console.warn(
+        `[SpecialistRegistry] Prompt not found for specialistId: ${specialistId}`,
+      );
+      return '';
+    }
+
+    return result[0].personaPrompt;
+  } catch (error) {
+    console.error(
+      `[SpecialistRegistry] Database error for specialistId: ${specialistId}`,
+      error,
+    );
+    return '';
+  }
+}
+
+/**
+ * Retrieves a list of available specialists from the database.
+ * @returns Promise resolving to an array of specialist info objects.
+ */
+export async function getAvailableSpecialists(): Promise<
+  Array<{
+    id: string;
+    name: string;
+    description: string;
+  }>
+> {
+  // Check if we're on server-side and have database access
+  if (!db || !specialists) {
+    console.warn(
+      '[SpecialistRegistry] Database not available (client-side or import failed). Cannot retrieve specialists.',
+    );
+    return [];
+  }
+
+  try {
+    const result = await db
+      .select({
+        id: specialists.id,
+        name: specialists.name,
+        description: specialists.description,
+      })
+      .from(specialists);
+
+    return result.map((config: any) => ({
+      id: config.id,
+      name: config.name,
+      description: config.description || '',
+    }));
+  } catch (error) {
+    console.error(
+      '[SpecialistRegistry] Database error retrieving specialists',
+      error,
+    );
+    return [];
+  }
 }

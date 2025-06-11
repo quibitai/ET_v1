@@ -1,6 +1,9 @@
 import type { NextRequest } from 'next/server';
 import { nanoid } from 'nanoid';
 import { logger } from '../logger';
+import { db } from '@/lib/db';
+import { analyticsEvents } from '@/lib/db/schema';
+import type { AnalyticsEvent } from '@/lib/db/schema';
 
 /**
  * ObservabilityService
@@ -355,3 +358,56 @@ export function getSystemHealth(): {
     uptime: Math.round(process.uptime()),
   };
 }
+
+/**
+ * Analytics Event Tracking
+ */
+export interface TrackEventOptions {
+  eventName: string;
+  properties?: Record<string, any>;
+  clientId?: string;
+  userId?: string;
+  chatId?: string;
+}
+
+/**
+ * Track an analytics event to the database
+ * This function persists important system events for observability
+ */
+export async function trackEvent(options: TrackEventOptions): Promise<void> {
+  try {
+    await db.insert(analyticsEvents).values({
+      eventName: options.eventName,
+      properties: options.properties || null,
+      clientId: options.clientId || null,
+      userId: options.userId || null,
+      chatId: options.chatId || null,
+    });
+
+    // Also log to console for immediate visibility
+    logger.info('Analytics', `Event tracked: ${options.eventName}`, {
+      properties: options.properties,
+      clientId: options.clientId,
+      userId: options.userId,
+      chatId: options.chatId,
+    });
+  } catch (error) {
+    // Don't let analytics failures break the main application flow
+    logger.error('Analytics', 'Failed to track event', {
+      eventName: options.eventName,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+/**
+ * Common analytics events for easy tracking
+ */
+export const ANALYTICS_EVENTS = {
+  QUERY_CLASSIFICATION: 'QUERY_CLASSIFICATION',
+  EXECUTION_PATH_SELECTED: 'EXECUTION_PATH_SELECTED',
+  TOOL_USED: 'TOOL_USED',
+  ERROR_OCCURRED: 'ERROR_OCCURRED',
+  PERFORMANCE_METRIC: 'PERFORMANCE_METRIC',
+  USER_ACTION: 'USER_ACTION',
+} as const;

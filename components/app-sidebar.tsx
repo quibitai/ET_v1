@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/sidebar';
 import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
-import { PanelLeft, MessageSquare, LayoutDashboard } from 'lucide-react';
+import { PanelLeft, MessageSquare, } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { memo, useCallback, useMemo } from 'react';
 

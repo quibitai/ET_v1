@@ -18,7 +18,7 @@ export default async function directN8nFetch(query) {
 
   // Log environment variables (censored)
   console.log(
-    `Using webhook URL: ${N8N_MCP_WEBHOOK_URL ? N8N_MCP_WEBHOOK_URL.substring(0, 20) + '...' : 'undefined'}`,
+    `Using webhook URL: ${N8N_MCP_WEBHOOK_URL ? `${N8N_MCP_WEBHOOK_URL.substring(0, 20)}...` : 'undefined'}`,
   );
   console.log(`Using auth header: ${N8N_MCP_AUTH_HEADER || 'undefined'}`);
   console.log(`Auth token present: ${N8N_MCP_AUTH_TOKEN ? 'yes' : 'no'}`);

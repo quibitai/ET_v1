@@ -1,6 +1,6 @@
 import { auth } from '@/app/(auth)/auth';
 import type { NextRequest } from 'next/server';
-import { getDocumentsByUserId } from '@/lib/db/queries';
+// Document functionality removed - this endpoint is deprecated
 
 export async function GET(request: NextRequest) {
   console.log('[Documents History API] Starting request handling');
@@ -38,18 +38,15 @@ export async function GET(request: NextRequest) {
       '[Documents History API] Fetching documents for user ID:',
       session.user.id,
     );
-    const documentsData = await getDocumentsByUserId({
-      id: session.user.id,
-      limit,
-      startingAfter,
-      endingBefore,
-    });
-    console.log(
-      '[Documents History API] Successfully fetched documents, count:',
-      documentsData.documents.length,
+    // Document functionality has been removed in Phase 1, Task 1.2
+    return Response.json(
+      {
+        message: 'Document history functionality has been deprecated',
+        documents: [],
+        hasMore: false,
+      },
+      { status: 410 },
     );
-
-    return Response.json(documentsData);
   } catch (error) {
     console.error('[Documents History API] Error fetching documents:', error);
     return Response.json('Failed to fetch documents!', { status: 500 });

@@ -1,5 +1,4 @@
 import { loadPrompt } from '@/lib/ai/prompts/loader';
-import { getOrchestratorPrompt } from '@/lib/ai/prompts/core/orchestrator';
 import { getSpecialistPromptById } from '@/lib/ai/prompts/specialists';
 import { test, expect } from '@playwright/test';
 import type { ClientConfig } from '@/lib/db/queries';
@@ -16,17 +15,8 @@ const mockEchoTangoConfig: ClientConfig = {
   configJson: {
     orchestrator_client_context:
       'Echo Tango operates in the enterprise communications sector with emphasis on timely and accurate responses.',
-    available_bit_ids: [
-      'echo-tango-specialist',
-      'document-editor',
-      'web-research',
-    ],
-    specialistPrompts: {
-      'echo-tango-specialist':
-        'Custom Echo Tango specialist prompt with {client_display_name} and {client_core_mission_statement} placeholders.',
-      'document-editor':
-        'Custom document editor prompt for {client_display_name}.',
-    },
+    available_bit_ids: ['echo-tango-specialist', 'chat-model'],
+    // Note: specialistPrompts removed - now managed in specialists table
     tool_configs: {
       n8n: {
         webhookUrl: 'https://n8n.echotango.co/webhook/ai-gateway',
@@ -64,8 +54,7 @@ test.describe('Prompt Loader Tests', () => {
     );
     expect(prompt).toContain('enterprise communications sector');
     expect(prompt).toContain('echo-tango-specialist');
-    expect(prompt).toContain('document-editor');
-    expect(prompt).toContain('web-research');
+    expect(prompt).toContain('chat-model');
     expect(prompt).toContain('Always prioritize clarity and precision');
   });
 
@@ -125,13 +114,13 @@ test.describe('Prompt Loader Tests', () => {
   test('loadPrompt should inject client details into specialist prompt placeholders', async () => {
     const prompt = loadPrompt({
       modelId: 'gpt-4-o',
-      contextId: 'document-editor',
+      contextId: 'chat-model',
       clientConfig: mockEchoTangoConfig,
       currentDateTime: '2023-05-01',
     });
 
-    // Client display name should be injected into the custom document editor prompt
-    expect(prompt).toContain('Custom document editor prompt for Echo Tango');
+    // Client display name should be injected
+    expect(prompt).toContain('Echo Tango');
 
     // Custom instructions should be appended
     expect(prompt).toContain(

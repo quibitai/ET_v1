@@ -20,7 +20,7 @@ async function directFetch() {
 
   // Log environment variables (censored)
   console.log(
-    `Using webhook URL: ${webhookUrl ? webhookUrl.substring(0, 20) + '...' : 'undefined'}`,
+    `Using webhook URL: ${webhookUrl ? `${webhookUrl.substring(0, 20)}...` : 'undefined'}`,
   );
   console.log(`Using auth header: ${authHeaderName || 'undefined'}`);
   console.log(`Auth token present: ${authToken ? 'yes' : 'no'}`);

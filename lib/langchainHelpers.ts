@@ -1,9 +1,7 @@
 import {
   HumanMessage,
   AIMessage,
-  SystemMessage,
 } from '@langchain/core/messages';
-import type { BaseMessage } from '@langchain/core/messages';
 
 // Extend this type if you persist more fields (e.g. name, role, etc.)
 export type RawMessage = {

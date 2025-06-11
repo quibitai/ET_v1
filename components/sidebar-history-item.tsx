@@ -25,8 +25,7 @@ import {
 } from './icons';
 import { memo } from 'react';
 import { useChatVisibility } from '@/hooks/use-chat-visibility';
-import { FileEdit, MessageSquare } from 'lucide-react';
-import { useChatPane } from '@/context/ChatPaneContext';
+// ChatPaneContext removed in Phase 1, Task 1.4
 
 const PureChatItem = ({
   chat,
@@ -46,20 +45,11 @@ const PureChatItem = ({
     initialVisibility: chat.visibility,
   });
 
-  // Get the setCurrentActiveSpecialistId function from ChatPaneContext
-  const { setCurrentActiveSpecialistId } = useChatPane();
+  // Simplified navigation - specialist context is managed by ChatWrapper
+  const itemPath = `/chat/${chat.id}`; // Only chat paths supported now
 
-  // Path determination without needing an icon
-  const itemPath =
-    itemType === 'document' ? `/editor/${chat.id}` : `/chat/${chat.id}`;
-
-  // Handle navigation with context setting
+  // Handle navigation
   const handleNavigation = () => {
-    // Set the appropriate bit context ID based on item type
-    const contextId =
-      itemType === 'document' ? 'document-editor' : 'chat-model';
-    setCurrentActiveSpecialistId(contextId);
-
     // Close mobile sidebar
     setOpenMobile(false);
   };

@@ -4,8 +4,8 @@
  */
 
 // Start a simple HTTP server to test the n8n tool
-const http = require('http');
-const url = require('url');
+const http = require('node:http');
+const url = require('node:url');
 
 // Create HTTP server
 const server = http.createServer(async (req, res) => {
@@ -57,7 +57,7 @@ const server = http.createServer(async (req, res) => {
           const directResult = await directN8nFetch(query);
           console.log(
             `Direct n8n result: `,
-            JSON.stringify(directResult, null, 2).substring(0, 500) + '...',
+            `${JSON.stringify(directResult, null, 2).substring(0, 500)}...`,
           );
 
           // Return the result

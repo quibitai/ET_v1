@@ -9,21 +9,18 @@ import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/app/(auth)/auth';
 import { db } from '@/lib/db/client';
-import { chat, message as messageTable, type Chat } from '@/lib/db/schema';
+import { chat, message as messageTable, } from '@/lib/db/schema';
 import type { DBMessage } from '@/lib/db/schema';
 import {
   deleteMessagesByChatIdAfterTimestamp,
   getMessageById,
   updateChatVisiblityById,
-  saveChat,
-  saveMessages,
-  ensureChatExists,
   deleteChatById,
   getChatById,
 } from '@/lib/db/queries';
 import type { VisibilityType } from '@/components/visibility-selector';
 import { myProvider } from '@/lib/ai/providers';
-import { eq, and } from 'drizzle-orm';
+import { eq, } from 'drizzle-orm';
 
 export async function saveChatModelAsCookie(model: string) {
   const cookieStore = await cookies();
@@ -418,5 +415,39 @@ export async function deleteChat(
       success: false,
       error: `Failed to delete chat: ${error.message || 'Unknown error'}`,
     };
+  }
+}
+
+export async function createNewChat({
+  chatId,
+  userId,
+  clientId,
+  title,
+  bitContextId,
+}: {
+  chatId: string;
+  userId: string;
+  clientId?: string;
+  title: string;
+  bitContextId: string;
+}) {
+  try {
+    await db.insert(chat).values({
+      id: chatId,
+      userId,
+      clientId: clientId || 'default',
+      title: title || 'New Chat',
+      bitContextId,
+      createdAt: new Date(),
+    });
+    console.log(
+      `[Server Action] Successfully created new chat ${chatId} for user ${userId}`,
+    );
+    // Note: revalidatePath removed because this action is called during render
+    // The sidebar will be updated when the user navigates or when SWR refetches
+    return { success: true };
+  } catch (error) {
+    console.error(`[Server Action] createNewChat FAILED:`, error);
+    return { success: false, error: 'Failed to create new chat.' };
   }
 }

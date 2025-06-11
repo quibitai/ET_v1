@@ -175,7 +175,7 @@ export async function loadSystemPrompt(
     // Load prompt using existing system
     const currentDateTime = config.currentDateTime || new Date().toISOString();
 
-    const systemPrompt = loadPrompt({
+    const systemPrompt = await loadPrompt({
       modelId,
       contextId,
       clientConfig: config.clientConfig,
@@ -231,10 +231,10 @@ Please assist the user with their request while being helpful, accurate, and con
 /**
  * Preloads common prompts for performance
  */
-export function preloadCommonPrompts(
+export async function preloadCommonPrompts(
   clientConfigs: ClientConfig[],
   logger: RequestLogger,
-): void {
+): Promise<void> {
   logger.info('Preloading common prompts', {
     configCount: clientConfigs.length,
   });
@@ -258,7 +258,7 @@ export function preloadCommonPrompts(
     for (const contextId of commonContexts) {
       for (const modelId of commonModels) {
         try {
-          const prompt = loadPrompt({
+          const prompt = await loadPrompt({
             modelId,
             contextId,
             clientConfig,

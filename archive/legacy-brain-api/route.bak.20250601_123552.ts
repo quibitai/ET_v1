@@ -20,11 +20,8 @@ import { auth } from '@/app/(auth)/auth';
 // State variables to track between requests/handler invocations
 // These fix "Cannot find name" TypeScript errors
 let assistantMessageSaved = false;
-let normalizedChatId = ''; // Will be reassigned in POST
-let effectiveClientId = ''; // Will be reassigned in POST
-
-// Import tools and utilities
-import { orchestratorPrompt, getSpecialistPromptById } from '@/lib/ai/prompts';
+const normalizedChatId = ''; // Will be reassigned in POST
+const effectiveClientId = ''; // Will be reassigned in POST
 import { loadPrompt } from '@/lib/ai/prompts/loader';
 import { specialistRegistry } from '@/lib/ai/prompts/specialists';
 import { modelMapping } from '@/lib/ai/models';
@@ -34,18 +31,11 @@ import type { BaseMessage } from '@langchain/core/messages';
 import type { LLMResult } from '@langchain/core/outputs';
 import { rawToMessage, type RawMessage } from '@/lib/langchainHelpers';
 import { availableTools } from '@/lib/ai/tools/index';
-
-// Import database functions and types
-import { db } from '@/lib/db';
 import { sql } from '@/lib/db/client';
-import { chat, message } from '@/lib/db/schema';
-import { saveMessages, getClientConfig } from '@/lib/db/queries';
+import { getClientConfig } from '@/lib/db/queries';
 import type { DBMessage } from '@/lib/db/schema';
 import type { ClientConfig } from '@/lib/db/queries';
 import { randomUUID } from 'node:crypto';
-import { StringOutputParser } from '@langchain/core/output_parsers';
-import { RunnableSequence } from '@langchain/core/runnables';
-import { ChatRepository } from '@/lib/db/repositories/chatRepository';
 
 // Add GLOBAL_ORCHESTRATOR_CONTEXT_ID to imports at the top
 import {

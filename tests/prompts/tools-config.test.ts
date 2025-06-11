@@ -59,7 +59,7 @@ const mockEchoTangoConfig: ClientConfig = {
   configJson: {
     orchestrator_client_context:
       'Echo Tango operates in the enterprise communications sector.',
-    available_bit_ids: ['echo-tango-specialist', 'document-editor'],
+    available_bit_ids: ['echo-tango-specialist', 'chat-model'],
     tool_configs: {
       n8n: {
         webhookUrl: 'https://n8n.echotango.co/webhook/ai-gateway',

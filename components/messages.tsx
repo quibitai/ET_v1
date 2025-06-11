@@ -1,17 +1,17 @@
-import type { UIMessage } from 'ai';
+import type { Message, UseChatHelpers } from '@ai-sdk/react';
 import { PreviewMessage, ThinkingMessage } from './message';
 import { useScrollToBottom } from './use-scroll-to-bottom';
 import { Greeting } from './greeting';
-import { memo, useEffect, useCallback } from 'react';
+import { memo, useEffect, useCallback, useRef } from 'react';
 import type { Vote } from '@/lib/db/schema';
 import equal from 'fast-deep-equal';
-import type { UseChatHelpers } from '@ai-sdk/react';
 
 interface MessagesProps {
   chatId: string;
-  status: UseChatHelpers['status'];
+  status: 'error' | 'submitted' | 'streaming' | 'ready';
   votes: Array<Vote> | undefined;
-  messages: Array<UIMessage>;
+  messages: Array<Message>;
+  streamData?: any[];
   setMessages: UseChatHelpers['setMessages'];
   reload: UseChatHelpers['reload'];
   isReadonly: boolean;
@@ -24,11 +24,26 @@ function PureMessages(props: MessagesProps) {
     status,
     votes,
     messages,
+    streamData,
     setMessages,
     reload,
     isReadonly,
     isArtifactVisible,
   } = props;
+
+  // Debug logging for status (only when status changes)
+  const prevStatusRef = useRef(status);
+  if (prevStatusRef.current !== status) {
+    console.log(
+      `[Messages] Status changed: ${prevStatusRef.current} → ${status}, Messages count: ${messages.length}`,
+    );
+    if (messages.length > 0) {
+      console.log(
+        `[Messages] Last message role: ${messages[messages.length - 1].role}`,
+      );
+    }
+    prevStatusRef.current = status;
+  }
 
   const [messagesContainerRef, messagesEndRef] =
     useScrollToBottom<HTMLDivElement>();
@@ -68,6 +83,7 @@ function PureMessages(props: MessagesProps) {
             chatId={chatId}
             message={message}
             isLoading={isLoading}
+            streamData={isLoading ? streamData : undefined}
             vote={
               votes
                 ? votes.find((vote) => vote.messageId === message.id)
@@ -81,9 +97,7 @@ function PureMessages(props: MessagesProps) {
         );
       })}
 
-      {status === 'submitted' &&
-        messages.length > 0 &&
-        messages[messages.length - 1].role === 'user' && <ThinkingMessage />}
+      {status === 'submitted' && <ThinkingMessage />}
 
       <div ref={messagesEndRef} className="shrink-0 min-h-[24px]" />
     </div>
@@ -98,6 +112,7 @@ export const Messages = memo(PureMessages, (prevProps, nextProps) => {
   if (prevProps.messages.length !== nextProps.messages.length) return false;
   if (!equal(prevProps.messages, nextProps.messages)) return false;
   if (!equal(prevProps.votes, nextProps.votes)) return false;
+  if (!equal(prevProps.streamData, nextProps.streamData)) return false;
 
   return true;
 });

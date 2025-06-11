@@ -1,7 +1,6 @@
-import type { DynamicStructuredTool } from '@langchain/core/tools';
+
 import { availableTools } from '@/lib/ai/tools';
 import type { RequestLogger } from './observabilityService';
-import { z } from 'zod';
 
 // Import timezone tool
 import { timezoneToolDefinition } from '@/lib/tools/timezoneTool';

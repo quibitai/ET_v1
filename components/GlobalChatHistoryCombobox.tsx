@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Check, ChevronsUpDown, History } from 'lucide-react';
+import { Check, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,10 +19,11 @@ import {
 } from '@/components/ui/popover';
 import { fetcher } from '@/lib/utils';
 import useSWR, { useSWRConfig } from 'swr';
-import { useChatPane } from '@/context/ChatPaneContext';
+// TODO: Refactor to not use context - temporarily disabled
+// import { useChatPane } from '@/context/ChatPaneContext';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { unstable_serialize } from 'swr/infinite';
-import { getChatHistoryPaginationKey } from './sidebar-history';
+import { getChatHistoryPaginationKey } from '@/hooks/use-chat-history';
 
 // Define the chat history item type
 interface ChatHistoryItem {
@@ -39,7 +40,9 @@ interface ChatHistory {
 export function GlobalChatHistoryCombobox() {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState('');
-  const { globalPaneChatId, setGlobalPaneChatId } = useChatPane();
+  // TODO: Refactor to not use context - temporarily stubbed
+  const globalPaneChatId = null;
+  const setGlobalPaneChatId = (_: string) => {};
   const { mutate: globalMutate } = useSWRConfig();
 
   // Fetch chat history with more frequent polling but less aggressive

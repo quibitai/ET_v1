@@ -4,7 +4,6 @@ import React from 'react';
 import {
   ResizablePanelGroup,
   ResizablePanel,
-  ResizableHandle,
 } from '@/components/ui/resizable';
 
 import { TooltipProvider } from '@/components/ui/tooltip';

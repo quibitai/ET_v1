@@ -357,13 +357,31 @@ Specific data extraction capabilities might be limited compared to the primary e
     console.log(`[Extract API] Successfully processed content extraction.`);
 
     // Return success response with extracted content and original file metadata
+    // Handle nested response structure from n8n (responseBody.extractedText)
+    let finalExtractedContent = '';
+
+    if (extractedData.responseBody?.extractedText) {
+      // n8n returns nested structure: {responseBody: {extractedText: "content"}}
+      finalExtractedContent = extractedData.responseBody.extractedText;
+    } else if (extractedData.extractedContent) {
+      finalExtractedContent = extractedData.extractedContent;
+    } else if (extractedData.content) {
+      finalExtractedContent = extractedData.content;
+    } else if (extractedData.text) {
+      finalExtractedContent = extractedData.text;
+    } else if (typeof extractedData === 'string') {
+      finalExtractedContent = extractedData;
+    } else {
+      finalExtractedContent = JSON.stringify(extractedData);
+    }
+
+    console.log(
+      `[Extract API] Final extracted content length: ${finalExtractedContent.length} characters`,
+    );
+
     return NextResponse.json({
       success: true,
-      extractedContent:
-        extractedData.extractedContent ||
-        extractedData.content ||
-        extractedData.text ||
-        extractedData,
+      extractedContent: finalExtractedContent,
       filename: filename,
       contentType: fileType,
       url: fileUrl, // Return the URL used for extraction

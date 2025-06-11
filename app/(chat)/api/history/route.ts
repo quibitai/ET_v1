@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/app/(auth)/auth';
 import type { ChatSummary } from '@/lib/types';
 import {
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       console.log('[API History] Fetching chats for ALL specialists');
 
       // Get all available specialists
-      const specialists = getAvailableSpecialists();
+      const specialists = await getAvailableSpecialists();
       const specialistIds = specialists.map((s) => s.id);
 
       // Add CHAT_BIT_CONTEXT_ID to include general chats
