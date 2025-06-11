@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import { unstable_serialize } from 'swr/infinite';
 import { updateChatVisibility } from '@/app/(chat)/actions';
-import { getChatHistoryPaginationKey } from '@/components/sidebar-history';
+import { getChatHistoryPaginationKey } from '@/hooks/use-chat-history';
 import type { ChatHistory } from '@/lib/types';
 import type { VisibilityType } from '@/components/visibility-selector';
 

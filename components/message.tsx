@@ -5,12 +5,11 @@ import cx from 'classnames';
 import { AnimatePresence, motion } from 'framer-motion';
 import { memo, useState } from 'react';
 import type { Vote } from '@/lib/db/schema';
-import { DocumentToolCall, DocumentToolResult } from './document';
+import { DocumentToolResult } from './document';
 import { PencilEditIcon, SparklesIcon } from './icons';
 import { Markdown } from './markdown';
 import { MessageActions } from './message-actions';
 import { PreviewAttachment } from './preview-attachment';
-import { Weather } from './weather';
 import equal from 'fast-deep-equal';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
@@ -20,7 +19,6 @@ import { MessageEditor } from './message-editor';
 import { MessageReasoning } from './message-reasoning';
 import { MessageThinking } from './message-thinking';
 import type { UseChatHelpers } from '@ai-sdk/react';
-import { UserIcon } from './icons';
 
 const PurePreviewMessage = ({
   chatId,
@@ -31,6 +29,7 @@ const PurePreviewMessage = ({
   reload,
   isReadonly,
   onArtifactExpand,
+  streamData,
 }: {
   chatId: string;
   message: UIMessage;
@@ -40,28 +39,96 @@ const PurePreviewMessage = ({
   reload: UseChatHelpers['reload'];
   isReadonly: boolean;
   onArtifactExpand?: (artifactId: string) => void;
+  streamData?: any[];
 }) => {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
+
+  // While the message is streaming but has no content yet, show the thinking/loading animation.
+  if (isLoading && message.content.length === 0) {
+    // We can use the ThinkingMessage component as a loading indicator.
+    return <ThinkingMessage />;
+  }
 
   // Add a clear log to see when PurePreviewMessage renders and with what props
   console.log(
     `[PurePreviewMessage ${message.id?.substring(0, 5)}] Rendering. isLoading: ${isLoading}, Content: "${typeof message.content === 'string' ? message.content.substring(0, 30) : 'N/A'}"`,
   );
 
+  // Get message data first. Use live streamData if available, otherwise use data attached to the message.
+  const data = streamData || (message as any).data;
+
   // Enhanced debugging for message data and artifact detection
   console.log(
     `[PurePreviewMessage ${message.id?.substring(0, 5)}] Message data:`,
     {
-      hasData: !!(message as any).data,
-      dataLength: (message as any).data?.length || 0,
-      dataItems: (message as any).data || [],
+      hasData: !!data,
+      dataLength: data?.length || 0,
+      dataItems: data || [],
     },
   );
+
+  // Extract tool calls and thinking from message data
+  const toolCalls: any[] = [];
+  const thinkingContent: string[] = [];
+
+  if (data && Array.isArray(data)) {
+    console.log(
+      `[PurePreviewMessage ${message.id?.substring(0, 5)}] Processing ${data.length} data items:`,
+      data.map((item, i) => ({
+        index: i,
+        type: item?.type,
+        keys: Object.keys(item || {}),
+      })),
+    );
+
+    data.forEach((item: any, index: number) => {
+      console.log(
+        `[PurePreviewMessage ${message.id?.substring(0, 5)}] Data item ${index}:`,
+        { type: item?.type, item },
+      );
+
+      // Look for various tool call formats
+      if (
+        item?.type === 'tool-call' ||
+        item?.type === 'tool-result' ||
+        item?.type === 'tool_call' ||
+        item?.type === 'tool_result' ||
+        item?.toolName ||
+        item?.tool_name
+      ) {
+        console.log(
+          `[PurePreviewMessage ${message.id?.substring(0, 5)}] Found tool call:`,
+          item,
+        );
+        toolCalls.push(item);
+      }
+
+      // Look for thinking content in various formats
+      if (
+        item?.type === 'thinking' ||
+        (item?.content &&
+          typeof item.content === 'string' &&
+          item.content.includes('<think>')) ||
+        (item?.text &&
+          typeof item.text === 'string' &&
+          item.text.includes('<think>'))
+      ) {
+        thinkingContent.push(item.content || item.text || JSON.stringify(item));
+      }
+    });
+
+    console.log(
+      `[PurePreviewMessage ${message.id?.substring(0, 5)}] Extracted:`,
+      {
+        toolCallsCount: toolCalls.length,
+        thinkingContentCount: thinkingContent.length,
+      },
+    );
+  }
 
   // Find the conclusive 'artifact-end' event from the message data, if it exists.
   // This will be the single source of truth for rendering a document preview.
   let artifactPreviewProps = null;
-  const data = (message as any).data;
   if (data && Array.isArray(data)) {
     // Find the 'end' event specifically. It should have the final, correct metadata.
     const conclusiveArtifactEvent = data.find(
@@ -69,7 +136,7 @@ const PurePreviewMessage = ({
         item?.type === 'artifact' && item?.props?.eventType === 'artifact-end',
     );
 
-    if (conclusiveArtifactEvent && conclusiveArtifactEvent.props) {
+    if (conclusiveArtifactEvent?.props) {
       // Ensure the props contain valid id and title before setting
       if (
         conclusiveArtifactEvent.props.documentId &&
@@ -149,41 +216,60 @@ const PurePreviewMessage = ({
               }
 
               if (type === 'text') {
+                // Extract thinking content from text and display it separately
+                const textContent =
+                  typeof part.text === 'string' ? part.text : '';
+                const thinkingMatch = textContent.match(
+                  /<think>(.*?)<\/think>/gs,
+                );
+                const cleanText = textContent
+                  .replace(/<think>.*?<\/think>/gs, '')
+                  .trim();
+
                 if (mode === 'view') {
                   return (
-                    <div key={key} className="flex flex-row gap-2 items-start">
-                      {message.role === 'user' && !isReadonly && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              data-testid="message-edit-button"
-                              variant="ghost"
-                              className="px-2 h-fit rounded-full text-muted-foreground opacity-0 group-hover/message:opacity-100"
-                              onClick={() => {
-                                setMode('edit');
-                              }}
-                            >
-                              <PencilEditIcon />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Edit message</TooltipContent>
-                        </Tooltip>
+                    <div key={key} className="flex flex-col gap-2">
+                      {/* Show thinking content in collapsible container if present */}
+                      {thinkingMatch && thinkingMatch.length > 0 && (
+                        <MessageThinking
+                          toolResult={{
+                            success: true,
+                            content: thinkingMatch
+                              .map((match) => match.replace(/<\/?think>/g, ''))
+                              .join('\n\n'),
+                          }}
+                          toolName="thinking"
+                        />
                       )}
 
-                      <div
-                        data-testid="message-content"
-                        className={cn('flex flex-col gap-4', {
-                          'bg-primary text-primary-foreground px-3 py-2 rounded-xl':
-                            message.role === 'user',
-                        })}
-                      >
-                        <Markdown>
-                          {typeof part.text === 'string'
-                            ? part.text
-                                .replace(/<think>.*?<\/think>/gs, '')
-                                .trim()
-                            : ''}
-                        </Markdown>
+                      <div className="flex flex-row gap-2 items-start">
+                        {message.role === 'user' && !isReadonly && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                data-testid="message-edit-button"
+                                variant="ghost"
+                                className="px-2 h-fit rounded-full text-muted-foreground opacity-0 group-hover/message:opacity-100"
+                                onClick={() => {
+                                  setMode('edit');
+                                }}
+                              >
+                                <PencilEditIcon />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Edit message</TooltipContent>
+                          </Tooltip>
+                        )}
+
+                        <div
+                          data-testid="message-content"
+                          className={cn('flex flex-col gap-4', {
+                            'bg-primary text-primary-foreground px-3 py-2 rounded-xl':
+                              message.role === 'user',
+                          })}
+                        >
+                          <Markdown>{cleanText}</Markdown>
+                        </div>
                       </div>
                     </div>
                   );
@@ -206,17 +292,73 @@ const PurePreviewMessage = ({
                 }
               }
 
-              if (type === 'tool-invocation') {
-                // We no longer render previews from the tool call itself.
-                // The definitive preview is rendered from the 'tool-result'.
-                return null;
+              if ((type as string) === 'tool-invocation') {
+                const toolInvocationPart = part as any;
+                // Display tool invocation in collapsible container
+                return (
+                  <MessageThinking
+                    key={key}
+                    toolResult={{
+                      success: true,
+                      toolName: toolInvocationPart.toolName,
+                      args: toolInvocationPart.args,
+                      invocationId: toolInvocationPart.toolCallId,
+                    }}
+                    toolName={`${toolInvocationPart.toolName} (invocation)`}
+                  />
+                );
               }
 
-              // The 'tool-result' part is now only used as a signal to maybe
-              // render the preview based on the data stream. We will render the
-              // conclusive artifact preview *after* the loop.
+              if ((type as string) === 'tool-result') {
+                const toolResultPart = part as any;
+                // Display tool result in collapsible container
+                return (
+                  <MessageThinking
+                    key={key}
+                    toolResult={{
+                      success: !toolResultPart.isError,
+                      result: toolResultPart.result,
+                      error: toolResultPart.isError
+                        ? toolResultPart.result
+                        : undefined,
+                      toolCallId: toolResultPart.toolCallId,
+                    }}
+                    toolName={`${toolResultPart.toolName || 'tool'} (result)`}
+                  />
+                );
+              }
+
               return null;
             })}
+
+            {/* Render tool calls from data stream */}
+            {(toolCalls as any[]).map((toolCall, index) => (
+              <MessageThinking
+                key={`tool-${message.id}-${index}`}
+                toolResult={{
+                  success:
+                    toolCall.type === 'tool-result'
+                      ? toolCall.success !== false
+                      : true,
+                  toolName: toolCall.toolName || 'tool',
+                  args: toolCall.args,
+                  result: toolCall.result,
+                  error: toolCall.error,
+                }}
+                toolName={`${toolCall.toolName || 'tool'} (${toolCall.type === 'tool-call' ? 'call' : 'result'})`}
+              />
+            ))}
+
+            {/* Render thinking content from data stream */}
+            {thinkingContent.length > 0 && (
+              <MessageThinking
+                toolResult={{
+                  success: true,
+                  content: thinkingContent.join('\n\n'),
+                }}
+                toolName="thinking"
+              />
+            )}
 
             {/* 
               Render the conclusive artifact preview here, outside the parts loop.
@@ -276,6 +418,9 @@ export const PreviewMessage = memo(
       // console.log(`[PreviewMessage.memo ${prevProps.message.id.substring(0,5)}] RERENDER because isReadonly changed`);
       return false;
     }
+    if (!equal(prevProps.streamData, nextProps.streamData)) {
+      return false;
+    }
     // console.log(`[PreviewMessage.memo ${prevProps.message.id.substring(0,5)}] Props ARE equal, skipping re-render.`);
     return true; // Props are equal
   },
@@ -300,13 +445,52 @@ export const ThinkingMessage = () => {
           },
         )}
       >
-        <div className="size-8 flex items-center rounded-full justify-center ring-1 shrink-0 ring-border">
-          <SparklesIcon size={14} />
+        <div className="size-8 flex items-center rounded-full justify-center ring-1 shrink-0 ring-border bg-background">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{
+              duration: 2,
+              repeat: Number.POSITIVE_INFINITY,
+              ease: 'linear',
+            }}
+          >
+            <SparklesIcon size={14} />
+          </motion.div>
         </div>
 
         <div className="flex flex-col gap-2 w-full">
-          <div className="flex flex-col gap-4 text-muted-foreground">
-            Hmm...
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <motion.div
+                initial={{ opacity: 0.4 }}
+                animate={{ opacity: 1 }}
+                transition={{
+                  duration: 1.5,
+                  repeat: Number.POSITIVE_INFINITY,
+                  repeatType: 'reverse',
+                }}
+                className="text-muted-foreground font-medium"
+              >
+                Processing your request...
+              </motion.div>
+              <div className="flex gap-1">
+                {[0, 1, 2].map((i) => (
+                  <motion.div
+                    key={i}
+                    className="w-1 h-1 bg-muted-foreground rounded-full"
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{
+                      duration: 1.5,
+                      repeat: Number.POSITIVE_INFINITY,
+                      delay: i * 0.2,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground/70">
+              This may take a few moments for complex requests
+            </div>
           </div>
         </div>
       </div>

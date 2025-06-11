@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/app/(auth)/auth';
-import * as queries from '@/lib/db/queries';
 
 export async function POST(request: Request) {
   // Check authentication

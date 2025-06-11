@@ -8,17 +8,18 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 
 // Import all tools
-
-import { listDocumentsTool } from './listDocumentsTool';
-import { getFileContentsTool } from './getFileContentsTool';
 import { queryDocumentRowsTool } from './query-document-rows';
-import { searchInternalKnowledgeBase } from './search-internal-knowledge-base';
+import { searchAndRetrieveKnowledgeBase } from './search-internal-knowledge-base';
 import { requestSuggestionsTool } from './request-suggestions';
 import { getWeatherTool } from './get-weather';
 import { tavilySearchTool } from './tavily-search';
 import { tavilyExtractTool } from './tavilyExtractTool';
 import { googleCalendarTool } from './googleCalendarTool';
 import { getMessagesFromOtherChatTool } from './getMessagesFromOtherChatTool';
+import {
+  trackEvent,
+  ANALYTICS_EVENTS,
+} from '@/lib/services/observabilityService';
 
 // Import Asana tools from the asana directory
 import { createAsanaFunctionCallingTools } from './asana/function-calling-tools';
@@ -26,65 +27,97 @@ import { createAsanaFunctionCallingTools } from './asana/function-calling-tools'
 // Create Asana tool instances
 const asanaTools = createAsanaFunctionCallingTools();
 
-// Create a tool to check for uploaded content before using knowledge base
-const checkUploadedContentTool = new DynamicStructuredTool({
-  name: 'checkUploadedContent',
+// Create budget creation helper tool
+const createBudgetTool = new DynamicStructuredTool({
+  name: 'createBudget',
   description:
-    'Check if recently uploaded document content is available in the current context before using knowledge base tools. Use this when users reference uploaded documents.',
+    'Structure and calculate budgets for video production projects using uploaded project details and rate card information. Use when users request budgets or estimates.',
   schema: z.object({
-    userQuery: z
+    projectScope: z
       .string()
-      .describe('The user query referencing uploaded content'),
+      .describe('Project scope and deliverables from uploaded content'),
+    rateCardInfo: z
+      .string()
+      .describe('Rate card information found in knowledge base'),
+    projectDetails: z
+      .string()
+      .describe('Additional project details like timeline, complexity'),
   }),
-  func: async ({ userQuery }) => {
-    // This tool should be used to remind the AI to check context
-    return {
-      message:
-        'IMPORTANT: Before using knowledge base tools, check your context for ### 🔴 UPLOADED DOCUMENT sections. If uploaded content exists, use it directly instead of searching the knowledge base.',
-      guidance:
-        'Look for content marked with 🔴 in your current conversation context. This indicates recently uploaded documents that should be used for analysis.',
-      userQuery: userQuery,
-    };
-  },
-});
+  func: async ({ projectScope, rateCardInfo, projectDetails }) => {
+    const startTime = performance.now();
 
-// Create recently uploaded content tool
-const getRecentlyUploadedContentTool = new DynamicStructuredTool({
-  name: 'getRecentlyUploadedContent',
-  description:
-    'Access recently uploaded document content from the current session. Use this instead of knowledge base tools when users reference uploaded files.',
-  schema: z.object({
-    query: z.string().describe('Query about the uploaded content'),
-  }),
-  func: async ({ query }) => {
-    return {
-      message:
-        'Check your current conversation context for sections marked with ### 🔴 UPLOADED DOCUMENT. This content was recently uploaded and should be used for analysis.',
-      query: query,
-    };
+    // Track tool usage
+    await trackEvent({
+      eventName: ANALYTICS_EVENTS.TOOL_USED,
+      properties: {
+        toolName: 'createBudget',
+        hasProjectScope: !!projectScope,
+        hasRateCardInfo: !!rateCardInfo,
+        hasProjectDetails: !!projectDetails,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    try {
+      const result = {
+        message:
+          'BUDGET CREATION GUIDANCE: Create a detailed budget with line items based on the provided information. Include categories like: Creative Development, Production, Post-Production, Motion Graphics, Project Management. Calculate totals and provide clear breakdowns.',
+        projectScope,
+        rateCardInfo,
+        projectDetails,
+        guidance:
+          'Structure as: 1) Project Overview, 2) Budget Breakdown by Category, 3) Line Items with Quantities/Rates, 4) Totals and Payment Schedule',
+      };
+
+      const duration = performance.now() - startTime;
+
+      // Track successful completion
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'createBudget',
+          success: true,
+          duration: Math.round(duration),
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      return result;
+    } catch (error) {
+      const duration = performance.now() - startTime;
+
+      // Track error
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'createBudget',
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          duration: Math.round(duration),
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      throw error; // Re-throw to maintain original behavior
+    }
   },
 });
 
 export const availableTools = [
-  listDocumentsTool,
-  getFileContentsTool,
   queryDocumentRowsTool,
-  searchInternalKnowledgeBase,
+  searchAndRetrieveKnowledgeBase,
   requestSuggestionsTool,
   getWeatherTool,
   tavilySearchTool,
   tavilyExtractTool,
   googleCalendarTool,
   getMessagesFromOtherChatTool,
-  checkUploadedContentTool,
-  getRecentlyUploadedContentTool,
+  createBudgetTool,
   ...asanaTools, // Modern Asana tools with LLM function calling, semantic resolution, error recovery
 ];
 
 export {
-  getFileContentsTool,
-  listDocumentsTool,
-  searchInternalKnowledgeBase,
+  searchAndRetrieveKnowledgeBase,
   getWeatherTool,
   requestSuggestionsTool,
   tavilySearchTool,

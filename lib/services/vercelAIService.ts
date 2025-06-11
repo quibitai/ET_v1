@@ -17,10 +17,6 @@ import { auth } from '@/app/(auth)/auth';
 import { saveMessages } from '@/lib/db/queries';
 import type { DBMessage } from '@/lib/db/schema';
 
-// Import date/time and prompt loading utilities
-import { DateTime } from 'luxon';
-import { loadPrompt } from '@/lib/ai/prompts/loader';
-
 // Import modern tool service for proper tool selection
 import { selectRelevantTools, type ToolContext } from './modernToolService';
 

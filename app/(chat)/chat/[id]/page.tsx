@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 
 import { auth } from '@/app/(auth)/auth';
-import { Chat } from '@/components/chat';
+import { ChatWrapper } from '@/components/chat-wrapper';
 import { getChatById, getMessagesByChatId } from '@/lib/db/queries';
 import { DEFAULT_CHAT_MODEL } from '@/lib/ai/models';
 import type { DBMessage } from '@/lib/db/schema';
@@ -83,23 +83,25 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
 
   if (!chatModelFromCookie) {
     return (
-      <Chat
+      <ChatWrapper
         id={chat.id}
         initialMessages={convertToUIMessages(messagesFromDb)}
         selectedChatModel={DEFAULT_CHAT_MODEL}
         selectedVisibilityType={chat.visibility}
         isReadonly={session?.user?.id !== chat.userId}
+        activeBitContextId={chat.bitContextId || undefined}
       />
     );
   }
 
   return (
-    <Chat
+    <ChatWrapper
       id={chat.id}
       initialMessages={convertToUIMessages(messagesFromDb)}
       selectedChatModel={chatModelFromCookie.value}
       selectedVisibilityType={chat.visibility}
       isReadonly={session?.user?.id !== chat.userId}
+      activeBitContextId={chat.bitContextId || undefined}
     />
   );
 }

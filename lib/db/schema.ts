@@ -7,7 +7,6 @@ import {
   uuid,
   text,
   primaryKey,
-  foreignKey,
   boolean,
   bigint,
   index,
@@ -17,13 +16,14 @@ import {
 export const clients = pgTable('Clients', {
   id: text('id').primaryKey().notNull(),
   name: text('name').notNull(),
+  gdrive_folder_id: text('gdrive_folder_id'), // Google Drive folder ID for this client
   client_display_name: text('client_display_name').notNull(), // User-facing client name
   client_core_mission: text('client_core_mission'), // Short client business description (nullable)
-  createdAt: timestamp('createdAt', { mode: 'date', withTimezone: true })
+  createdAt: timestamp('created_at', { mode: 'date', withTimezone: true })
     .defaultNow()
     .notNull(),
   customInstructions: text('customInstructions'),
-  config_json: json('config_json'), // Structured configuration including specialistPrompts
+  config_json: json('config_json'), // Structured configuration for orchestrator context, available bit IDs, and tool configs
 });
 
 export type Client = InferSelectModel<typeof clients>;
@@ -32,6 +32,9 @@ export const user = pgTable('User', {
   id: uuid('id').primaryKey().notNull().defaultRandom(),
   email: varchar('email', { length: 64 }).notNull(),
   password: varchar('password', { length: 64 }),
+  role: varchar('role', { enum: ['user', 'admin'] })
+    .notNull()
+    .default('user'),
   clientId: text('client_id')
     .notNull()
     .references(() => clients.id),
@@ -39,22 +42,33 @@ export const user = pgTable('User', {
 
 export type User = InferSelectModel<typeof user>;
 
-export const chat = pgTable('Chat', {
-  id: uuid('id').primaryKey().notNull().defaultRandom(),
-  createdAt: timestamp('createdAt').notNull(),
-  updatedAt: timestamp('updatedAt').defaultNow().notNull(),
-  title: text('title').notNull(),
-  userId: uuid('userId')
-    .notNull()
-    .references(() => user.id),
-  visibility: varchar('visibility', { enum: ['public', 'private'] })
-    .notNull()
-    .default('private'),
-  clientId: text('client_id')
-    .notNull()
-    .references(() => clients.id),
-  bitContextId: text('bitContextId'), // Add bitContextId field (nullable)
-});
+export const chat = pgTable(
+  'Chat',
+  {
+    id: uuid('id').primaryKey().notNull().defaultRandom(),
+    createdAt: timestamp('createdAt').notNull(),
+    updatedAt: timestamp('updatedAt').defaultNow().notNull(),
+    title: text('title').notNull(),
+    userId: uuid('userId')
+      .notNull()
+      .references(() => user.id),
+    visibility: varchar('visibility', { enum: ['public', 'private'] })
+      .notNull()
+      .default('private'),
+    clientId: text('client_id')
+      .notNull()
+      .references(() => clients.id),
+    bitContextId: text('bitContextId'), // Add bitContextId field (nullable)
+  },
+  (table) => ({
+    // Index for efficient user-based chat queries
+    userIdx: index('user_id_idx').on(table.userId),
+    // Index for efficient client-based queries
+    clientIdx: index('chat_client_id_idx').on(table.clientId),
+    // Composite index for user + updatedAt for pagination
+    userUpdatedIdx: index('user_updated_idx').on(table.userId, table.updatedAt),
+  }),
+);
 
 export type Chat = InferSelectModel<typeof chat>;
 
@@ -98,61 +112,6 @@ export const vote = pgTable(
 );
 
 export type Vote = InferSelectModel<typeof vote>;
-
-export const document = pgTable(
-  'Document',
-  {
-    id: uuid('id').notNull().defaultRandom(),
-    createdAt: timestamp('createdAt').notNull(),
-    title: text('title').notNull(),
-    content: text('content'),
-    kind: varchar('text', { enum: ['text', 'code', 'image', 'sheet'] })
-      .notNull()
-      .default('text'),
-    userId: uuid('userId')
-      .notNull()
-      .references(() => user.id),
-    clientId: text('client_id')
-      .notNull()
-      .references(() => clients.id),
-  },
-  (table) => {
-    return {
-      pk: primaryKey({ columns: [table.id, table.createdAt] }),
-    };
-  },
-);
-
-export type Document = InferSelectModel<typeof document>;
-
-export const suggestion = pgTable(
-  'Suggestion',
-  {
-    id: uuid('id').notNull().defaultRandom(),
-    documentId: uuid('documentId').notNull(),
-    documentCreatedAt: timestamp('documentCreatedAt').notNull(),
-    originalText: text('originalText').notNull(),
-    suggestedText: text('suggestedText').notNull(),
-    description: text('description'),
-    isResolved: boolean('isResolved').notNull().default(false),
-    userId: uuid('userId')
-      .notNull()
-      .references(() => user.id),
-    createdAt: timestamp('createdAt').notNull(),
-    clientId: text('client_id')
-      .notNull()
-      .references(() => clients.id),
-  },
-  (table) => ({
-    pk: primaryKey({ columns: [table.id] }),
-    documentRef: foreignKey({
-      columns: [table.documentId, table.documentCreatedAt],
-      foreignColumns: [document.id, document.createdAt],
-    }),
-  }),
-);
-
-export type Suggestion = InferSelectModel<typeof suggestion>;
 
 // Context Management Tables
 
@@ -265,11 +224,7 @@ export const chatFileReferences = pgTable(
     ),
     typeIdx: index('idx_chat_file_references_type').on(table.fileType),
     clientIdx: index('idx_chat_file_references_client').on(table.clientId),
-    // Foreign key for artifact references
-    artifactRef: foreignKey({
-      columns: [table.artifactDocumentId, table.artifactDocumentCreatedAt],
-      foreignColumns: [document.id, document.createdAt],
-    }),
+    // Foreign key for artifact references removed - document table no longer exists
   }),
 );
 
@@ -304,3 +259,32 @@ export const conversationalMemory = pgTable(
 export type ConversationalMemory = InferSelectModel<
   typeof conversationalMemory
 >;
+
+// Specialists Configuration Table
+export const specialists = pgTable('specialists', {
+  id: text('id').primaryKey().notNull(), // e.g., 'chat-model', 'echo-tango-specialist'
+  name: text('name').notNull(),
+  description: text('description'),
+  personaPrompt: text('persona_prompt').notNull(),
+  defaultTools: json('default_tools'), // Stores an array of tool names, e.g., ["tavilySearch"]
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export type Specialist = InferSelectModel<typeof specialists>;
+
+// Analytics Events Table for Observability Dashboard
+export const analyticsEvents = pgTable('analytics_events', {
+  id: uuid('id').primaryKey().notNull().defaultRandom(),
+  eventName: text('event_name').notNull(), // e.g., 'QUERY_CLASSIFICATION', 'TOOL_USED', 'EXECUTION_PATH'
+  properties: json('properties'), // e.g., { "path": "LangGraph", "tool": "tavilySearch", "confidence": 0.9 }
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  clientId: text('client_id').references(() => clients.id),
+  userId: uuid('user_id').references(() => user.id),
+  chatId: uuid('chat_id').references(() => chat.id),
+});
+
+export type AnalyticsEvent = InferSelectModel<typeof analyticsEvents>;

@@ -126,7 +126,7 @@ try {
 // Test getToolPromptInstructions
 console.log('\n6. Testing getToolPromptInstructions:');
 try {
-  if (specialistRegistry && specialistRegistry['echo-tango-specialist']) {
+  if (specialistRegistry?.['echo-tango-specialist']) {
     const tools =
       specialistRegistry['echo-tango-specialist']?.defaultTools || [];
     console.log(`- Echo Tango has ${tools.length} tools: ${tools.join(', ')}`);

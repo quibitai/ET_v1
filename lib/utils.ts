@@ -8,7 +8,8 @@ import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { v4 as uuidv4 } from 'uuid';
 
-import type { Document } from '@/lib/db/schema';
+// Document type removed in Phase 1, Task 1.2
+type Document = any; // Placeholder for legacy compatibility
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

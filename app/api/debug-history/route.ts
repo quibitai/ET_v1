@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const clientId = (session.user as any).clientId || 'default';
 
     // Get specialists
-    const specialists = getAvailableSpecialists();
+    const specialists = await getAvailableSpecialists();
     const specialistIds = specialists.map((s) => s.id);
     specialistIds.push(CHAT_BIT_CONTEXT_ID);
 

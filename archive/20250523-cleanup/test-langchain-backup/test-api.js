@@ -12,10 +12,10 @@ async function testApi() {
         role: 'user',
         content:
           'what google calendar events do I have scheduled for tuesday of this week?',
-        id: 'msg-test-' + Date.now(),
+        id: `msg-test-${Date.now()}`,
       },
     ],
-    id: 'test-api-' + Date.now(),
+    id: `test-api-${Date.now()}`,
     activeBitContextId: 'global-orchestrator',
   };
 

@@ -31,11 +31,12 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
+     * - api/auth/ (NextAuth routes)
      * - _next/ (Next.js internals)
      * - favicon.ico (favicon file)
      * - public files (images, etc.)
      * - api routes that need to bypass auth
      */
-    '/((?!_next|favicon.ico|api/brain|api/chat-actions|api/ping|api/test-artifact-fix|api/test-artifact-streaming|api/test-tool-binding|api/test-direct-openai|api/test-minimal-tool-forcing|api/debug-history).*)',
+    '/((?!api/auth|_next|favicon.ico|api/brain|api/chat-actions|api/ping|api/test-artifact-fix|api/test-artifact-streaming|api/test-tool-binding|api/test-direct-openai|api/test-minimal-tool-forcing|api/debug-history).*)',
   ],
 };

@@ -6,9 +6,7 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
-import { StateGraph } from '@langchain/langgraph';
 import type { RequestLogger } from '@/lib/services/observabilityService';
-import { availableTools } from '@/lib/ai/tools/index';
 import { modelMapping } from '@/lib/ai/models';
 import {
   selectRelevantTools,

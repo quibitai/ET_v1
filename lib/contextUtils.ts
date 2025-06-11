@@ -2,7 +2,6 @@ import {
   HumanMessage,
   AIMessage,
   SystemMessage,
-  type BaseMessage,
 } from '@langchain/core/messages';
 import { DateTime } from 'luxon';
 import { z } from 'zod';

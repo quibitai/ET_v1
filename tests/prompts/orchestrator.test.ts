@@ -14,11 +14,7 @@ const mockEchoTangoConfig: ClientConfig = {
   configJson: {
     orchestrator_client_context:
       'Echo Tango operates in the enterprise communications sector with emphasis on timely and accurate responses.',
-    available_bit_ids: [
-      'echo-tango-specialist',
-      'document-editor',
-      'web-research',
-    ],
+    available_bit_ids: ['echo-tango-specialist', 'chat-model', 'web-research'],
     tool_configs: {
       n8n: {
         webhookUrl: 'https://n8n.echotango.co/webhook/ai-gateway',
@@ -70,7 +66,7 @@ test.describe('Orchestrator Prompt Generation Tests', () => {
 
     // Verify available bits are listed
     expect(prompt).toContain('echo-tango-specialist');
-    expect(prompt).toContain('document-editor');
+    expect(prompt).toContain('chat-model');
     expect(prompt).toContain('web-research');
 
     // Verify custom instructions are included

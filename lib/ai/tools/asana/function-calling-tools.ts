@@ -16,11 +16,14 @@ import { ASANA_PAT, getWorkspaceGid } from './config';
 import {
   analyzeAsanaError,
   formatUserFriendlyError,
-  type UserFriendlyErrorResult,
 } from './recovery/userFriendlyErrorHandler';
 import { AsanaIntegrationError } from './utils/errorHandler';
 import { formatWorkspaceUsersList } from './formatters/responseFormatter';
 import type { RequestContext } from './types';
+import {
+  trackEvent,
+  ANALYTICS_EVENTS,
+} from '@/lib/services/observabilityService';
 
 // Generate a simple request ID
 function generateRequestId(): string {
@@ -149,7 +152,23 @@ export function createAsanaFunctionCallingTools(
           .describe('Parent task name or GID for subtasks'),
       }),
       func: async ({ name, notes, projects, assignee, due_date, parent }) => {
+        const startTime = performance.now();
         const context = createContext(`Create task: ${name}`);
+
+        // Track tool usage
+        await trackEvent({
+          eventName: ANALYTICS_EVENTS.TOOL_USED,
+          properties: {
+            toolName: 'asana_create_task',
+            taskName: name.substring(0, 50), // Limit for privacy
+            hasNotes: !!notes,
+            hasProjects: !!(projects && projects.length > 0),
+            hasAssignee: !!assignee,
+            hasDueDate: !!due_date,
+            hasParent: !!parent,
+            timestamp: new Date().toISOString(),
+          },
+        });
 
         const parameters = {
           name,
@@ -172,8 +191,36 @@ export function createAsanaFunctionCallingTools(
 
         try {
           const result = await modernTool.createTask(parameters, context);
+          const duration = performance.now() - startTime;
+
+          // Track successful completion
+          await trackEvent({
+            eventName: ANALYTICS_EVENTS.TOOL_USED,
+            properties: {
+              toolName: 'asana_create_task',
+              success: true,
+              duration: Math.round(duration),
+              hasEnhanced: !!result.enhanced,
+              timestamp: new Date().toISOString(),
+            },
+          });
+
           return formatResponse(result);
         } catch (error) {
+          const duration = performance.now() - startTime;
+
+          // Track error
+          await trackEvent({
+            eventName: ANALYTICS_EVENTS.TOOL_USED,
+            properties: {
+              toolName: 'asana_create_task',
+              success: false,
+              error: error instanceof Error ? error.message : 'Unknown error',
+              duration: Math.round(duration),
+              timestamp: new Date().toISOString(),
+            },
+          });
+
           return handleToolError(error, 'creating task', parameters);
         }
       },

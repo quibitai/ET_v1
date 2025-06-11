@@ -26,15 +26,7 @@ const mockEchoTangoConfig: ClientConfig = {
   configJson: {
     orchestrator_client_context:
       'Echo Tango operates in the enterprise communications sector with emphasis on timely and accurate responses.',
-    available_bit_ids: [
-      'echo-tango-specialist',
-      'document-editor',
-      'web-research',
-    ],
-    specialistPrompts: {
-      'echo-tango-specialist':
-        'Custom Echo Tango specialist prompt with {client_display_name} and {client_core_mission_statement} placeholders.',
-    },
+    available_bit_ids: ['echo-tango-specialist', 'chat-model', 'web-research'],
     tool_configs: {
       n8n: {
         webhookUrl: 'https://n8n.echotango.co/webhook/ai-gateway',
@@ -144,7 +136,7 @@ test.describe('Client-Aware Prompt System Integration', () => {
     );
     expect(result.systemPrompt).toContain('enterprise communications sector');
     expect(result.systemPrompt).toContain('echo-tango-specialist');
-    expect(result.systemPrompt).toContain('document-editor');
+    expect(result.systemPrompt).toContain('chat-model');
     expect(result.systemPrompt).toContain(
       'Always prioritize clarity and precision',
     );

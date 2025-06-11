@@ -7,7 +7,6 @@ import {
   validateRequestSize,
   validateContentType,
 } from '../validationService';
-import { brainRequestSchema } from '@/lib/validation/brainValidation';
 
 describe('ValidationService', () => {
   describe('validateRequest', () => {

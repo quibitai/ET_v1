@@ -10,7 +10,6 @@ import {
   SemanticEntityResolver,
   semanticEntityResolver,
   type EntityResolutionResult,
-  type EntityMatch,
 } from '../semantic/entityResolver';
 import { EnhancedEntityResolver } from '../semantic/enhancedEntityResolver';
 

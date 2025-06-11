@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { DynamicStructuredTool } from '@langchain/core/tools';
+import {
+  trackEvent,
+  ANALYTICS_EVENTS,
+} from '@/lib/services/observabilityService';
 
 const requestSuggestionsSchema = z.object({
   documentId: z
@@ -25,26 +29,71 @@ export const requestSuggestionsTool = new DynamicStructuredTool({
     'Request AI suggestions for improving a document. This will analyze the content and provide suggestions for enhancements.',
   schema: requestSuggestionsSchema,
   func: async ({ documentId }) => {
+    const startTime = performance.now();
     console.log(
       `[requestSuggestionsTool] Called with documentId: ${documentId}`,
     );
 
-    // TODO: Implement full suggestion generation logic:
-    // 1. Fetch document content from database
-    // 2. Process content with AI to generate meaningful suggestions
-    // 3. Format suggestions in a structured way for frontend rendering
-    // 4. Stream results back through the appropriate channels
-    // 5. Update suggestion status in database for tracking
+    // Track tool usage
+    await trackEvent({
+      eventName: ANALYTICS_EVENTS.TOOL_USED,
+      properties: {
+        toolName: 'requestSuggestions',
+        documentId: documentId.substring(0, 20), // Limit for privacy
+        timestamp: new Date().toISOString(),
+      },
+    });
 
-    // Placeholder logic:
-    console.log(
-      `[requestSuggestionsTool] Placeholder: Simulating suggestion generation for document ${documentId}`,
-    );
+    try {
+      // TODO: Implement full suggestion generation logic:
+      // 1. Fetch document content from database
+      // 2. Process content with AI to generate meaningful suggestions
+      // 3. Format suggestions in a structured way for frontend rendering
+      // 4. Stream results back through the appropriate channels
+      // 5. Update suggestion status in database for tracking
 
-    // Return a simplified response structure
-    return {
-      id: documentId,
-      message: `Placeholder: Suggestions would be generated for document ID: ${documentId}. Streaming and database logic needs reimplementation.`,
-    };
+      // Placeholder logic:
+      console.log(
+        `[requestSuggestionsTool] Placeholder: Simulating suggestion generation for document ${documentId}`,
+      );
+
+      const result = {
+        id: documentId,
+        message: `Placeholder: Suggestions would be generated for document ID: ${documentId}. Streaming and database logic needs reimplementation.`,
+      };
+
+      const duration = performance.now() - startTime;
+
+      // Track successful completion
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'requestSuggestions',
+          success: true,
+          duration: Math.round(duration),
+          isPlaceholder: true, // Mark as placeholder implementation
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      // Return a simplified response structure
+      return result;
+    } catch (error) {
+      const duration = performance.now() - startTime;
+
+      // Track error
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'requestSuggestions',
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          duration: Math.round(duration),
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      throw error; // Re-throw to maintain original behavior
+    }
   },
 });

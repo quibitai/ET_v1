@@ -1,6 +1,10 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import type { DynamicStructuredToolInput } from '@langchain/core/tools';
+import {
+  trackEvent,
+  ANALYTICS_EVENTS,
+} from '@/lib/services/observabilityService';
 
 // This schema defines the expected input structure for the tool.
 const GoogleCalendarToolInputSchema = z.object({
@@ -34,6 +38,7 @@ export const googleCalendarTool = new DynamicStructuredTool({
     'The tool handles authentication and configuration automatically.',
   schema: GoogleCalendarToolInputSchema,
   func: async (args: GoogleCalendarToolArgs): Promise<string> => {
+    const startTime = performance.now();
     const requestId = `gcal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     console.log(
       `GoogleCalendarTool [${requestId}]: Starting execution with validated args:`,
@@ -42,10 +47,35 @@ export const googleCalendarTool = new DynamicStructuredTool({
 
     const query = args.query;
 
+    // Track tool usage analytics
+    await trackEvent({
+      eventName: ANALYTICS_EVENTS.TOOL_USED,
+      properties: {
+        toolName: 'googleCalendar',
+        query: query?.substring(0, 100), // Limit for privacy
+        requestId: requestId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
     if (!query) {
+      const duration = performance.now() - startTime;
       const errorMsg =
         'Error: No query provided. Cannot determine the calendar request.';
       console.error(`GoogleCalendarTool [${requestId}]: ${errorMsg}`);
+
+      // Track error
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'googleCalendar',
+          success: false,
+          error: 'No query provided',
+          duration: Math.round(duration),
+          timestamp: new Date().toISOString(),
+        },
+      });
+
       return errorMsg;
     }
 
@@ -107,10 +137,24 @@ export const googleCalendarTool = new DynamicStructuredTool({
       ])) as Response;
 
       if (!response.ok) {
+        const duration = performance.now() - startTime;
         const errorText = await response.text();
         console.error(
           `GoogleCalendarTool [${requestId}]: Google Calendar webhook call failed with status ${response.status}. Response: ${errorText}`,
         );
+
+        // Track webhook error
+        await trackEvent({
+          eventName: ANALYTICS_EVENTS.TOOL_USED,
+          properties: {
+            toolName: 'googleCalendar',
+            success: false,
+            error: `Webhook error: ${response.status} ${response.statusText}`,
+            duration: Math.round(duration),
+            timestamp: new Date().toISOString(),
+          },
+        });
+
         return `Error interacting with Google Calendar: ${response.status} ${response.statusText}. The service responded with: "${errorText.substring(0, 200)}${errorText.length > 200 ? '...' : ''}"`;
       }
 
@@ -275,6 +319,19 @@ export const googleCalendarTool = new DynamicStructuredTool({
           result += '\n';
         });
 
+        // Track successful completion
+        const duration = performance.now() - startTime;
+        await trackEvent({
+          eventName: ANALYTICS_EVENTS.TOOL_USED,
+          properties: {
+            toolName: 'googleCalendar',
+            success: true,
+            duration: Math.round(duration),
+            eventsCount: events.length,
+            timestamp: new Date().toISOString(),
+          },
+        });
+
         console.log(
           `GoogleCalendarTool [${requestId}]: Successfully processed calendar events`,
         );
@@ -283,6 +340,20 @@ export const googleCalendarTool = new DynamicStructuredTool({
 
       // General response handling
       if (jsonResponse?.summary) {
+        const duration = performance.now() - startTime;
+
+        // Track successful completion
+        await trackEvent({
+          eventName: ANALYTICS_EVENTS.TOOL_USED,
+          properties: {
+            toolName: 'googleCalendar',
+            success: true,
+            duration: Math.round(duration),
+            responseType: 'summary',
+            timestamp: new Date().toISOString(),
+          },
+        });
+
         console.log(
           `GoogleCalendarTool [${requestId}]: Returning summary from response`,
         );
@@ -290,15 +361,44 @@ export const googleCalendarTool = new DynamicStructuredTool({
       }
 
       // Fallback for other response formats
+      const duration = performance.now() - startTime;
+
+      // Track successful completion
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'googleCalendar',
+          success: true,
+          duration: Math.round(duration),
+          responseType: 'fallback',
+          timestamp: new Date().toISOString(),
+        },
+      });
+
       console.log(
         `GoogleCalendarTool [${requestId}]: Using fallback response format`,
       );
       return `Google Calendar processed the request successfully. ${JSON.stringify(jsonResponse)}`;
     } catch (error: any) {
+      const duration = performance.now() - startTime;
+
       console.error(
         `GoogleCalendarTool [${requestId}]: Exception occurred during the call to Google Calendar webhook:`,
         error,
       );
+
+      // Track exception
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.TOOL_USED,
+        properties: {
+          toolName: 'googleCalendar',
+          success: false,
+          error: `Exception: ${error?.message}`,
+          duration: Math.round(duration),
+          isTimeout: error?.message?.includes('timed out') || false,
+          timestamp: new Date().toISOString(),
+        },
+      });
 
       // Handle timeout specifically
       if (error?.message?.includes('timed out')) {

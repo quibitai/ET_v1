@@ -1,13 +1,12 @@
 'use client';
 
-import { ReactNode, useEffect } from 'react';
-import { useChatPane } from '@/context/ChatPaneContext';
+import type { ReactNode } from 'react';
 
 /**
- * EditorPageWrapper
+ * EditorPageWrapper - DEPRECATED
  *
- * This component automatically sets the currentActiveSpecialistId to 'document-editor'
- * when the editor page loads, ensuring proper context for the Document Editor Bit.
+ * Document editing functionality has been removed in Phase 1, Task 1.4
+ * This component now serves as a simple wrapper for legacy compatibility.
  */
 export function EditorPageWrapper({
   children,
@@ -16,21 +15,9 @@ export function EditorPageWrapper({
   children: ReactNode;
   docId: string;
 }) {
-  const { setCurrentActiveSpecialistId, setActiveDocId } = useChatPane();
-
-  // Set the context when this component mounts
-  useEffect(() => {
-    console.log(
-      '[EditorPageWrapper] Setting currentActiveSpecialistId to document-editor',
-    );
-    setCurrentActiveSpecialistId('document-editor');
-
-    // Set the active document ID if provided and not 'new'
-    if (docId && docId !== 'new') {
-      console.log(`[EditorPageWrapper] Setting activeDocId to ${docId}`);
-      setActiveDocId(docId);
-    }
-  }, [setCurrentActiveSpecialistId, setActiveDocId, docId]);
+  console.warn(
+    '[EditorPageWrapper] Document editing functionality has been deprecated',
+  );
 
   return <>{children}</>;
 }

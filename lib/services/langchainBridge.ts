@@ -14,14 +14,12 @@ import {
 } from '@langchain/core/prompts';
 import {
   AIMessage,
-  BaseMessage,
   HumanMessage,
   SystemMessage,
 } from '@langchain/core/messages';
 import { modelMapping } from '@/lib/ai/models';
 import { createLangChainToolService } from './langchainToolService';
 import {
-  LangChainStreamingService,
   createLangChainStreamingService,
 } from './langchainStreamingService';
 
@@ -37,7 +35,6 @@ import type { RequestLogger } from './observabilityService';
 import type { ClientConfig } from '@/lib/db/queries';
 import type { LangChainToolConfig } from './langchainToolService';
 import type { LangGraphWrapperConfig } from '@/lib/ai/graphs';
-import { generateUUID } from '@/lib/utils';
 
 /**
  * Configuration for LangChain bridge

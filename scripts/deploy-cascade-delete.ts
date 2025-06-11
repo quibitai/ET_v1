@@ -1,7 +1,5 @@
 import { config } from 'dotenv';
 import postgres from 'postgres';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 
 config({
   path: '.env.local',

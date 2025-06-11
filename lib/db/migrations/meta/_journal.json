@@ -85,6 +85,41 @@
       "when": 1748123459547,
       "tag": "0011_cascade_delete_and_conversational_memory",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1749665199563,
+      "tag": "0012_numerous_infant_terrible",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1749668859129,
+      "tag": "0013_many_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1749671581243,
+      "tag": "0014_rare_iron_monger",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1749680726599,
+      "tag": "0015_handy_captain_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1749682354029,
+      "tag": "0016_add_admin_indexes",
+      "breakpoints": true
     }
   ]
 }

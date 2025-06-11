@@ -1,7 +1,6 @@
 import { openai } from '@ai-sdk/openai';
 import { streamText, type LanguageModel } from 'ai';
 import type { RequestLogger, TokenUsage } from './observabilityService';
-import type { BrainRequest } from '@/lib/validation/brainValidation';
 
 /**
  * StreamingService

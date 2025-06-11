@@ -6,8 +6,6 @@ import {
   conversationSummaries,
   chatFileReferences,
   type ConversationEntity,
-  type ConversationSummary,
-  type ChatFileReference,
   type DBMessage,
 } from '@/lib/db/schema';
 

@@ -11,7 +11,6 @@ import {
 } from '../recovery/errorRecovery';
 import { FallbackHandler } from '../recovery/fallbackHandler';
 import { EnhancedEntityResolver } from '../semantic/enhancedEntityResolver';
-import { conversationContextManager } from '../context/conversationContext';
 import type { AsanaApiClient } from '../api-client/client';
 import { createTask } from '../api-client/operations/tasks';
 import { createProject } from '../api-client/operations/projects';

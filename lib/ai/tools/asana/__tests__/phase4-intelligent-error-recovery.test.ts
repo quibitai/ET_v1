@@ -10,11 +10,9 @@ import {
   IntelligentErrorRecovery,
   intelligentErrorRecovery,
   type ErrorContext,
-  type RecoveryResult,
 } from '../recovery/errorRecovery';
 import {
   FallbackHandler,
-  type FallbackResult,
 } from '../recovery/fallbackHandler';
 
 // Import test utilities

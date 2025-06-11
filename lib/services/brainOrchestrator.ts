@@ -1,26 +1,10 @@
-/**
- * BrainOrchestrator
- *
- * Unified orchestration service that intelligently routes queries between
- * LangChain (complex tool orchestration) and Vercel AI SDK (simple responses).
- * Powers both Quibit (global chat pane) and Chat Bit specialists.
- * Provides fallback mechanisms, response standardization, and comprehensive
- * error handling for the hybrid RAG system.
- *
- * Terminology:
- * - Quibit/Quibit Chat: Global chat pane orchestrator
- * - Chat Bit: Sidebar specialist chat interface
- * - Specialists: Individual AI assistants (Echo Tango, General Chat, etc.)
- * Target: ~180 lines as per roadmap specifications.
- */
-
-import { NextRequest } from 'next/server';
 import type { RequestLogger } from './observabilityService';
+import { trackEvent, ANALYTICS_EVENTS } from './observabilityService';
 import {
   QueryClassifier,
   type QueryClassificationResult,
 } from './queryClassifier';
-import { VercelAIService, type VercelAIResult } from './vercelAIService';
+import { VercelAIService } from './vercelAIService';
 import { MessageService } from './messageService';
 import { ContextService, type ProcessedContext } from './contextService';
 import {
@@ -28,7 +12,6 @@ import {
   streamLangChainAgent,
   cleanupLangChainAgent,
   type LangChainBridgeConfig,
-  type LangChainAgent,
 } from './langchainBridge';
 import type { ClientConfig } from '@/lib/db/queries';
 import type { BrainRequest } from '@/lib/validation/brainValidation';
@@ -220,18 +203,64 @@ export class BrainOrchestrator {
           forceToolCall: classification?.forceToolCall,
           classificationTime: `${classificationTime.toFixed(2)}ms`,
         });
+
+        // Track query classification analytics
+        await trackEvent({
+          eventName: ANALYTICS_EVENTS.QUERY_CLASSIFICATION,
+          properties: {
+            shouldUseLangChain: classification?.shouldUseLangChain,
+            confidence: classification?.confidence,
+            reasoning: classification?.reasoning,
+            patterns: classification?.detectedPatterns,
+            forceToolCall: classification?.forceToolCall,
+            classificationTime: classificationTime,
+          },
+          clientId: this.config.clientConfig?.id,
+          chatId: brainRequest.chatId,
+        });
       }
 
       const executionStart = performance.now();
       let response: Response;
 
       // Execute based on classification or config
+      // TEMPORARY FIX: For simple conversational messages, prefer Vercel AI for better streaming
+      const isSimpleConversation =
+        !this.detectComplexityPatterns(userInput).length;
       const shouldUseLangChain =
         classification?.shouldUseLangChain ||
-        (!this.config.enableClassification && this.config.enableHybridRouting);
+        (!this.config.enableClassification &&
+          this.config.enableHybridRouting) ||
+        false; // Force false for now to test Vercel AI path
 
-      if (shouldUseLangChain) {
-        this.logger.info('Routing to LangChain path');
+      // Override to use Vercel AI for simple messages to fix streaming issues
+      const forceVercelAI =
+        isSimpleConversation && !classification?.forceToolCall;
+      const finalShouldUseLangChain = forceVercelAI
+        ? false
+        : shouldUseLangChain;
+
+      // Track execution path selection
+      const executionPath = finalShouldUseLangChain ? 'langchain' : 'vercel-ai';
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.EXECUTION_PATH_SELECTED,
+        properties: {
+          path: executionPath,
+          isSimpleConversation,
+          forceVercelAI,
+          complexityPatterns: this.detectComplexityPatterns(userInput),
+          classification: classification?.reasoning,
+        },
+        clientId: this.config.clientConfig?.id,
+        chatId: brainRequest.chatId,
+      });
+
+      if (finalShouldUseLangChain) {
+        this.logger.info('Routing to LangChain path', {
+          isSimpleConversation,
+          complexityPatterns: this.detectComplexityPatterns(userInput),
+          classification: classification?.reasoning,
+        });
         console.log('[DEBUG] About to call executeLangChainStreamingPath');
         response = await this.executeLangChainStreamingPath(
           brainRequest,
@@ -245,7 +274,12 @@ export class BrainOrchestrator {
           response?.status,
         );
       } else {
-        this.logger.info('Routing to Vercel AI path');
+        this.logger.info('Routing to Vercel AI path', {
+          isSimpleConversation,
+          complexityPatterns: this.detectComplexityPatterns(userInput),
+          forceVercelAI,
+          classification: classification?.reasoning,
+        });
         console.log('[DEBUG] About to call executeVercelAIStreamingPath');
         response = await this.executeVercelAIStreamingPath(
           userInput,
@@ -262,15 +296,44 @@ export class BrainOrchestrator {
 
       const totalTime = performance.now() - startTime;
 
+      // Track performance metrics
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.PERFORMANCE_METRIC,
+        properties: {
+          totalTime,
+          classificationTime,
+          executionTime: totalTime - classificationTime,
+          executionPath,
+          success: response?.status === 200,
+        },
+        clientId: this.config.clientConfig?.id,
+        chatId: brainRequest.chatId,
+      });
+
       this.logger.info('Brain request processing completed', {
         totalTime: `${totalTime.toFixed(2)}ms`,
-        executionPath: shouldUseLangChain ? 'langchain' : 'vercel-ai',
+        executionPath: finalShouldUseLangChain ? 'langchain' : 'vercel-ai',
         classification: classification?.reasoning,
+        isSimpleConversation,
+        forceVercelAI,
       });
 
       return response;
     } catch (error) {
       const totalTime = performance.now() - startTime;
+
+      // Track error analytics
+      await trackEvent({
+        eventName: ANALYTICS_EVENTS.ERROR_OCCURRED,
+        properties: {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          totalTime,
+          stage: 'brain_orchestration',
+        },
+        clientId: this.config.clientConfig?.id,
+        chatId: brainRequest.chatId,
+      });
+
       this.logger.error('Brain request processing failed', {
         error: error instanceof Error ? error.message : 'Unknown error',
         totalTime: `${totalTime.toFixed(2)}ms`,
@@ -309,9 +372,10 @@ export class BrainOrchestrator {
       // Always try to create the chat - if it exists, the database will ignore it
       // This fixes the foreign key constraint issue when chats exist in frontend but not DB
 
-      // Generate chat title from user input
+      // Generate chat title from user input (use first few words for better readability)
+      const words = userInput.trim().split(/\s+/);
       const title =
-        userInput.substring(0, 100) + (userInput.length > 100 ? '...' : '');
+        words.slice(0, 8).join(' ') + (words.length > 8 ? '...' : '');
 
       // Get context information from the request
       const bitContextId =
@@ -967,7 +1031,7 @@ export class BrainOrchestrator {
       await this.generateEnhancedDateTimeContext(brainRequest);
 
     // Load system prompt with date/time context
-    let systemPrompt = loadPrompt({
+    let systemPrompt = await loadPrompt({
       modelId: context.selectedChatModel || 'global-orchestrator',
       contextId: context.activeBitContextId || null,
       clientConfig: this.config.clientConfig,
