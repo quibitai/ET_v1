@@ -59,14 +59,16 @@ export function SpecialistEditor({ specialists }: SpecialistEditorProps) {
               Add Specialist
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Create New Specialist</DialogTitle>
               <DialogDescription>
                 Add a new specialist persona to the system.
               </DialogDescription>
             </DialogHeader>
-            <SpecialistForm onSuccess={() => setIsCreateDialogOpen(false)} />
+            <div className="flex-1 overflow-y-auto px-1">
+              <SpecialistForm onSuccess={() => setIsCreateDialogOpen(false)} />
+            </div>
           </DialogContent>
         </Dialog>
       </CardHeader>
@@ -118,8 +120,8 @@ export function SpecialistEditor({ specialists }: SpecialistEditorProps) {
                         Edit
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-4xl">
-                      <DialogHeader>
+                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                      <DialogHeader className="flex-shrink-0">
                         <DialogTitle>
                           Edit Specialist: {specialist.name}
                         </DialogTitle>
@@ -127,10 +129,12 @@ export function SpecialistEditor({ specialists }: SpecialistEditorProps) {
                           Update specialist persona and configuration.
                         </DialogDescription>
                       </DialogHeader>
-                      <SpecialistForm
-                        specialist={specialist}
-                        onSuccess={() => {}}
-                      />
+                      <div className="flex-1 overflow-y-auto px-1">
+                        <SpecialistForm
+                          specialist={specialist}
+                          onSuccess={() => {}}
+                        />
+                      </div>
                     </DialogContent>
                   </Dialog>
                 </TableCell>
