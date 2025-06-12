@@ -700,6 +700,8 @@ export async function getChatSummaries({
       (chat) => ({
         id: chat.id,
         title: chat.title || 'Untitled Chat',
+        userId: userId, // Add required userId
+        clientId: clientId, // Add required clientId
         lastMessageTimestamp: chat.updatedAt, // Use updatedAt as the last activity timestamp
         lastMessageSnippet: undefined, // We'll implement this in a separate step if needed
         bitContextId: chat.bitContextId,
@@ -792,6 +794,8 @@ export async function getAllSpecialistChatSummaries({
       const chatSummaries: ChatSummary[] = specialistChats.map((chat) => ({
         id: chat.id,
         title: chat.title || 'Untitled Chat',
+        userId: userId, // Add required userId
+        clientId: clientId, // Add required clientId
         lastMessageTimestamp: chat.updatedAt, // Use updatedAt as the last activity timestamp
         lastMessageSnippet: undefined,
         bitContextId: chat.bitContextId,

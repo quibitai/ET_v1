@@ -2,17 +2,15 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { db } from '../../../lib/db';
-import { clients, specialists } from '../../../lib/db/schema';
+import { db } from '@/lib/db';
+import { clients, specialists } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
 /**
- * Server Actions for Configuration Management
+ * Server Actions for Admin Configuration Management
  *
- * Provides CRUD operations for clients and specialists with validation
- * and automatic cache revalidation.
- *
- * Note: Database imports verified and working correctly.
+ * Provides secure server-side operations for managing clients and specialists
+ * configuration with proper validation and database operations.
  */
 
 // Validation schemas
@@ -68,7 +66,7 @@ export async function createClient(formData: FormData) {
       config_json: parsedConfig,
     });
 
-    revalidatePath('/admin/configuration');
+    revalidatePath('/admin');
   } catch (error) {
     if (error instanceof z.ZodError) {
       throw new Error(
@@ -115,7 +113,7 @@ export async function updateClient(clientId: string, formData: FormData) {
       })
       .where(eq(clients.id, clientId));
 
-    revalidatePath('/admin/configuration');
+    revalidatePath('/admin');
   } catch (error) {
     if (error instanceof z.ZodError) {
       throw new Error(
@@ -129,7 +127,7 @@ export async function updateClient(clientId: string, formData: FormData) {
 export async function deleteClient(clientId: string) {
   try {
     await db.delete(clients).where(eq(clients.id, clientId));
-    revalidatePath('/admin/configuration');
+    revalidatePath('/admin');
   } catch (error) {
     throw new Error(
       `Failed to delete client: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -171,7 +169,7 @@ export async function createSpecialist(formData: FormData) {
       defaultTools: parsedTools,
     });
 
-    revalidatePath('/admin/configuration');
+    revalidatePath('/admin');
   } catch (error) {
     if (error instanceof z.ZodError) {
       throw new Error(
@@ -220,7 +218,7 @@ export async function updateSpecialist(
       })
       .where(eq(specialists.id, specialistId));
 
-    revalidatePath('/admin/configuration');
+    revalidatePath('/admin');
   } catch (error) {
     if (error instanceof z.ZodError) {
       throw new Error(
@@ -234,7 +232,7 @@ export async function updateSpecialist(
 export async function deleteSpecialist(specialistId: string) {
   try {
     await db.delete(specialists).where(eq(specialists.id, specialistId));
-    revalidatePath('/admin/configuration');
+    revalidatePath('/admin');
   } catch (error) {
     throw new Error(
       `Failed to delete specialist: ${error instanceof Error ? error.message : 'Unknown error'}`,

@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/app/(auth)/auth';
-import { AdminNav } from './components/AdminNav';
 
 /**
  * Admin Layout Component
@@ -32,13 +31,10 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center">
-          <AdminNav />
-        </div>
-      </div>
-      <main className="container py-6">{children}</main>
+    <div className="h-screen bg-background overflow-hidden">
+      <main className="h-full container mx-auto max-w-7xl">
+        <div className="h-full overflow-y-auto py-6 px-4">{children}</div>
+      </main>
     </div>
   );
 }

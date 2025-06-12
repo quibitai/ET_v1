@@ -8,14 +8,16 @@
 export interface ChatSummary {
   id: string; // Chat ID
   title: string | null; // Chat title (can be null if not generated yet)
+  userId: string; // User ID (required for Chat compatibility)
+  clientId: string; // Client ID (required for Chat compatibility)
+  createdAt: string | Date; // When the chat was created (required for Chat compatibility)
+  updatedAt: string | Date; // When the chat was last updated (required for Chat compatibility)
+  visibility: 'private' | 'public'; // Chat visibility setting (required for Chat compatibility)
+  bitContextId?: string | null; // Identifier for the "Bit" or specialist this chat belongs to
   lastMessageTimestamp?: string | Date; // Timestamp of the last message
   lastMessageSnippet?: string; // A short snippet of the last message
-  bitContextId?: string | null; // Identifier for the "Bit" or specialist this chat belongs to
   isGlobal?: boolean; // Flag to differentiate global/orchestrator chats
   unreadCount?: number; // Number of unread messages (optional)
-  createdAt?: string | Date; // When the chat was created
-  updatedAt?: string | Date; // When the chat was last updated
-  visibility?: 'private' | 'public' | 'shared'; // Chat visibility setting
   pinnedStatus?: boolean; // Whether the chat is pinned
 }
 

@@ -1,9 +1,10 @@
 'use client';
-import { ChevronUp } from 'lucide-react';
+import { ChevronUp, Settings } from 'lucide-react';
 import Image from 'next/image';
 import type { User } from 'next-auth';
 import { signOut } from 'next-auth/react';
 import { useTheme } from 'next-themes';
+import Link from 'next/link';
 
 import {
   DropdownMenu,
@@ -22,6 +23,13 @@ import {
 export function SidebarUserNav({ user }: { user: User }) {
   const { setTheme, theme } = useTheme();
   const { state } = useSidebar();
+
+  // Check if user is admin
+  const userEmail = user?.email;
+  const isAdmin =
+    userEmail?.includes('admin') ||
+    userEmail?.includes('hayden') ||
+    userEmail === 'adam@quibit.ai';
 
   return (
     <SidebarMenu>
@@ -56,6 +64,20 @@ export function SidebarUserNav({ user }: { user: User }) {
             side="top"
             className="w-[--radix-popper-anchor-width]"
           >
+            {isAdmin && (
+              <>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/admin"
+                    className="cursor-pointer flex items-center gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Admin Dashboard
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem
               className="cursor-pointer"
               onSelect={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
