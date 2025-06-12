@@ -14,12 +14,13 @@ A production-ready, hybrid RAG (Retrieval-Augmented Generation) system with soph
 
 ### **🎯 Major New Features**
 
-#### **🔧 Production Admin Interface**
+#### **🔧 Consolidated Admin Dashboard**
+- **Modern Tabbed Interface**: Single-page dashboard with Overview, Configuration, and Observability tabs
+- **Visual Tool Selection**: Enhanced specialist editor with checkbox-based tool selection (16+ tools)
+- **AI-Powered Enhancement**: Intelligent prompt optimization with context-aware refinement
 - **Secure Authentication**: Role-based access control for administrators
-- **Client Management**: Full CRUD operations for client configurations
-- **Specialist Management**: Database-driven specialist persona editing
 - **Real-time Configuration**: Live updates without code deployment
-- **Comprehensive UI**: Built with Shadcn UI components for professional experience
+- **Professional UI**: Responsive design with proper scrolling and accessibility
 
 #### **📊 Performance & Scalability Improvements**
 - **220x Database Performance**: Fixed critical timeout issues with proper indexing

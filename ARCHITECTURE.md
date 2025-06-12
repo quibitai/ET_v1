@@ -379,6 +379,246 @@ WEATHER_API_KEY="..."
 - **Performance Optimization**: Query optimization and resource management
 - **Monitoring Enhancement**: Real-time performance dashboards and alerting
 
+## 🎛️ **Admin Interface Architecture**
+
+### **Consolidated Dashboard Design**
+**Location**: `app/admin/page.tsx`, `app/admin/components/`
+
+The admin interface has been completely redesigned as a single-page application with a modern tabbed interface, consolidating all administrative functions into one cohesive dashboard.
+
+```typescript
+// Admin Dashboard Component Architecture
+AdminDashboard
+├── TabsRoot (Shadcn UI Tabs)
+│   ├── OverviewTab
+│   │   ├── MetricsCards (System health indicators)
+│   │   └── QuickActions (Administrative shortcuts)
+│   ├── ConfigurationTab
+│   │   ├── ClientEditor (CRUD operations)
+│   │   └── SpecialistEditor
+│   │       ├── BasicInfoTab (Name, description, context ID)
+│   │       ├── ToolsCapabilitiesTab (Visual tool selection)
+│   │       └── AIPersonaTab (Prompt editing with AI enhancement)
+│   └── ObservabilityTab
+│       ├── AnalyticsCharts (Performance metrics)
+│       └── SystemMetrics (Real-time monitoring)
+```
+
+### **Enhanced Specialist Management**
+
+#### **Visual Tool Selection Interface**
+The specialist editor features a revolutionary tool selection system:
+
+```typescript
+interface ToolCategory {
+  name: string;
+  description: string;
+  tools: ToolDefinition[];
+  selectedCount: number;
+}
+
+const toolCategories: ToolCategory[] = [
+  {
+    name: "Search & Knowledge",
+    tools: ["searchInternalKnowledgeBase", "getFileContents", "listDocuments"],
+    selectedCount: 0
+  },
+  {
+    name: "Document Management", 
+    tools: ["createDocument", "updateDocument"],
+    selectedCount: 0
+  },
+  {
+    name: "Project Management",
+    tools: ["asana_get_user_info", "asana_create_project", /* 5 more */],
+    selectedCount: 0
+  },
+  {
+    name: "Utilities",
+    tools: ["tavilyExtract", "getWeatherTool", "requestSuggestions"],
+    selectedCount: 0
+  }
+];
+```
+
+**Tool Selection Features:**
+- **Visual Checkboxes**: Intuitive selection interface with real-time feedback
+- **Category Grouping**: Organized by functionality with expand/collapse
+- **Real-time Counters**: Dynamic count display for selected tools per category
+- **Tool Descriptions**: Detailed capability explanations for informed selection
+- **Bulk Operations**: Select/deselect all tools within categories
+
+#### **AI-Powered Prompt Enhancement**
+**Location**: `app/api/admin/refine-prompt/route.ts`
+
+The admin interface includes an AI enhancement system for prompt optimization:
+
+```typescript
+interface PromptEnhancementRequest {
+  currentPrompt: string;
+  selectedTools: string[];
+  specialistContext: {
+    name: string;
+    description: string;
+    contextId: string;
+  };
+}
+
+interface PromptEnhancementResponse {
+  enhancedPrompt: string;
+  improvements: string[];
+  toolIntegrations: ToolIntegration[];
+}
+```
+
+**Enhancement Process:**
+1. **Context Analysis**: Analyze current prompt and selected tools
+2. **Capability Mapping**: Map tools to specific prompt instructions
+3. **Best Practices**: Apply proven prompt engineering techniques
+4. **Integration**: Seamlessly incorporate tool-specific guidance
+5. **Preservation**: Maintain core specialist personality and identity
+
+### **Technical Implementation**
+
+#### **Component Architecture**
+```typescript
+// Server Components for Performance
+export default async function AdminDashboard() {
+  const clients = await getClients();
+  const specialists = await getSpecialists();
+  const metrics = await getSystemMetrics();
+  
+  return (
+    <div className="h-screen flex flex-col">
+      <AdminHeader />
+      <Tabs defaultValue="overview" className="flex-1 flex flex-col">
+        <TabsList />
+        <div className="flex-1 overflow-hidden">
+          <TabsContent value="overview" className="h-full overflow-y-auto">
+            <OverviewTab metrics={metrics} />
+          </TabsContent>
+          <TabsContent value="configuration" className="h-full overflow-y-auto">
+            <ConfigurationTab clients={clients} specialists={specialists} />
+          </TabsContent>
+          <TabsContent value="observability" className="h-full overflow-y-auto">
+            <ObservabilityTab />
+          </TabsContent>
+        </div>
+      </Tabs>
+    </div>
+  );
+}
+```
+
+#### **Responsive Design & Accessibility**
+- **Viewport Constraints**: Proper height management with `h-screen` and overflow handling
+- **Mobile-First**: Responsive design optimized for all screen sizes
+- **Keyboard Navigation**: Full accessibility with tab order and focus management
+- **Screen Reader Support**: Proper ARIA labels and semantic HTML structure
+- **Professional Styling**: Consistent Shadcn UI components with custom theming
+
+#### **Real-time Updates**
+```typescript
+// Server Actions for Immediate Updates
+export async function updateSpecialist(formData: FormData) {
+  'use server';
+  
+  const specialistData = {
+    id: formData.get('id') as string,
+    name: formData.get('name') as string,
+    description: formData.get('description') as string,
+    personaPrompt: formData.get('personaPrompt') as string,
+    defaultTools: JSON.parse(formData.get('defaultTools') as string),
+  };
+  
+  await db.update(specialists)
+    .set(specialistData)
+    .where(eq(specialists.id, specialistData.id));
+    
+  revalidatePath('/admin');
+  return { success: true };
+}
+```
+
+### **Security & Authentication**
+
+#### **Role-Based Access Control**
+```typescript
+// Admin Access Validation
+export function isAdminUser(email: string): boolean {
+  const adminPatterns = ['admin', 'hayden', 'adam@quibit.ai'];
+  return adminPatterns.some(pattern => 
+    email.toLowerCase().includes(pattern.toLowerCase())
+  );
+}
+
+// Middleware Protection
+export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith('/admin')) {
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user?.email || !isAdminUser(session.user.email)) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+  }
+}
+```
+
+#### **Data Validation & Sanitization**
+- **Input Validation**: Comprehensive form validation with Zod schemas
+- **SQL Injection Prevention**: Parameterized queries with Drizzle ORM
+- **XSS Protection**: Content sanitization and CSP headers
+- **CSRF Protection**: Built-in NextAuth.js CSRF protection
+
+### **Performance Optimizations**
+
+#### **Database Operations**
+```typescript
+// Optimized Queries with Proper Indexing
+export async function getSpecialistsWithMetrics() {
+  return await db
+    .select({
+      id: specialists.id,
+      name: specialists.name,
+      description: specialists.description,
+      toolCount: sql<number>`json_array_length(${specialists.defaultTools})`,
+      lastUpdated: specialists.updatedAt,
+    })
+    .from(specialists)
+    .orderBy(desc(specialists.updatedAt));
+}
+```
+
+#### **Client-Side Optimizations**
+- **Server Components**: Reduced client-side JavaScript bundle
+- **Streaming**: Progressive loading of admin interface components
+- **Caching**: Intelligent caching of configuration data
+- **Lazy Loading**: On-demand loading of heavy components
+
+### **Monitoring & Observability**
+
+#### **Admin Activity Logging**
+```typescript
+interface AdminAction {
+  userId: string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  resource: 'CLIENT' | 'SPECIALIST';
+  resourceId: string;
+  changes: Record<string, any>;
+  timestamp: Date;
+}
+
+export async function logAdminAction(action: AdminAction) {
+  await db.insert(adminAuditLog).values(action);
+}
+```
+
+#### **System Health Monitoring**
+- **Real-time Metrics**: Live system performance indicators
+- **Configuration Tracking**: Version control for all configuration changes
+- **Error Monitoring**: Comprehensive error tracking and alerting
+- **Usage Analytics**: Admin interface usage patterns and optimization insights
+
 ---
 
 **Architecture Version**: 3.0.0 - Brain Orchestrator Hybrid System  
