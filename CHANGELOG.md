@@ -5,6 +5,114 @@ All notable changes to the Echo Tango RAG System will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-01-12
+
+### 🎛️ **Admin Dashboard Consolidation & Enhancement**
+
+This release consolidates the admin interface into a modern, single-page dashboard with enhanced tool selection and AI-powered features.
+
+### ✅ **Added**
+
+#### **Consolidated Admin Dashboard**
+- **Modern Tabbed Interface** - Single-page dashboard with Overview, Configuration, and Observability tabs
+- **Enhanced Specialist Editor** - Three-tab interface (Basic Info, Tools & Capabilities, AI Persona)
+- **Visual Tool Selection** - Checkbox-based interface with 16+ categorized tools
+- **AI-Powered Prompt Enhancement** - Intelligent prompt optimization with `/api/admin/refine-prompt` endpoint
+- **Real-time Tool Counters** - Dynamic count display for selected tools per category
+- **Category-Level Selection** - Select/deselect all tools within categories
+- **Professional UI Components** - Responsive design with proper viewport handling
+
+#### **Enhanced User Experience**
+- **Admin Dashboard Link** - Added to sidebar navigation with permission checking
+- **Proper Scrolling** - Viewport-constrained with overflow management
+- **Toast Notifications** - User feedback for actions and errors
+- **Accessibility Features** - Full keyboard navigation and screen reader support
+- **Mobile-First Design** - Optimized for all screen sizes
+
+#### **Technical Improvements**
+- **Server Components** - Reduced client-side JavaScript bundle
+- **Component Migration** - Moved all admin components to `app/admin/components/`
+- **API Integration** - New prompt refinement endpoint with OpenAI integration
+- **Form Validation** - Enhanced validation with proper error handling
+- **TypeScript Fixes** - Resolved import errors and type mismatches
+
+### 🔄 **Changed**
+
+#### **Admin Interface Architecture**
+- **Consolidated Routes** - Moved from separate `/admin/configuration` and `/admin/observability` to single `/admin` interface
+- **Component Organization** - Restructured admin components for better maintainability
+- **Layout Optimization** - Fixed height management and scrolling issues
+- **Navigation Flow** - Streamlined admin access through sidebar menu
+
+#### **Specialist Management**
+- **Tool Selection Interface** - Replaced manual JSON editing with visual checkbox interface
+- **Categorized Tools** - Organized 16+ tools into logical categories (Search & Knowledge, Document Management, Project Management, Utilities)
+- **Enhanced Descriptions** - Added detailed tool capability explanations
+- **AI Enhancement** - Context-aware prompt optimization based on selected tools
+
+### 🗑️ **Removed**
+
+#### **Legacy Admin Routes**
+- **Separate Admin Pages** - Consolidated `/admin/configuration` and `/admin/observability` into main dashboard
+- **AdminNav Component** - Replaced with tabbed interface
+- **Separate Layouts** - Unified admin layout structure
+- **Manual JSON Editing** - Replaced with visual tool selection interface
+
+### 🔧 **Fixed**
+
+#### **UI/UX Issues**
+- **Scrolling Problems** - Fixed admin interface extending beyond screen without scroll capability
+- **Dialog Overflow** - Resolved configuration window cutting off in Tools tab
+- **Layout Constraints** - Proper height management with `h-screen` and overflow handling
+- **Responsive Design** - Fixed mobile and tablet display issues
+
+#### **Technical Issues**
+- **OpenAI API Authentication** - Fixed 401 errors by correcting API key formatting
+- **TypeScript Errors** - Resolved import issues and type mismatches
+- **Component Imports** - Changed from relative to absolute imports for better reliability
+- **Database Queries** - Updated ChatSummary interface and query functions
+
+#### **Linter & Build Issues**
+- **Import Statements** - Fixed NextRequest type import in API routes
+- **Component Props** - Resolved missing properties in ChatSummary interface
+- **Module Resolution** - Fixed relative import paths causing build errors
+
+### 📊 **Performance Improvements**
+
+- **Component Loading** - Faster admin interface with server-side rendering
+- **Bundle Size** - Reduced client-side JavaScript with server components
+- **Database Operations** - Optimized queries for admin interface data
+- **API Response Times** - Improved prompt enhancement endpoint performance
+
+### 🎯 **Enhanced Features**
+
+#### **Tool Management**
+- **16+ Available Tools** - Comprehensive tool ecosystem with visual selection
+- **Category Organization** - Logical grouping by functionality
+- **Real-time Feedback** - Immediate visual feedback for tool selection
+- **Bulk Operations** - Category-level selection for efficiency
+
+#### **AI Integration**
+- **Prompt Optimization** - AI-powered enhancement analyzing tool capabilities
+- **Context Awareness** - Tool-specific instruction integration
+- **Best Practices** - Proven prompt engineering techniques
+- **Personality Preservation** - Maintains core specialist identity
+
+### 🚀 **Migration Notes**
+
+For users upgrading to v1.1.0:
+
+1. **Admin Interface** - Navigate to `/admin` instead of separate configuration routes
+2. **Tool Selection** - Use new visual interface instead of manual JSON editing
+3. **Enhanced Features** - Explore AI prompt enhancement for optimized specialist personas
+4. **Mobile Access** - Admin interface now fully responsive for mobile devices
+
+### 📚 **Documentation Updates**
+
+- **Admin Interface Guide** - Comprehensive documentation for new consolidated dashboard
+- **Architecture Documentation** - Updated with admin interface technical details
+- **README Updates** - Reflected consolidated dashboard features and capabilities
+
 ## [1.0.0] - 2025-01-11
 
 ### 🎉 **Major Release - Complete Enhancement Roadmap**
