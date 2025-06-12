@@ -6,7 +6,7 @@
  * Target: ~160 lines as per roadmap specifications.
  */
 
-import { availableTools } from '@/lib/ai/tools/index';
+import { getAvailableTools } from '@/lib/ai/tools/index';
 import type { RequestLogger } from './observabilityService';
 import type { ClientConfig } from '@/lib/db/queries';
 
@@ -96,8 +96,8 @@ export class LangChainToolService {
     // Setup client-specific tool configurations
     const clientSpecificConfigs = this.setupClientToolConfigs();
 
-    // Start with all available tools
-    let selectedTools = [...availableTools];
+    // Start with all available tools (loaded dynamically)
+    let selectedTools = [...getAvailableTools()];
     const appliedFilters: string[] = [];
 
     // Apply tool execution filter
@@ -148,7 +148,7 @@ export class LangChainToolService {
     const duration = performance.now() - startTime;
 
     this.logger.info('LangChain tool selection completed', {
-      totalAvailable: availableTools.length,
+      totalAvailable: getAvailableTools().length,
       selected: selectedTools.length,
       selectionTime: `${duration.toFixed(2)}ms`,
       appliedFilters,
@@ -157,7 +157,7 @@ export class LangChainToolService {
 
     return {
       tools: selectedTools,
-      totalAvailable: availableTools.length,
+      totalAvailable: getAvailableTools().length,
       selected: selectedTools.length,
       selectionTime: duration,
       appliedFilters,
@@ -222,13 +222,30 @@ export class LangChainToolService {
    * Apply custom tool filters
    */
   private applyToolFilters(tools: any[], filters: string[]): any[] {
+    if (!filters || !Array.isArray(filters)) {
+      this.logger.warn('Invalid filters provided to applyToolFilters', {
+        filters,
+      });
+      return tools;
+    }
+
     return tools.filter((tool) => {
+      if (!tool || !tool.name) {
+        this.logger.warn('Invalid tool found during filtering', { tool });
+        return false;
+      }
+
       // Check if tool matches any of the filters
-      return filters.some(
-        (filter) =>
+      return filters.some((filter) => {
+        if (!filter || typeof filter !== 'string') {
+          this.logger.warn('Invalid filter in filters array', { filter });
+          return false;
+        }
+        return (
           tool.name.toLowerCase().includes(filter.toLowerCase()) ||
-          tool.description?.toLowerCase().includes(filter.toLowerCase()),
-      );
+          tool.description?.toLowerCase().includes(filter.toLowerCase())
+        );
+      });
     });
   }
 
@@ -252,8 +269,16 @@ export class LangChainToolService {
    * Initialize tool metadata for better management
    */
   private initializeToolMetadata(): void {
-    // Initialize metadata for available tools
+    // Initialize metadata for available tools (loaded dynamically)
+    const availableTools = getAvailableTools();
     for (const tool of availableTools) {
+      if (!tool || !tool.name) {
+        this.logger.warn('Invalid tool found during metadata initialization', {
+          tool,
+        });
+        continue;
+      }
+
       const category = this.categorizeToolByName(tool.name);
       const priority = this.getPriorityByCategory(category);
 
@@ -275,6 +300,13 @@ export class LangChainToolService {
    * Categorize tool by name patterns
    */
   private categorizeToolByName(toolName: string): LangChainToolCategory {
+    if (!toolName || typeof toolName !== 'string') {
+      this.logger.warn('Invalid tool name provided to categorizeToolByName', {
+        toolName,
+        type: typeof toolName,
+      });
+      return LangChainToolCategory.UTILITY;
+    }
     const name = toolName.toLowerCase();
 
     if (
@@ -352,6 +384,7 @@ export class LangChainToolService {
    * Get tools by category
    */
   public getToolsByCategory(category: LangChainToolCategory): any[] {
+    const availableTools = getAvailableTools();
     return availableTools.filter((tool) => {
       const metadata = this.toolMetadata.get(tool.name);
       return metadata?.category === category;

@@ -7,9 +7,9 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
-import { AgentExecutor, createOpenAIToolsAgent } from 'langchain/agents';
+import { type AgentExecutor, createOpenAIToolsAgent } from 'langchain/agents';
 import {
-  ChatPromptTemplate,
+  type ChatPromptTemplate,
   MessagesPlaceholder,
 } from '@langchain/core/prompts';
 import {
@@ -19,22 +19,24 @@ import {
 } from '@langchain/core/messages';
 import { modelMapping } from '@/lib/ai/models';
 import { createLangChainToolService } from './langchainToolService';
-import {
-  createLangChainStreamingService,
-} from './langchainStreamingService';
+import { createLangChainStreamingService } from './langchainStreamingService';
 
 // Import LangGraph support with UI capabilities
 import { createLangGraphWrapper, shouldUseLangGraph } from '@/lib/ai/graphs';
 import type { SimpleLangGraphWrapper } from '@/lib/ai/graphs/simpleLangGraphWrapper';
 
-// Import LangChain UI utilities for generative UI
-import { LangChainAdapter } from 'ai';
+// Import message saving dependencies
+import { saveMessages } from '@/lib/db/queries';
+import { auth } from '@/app/(auth)/auth';
+import { randomUUID } from 'node:crypto';
+import type { DBMessage } from '@/lib/db/schema';
 
 // Type imports
 import type { RequestLogger } from './observabilityService';
 import type { ClientConfig } from '@/lib/db/queries';
 import type { LangChainToolConfig } from './langchainToolService';
 import type { LangGraphWrapperConfig } from '@/lib/ai/graphs';
+import type { BrainRequest } from '@/lib/validation/brainValidation';
 
 /**
  * Configuration for LangChain bridge
@@ -148,17 +150,17 @@ export async function createLangChainAgent(
   logger: RequestLogger,
 ): Promise<LangChainAgent> {
   const startTime = performance.now();
-
-  logger.info('Creating LangChain agent', {
-    contextId: config.contextId,
-    enableToolExecution: config.enableToolExecution,
-    maxIterations: config.maxIterations,
-    enableLangGraph: config.enableLangGraph,
-  });
+  logger.info('Creating LangChain agent with config', { ...config });
 
   // Initialize LLM
   const llmStartTime = performance.now();
-  const llm = initializeLLM(config, logger);
+  // Define llm as 'const' as it is not reassigned
+  const llm = new ChatOpenAI({
+    modelName: modelMapping[config.selectedChatModel || 'default'],
+    temperature: 0.7,
+    maxRetries: 2,
+    verbose: config.verbose || false,
+  });
   const llmDuration = performance.now() - llmStartTime;
 
   // Select tools using the new LangChainToolService
@@ -167,103 +169,36 @@ export async function createLangChainAgent(
     config.enableToolExecution !== false ? selectTools(config, logger) : [];
   const toolDuration = performance.now() - toolStartTime;
 
-  // Determine if we should use LangGraph
-  const useLangGraph =
-    config.enableLangGraph &&
-    (config.langGraphPatterns
-      ? shouldUseLangGraph(config.langGraphPatterns)
-      : true);
+  // --- ARCHITECTURAL FIX: Force LangGraph for all agentic workflows ---
+  // The AgentExecutor's .stream() method does not properly handle multi-step
+  // tool use and gets stuck in loops. LangGraph is designed for this.
+  logger.info(
+    '[Architectural Override] Forcing LangGraph execution path for robustness.',
+  );
 
-  if (useLangGraph) {
-    // Create LangGraph wrapper
-    logger.info('Creating LangGraph wrapper for complex reasoning');
+  const langGraphConfig: LangGraphWrapperConfig = {
+    systemPrompt,
+    llm,
+    tools,
+    logger,
+    forceToolCall: config.forceToolCall,
+  };
 
-    const langGraphConfig: LangGraphWrapperConfig = {
-      systemPrompt,
-      llm,
-      tools,
-      logger,
-      forceToolCall: config.forceToolCall,
-    };
+  const langGraphWrapper = createLangGraphWrapper(langGraphConfig);
 
-    const langGraphWrapper = createLangGraphWrapper(langGraphConfig);
+  const totalDuration = performance.now() - startTime;
+  logger.info('LangGraph wrapper created successfully', {
+    setupTime: `${totalDuration.toFixed(2)}ms`,
+    toolCount: tools.length,
+    forceToolCall: config.forceToolCall,
+  });
 
-    const totalDuration = performance.now() - startTime;
-    logger.info('LangGraph wrapper created successfully', {
-      setupTime: `${totalDuration.toFixed(2)}ms`,
-      toolCount: tools.length,
-      forceToolCall: config.forceToolCall,
-    });
-
-    return {
-      langGraphWrapper,
-      tools,
-      llm,
-      executionType: 'langgraph',
-    };
-  } else {
-    // Create traditional AgentExecutor
-    logger.info('Creating traditional AgentExecutor');
-
-    // Create streaming callbacks using the new LangChainStreamingService
-    const streamingConfig = {
-      enableTokenStreaming: true,
-      enableToolTracking: config.enableToolExecution !== false,
-      verbose: config.verbose || false,
-    };
-    const streamingService = createLangChainStreamingService(
-      logger,
-      streamingConfig,
-    );
-    const callbacks = streamingService.createStreamingCallbacks();
-
-    // Add callbacks to LLM
-    llm.callbacks = callbacks;
-
-    // Create prompt template
-    const prompt = ChatPromptTemplate.fromMessages([
-      ['system', systemPrompt],
-      new MessagesPlaceholder('chat_history'),
-      ['human', '{input}'],
-      new MessagesPlaceholder('agent_scratchpad'),
-    ]);
-
-    // Create the agent
-    const agentStartTime = performance.now();
-    const agent = await createOpenAIToolsAgent({
-      llm,
-      tools,
-      prompt,
-    });
-    const agentDuration = performance.now() - agentStartTime;
-
-    // Create agent executor
-    const agentExecutor = new AgentExecutor({
-      agent,
-      tools,
-      maxIterations: config.maxIterations || 10,
-      verbose: config.verbose || false,
-      returnIntermediateSteps: true,
-    });
-
-    const totalDuration = performance.now() - startTime;
-
-    logger.info('LangChain agent created successfully', {
-      setupTime: `${totalDuration.toFixed(2)}ms`,
-      llmTime: `${llmDuration.toFixed(2)}ms`,
-      toolTime: `${toolDuration.toFixed(2)}ms`,
-      agentTime: `${agentDuration.toFixed(2)}ms`,
-      toolCount: tools.length,
-    });
-
-    return {
-      agentExecutor,
-      tools,
-      llm,
-      prompt,
-      executionType: 'agent',
-    };
-  }
+  return {
+    langGraphWrapper,
+    tools,
+    llm,
+    executionType: 'langgraph',
+  };
 }
 
 /**
@@ -349,246 +284,426 @@ export async function streamLangChainAgent(
   chatHistory: any[],
   config: LangChainBridgeConfig,
   logger: RequestLogger,
-  callbacks?: any,
-  // NEW: Context parameters for artifact streaming
-  contextConfig?: {
-    dataStream?: any;
-    session?: any;
-    responseCollector?: { fullResponse: string };
-  },
-): Promise<Response | undefined> {
+  artifactContext: any,
+  brainRequest?: BrainRequest,
+): Promise<Response> {
   logger.info('Streaming LangChain agent', {
-    inputLength: input.length,
-    historyLength: chatHistory.length,
     executionType: agent.executionType,
-    hasCallbacks: !!callbacks,
-    hasContextConfig: !!contextConfig,
-    hasDataStreamWriter: !!contextConfig?.dataStream,
+    toolCount: agent.tools.length,
   });
 
-  try {
-    if (agent.executionType === 'langgraph' && agent.langGraphWrapper) {
-      // Execute with LangGraph wrapper - convert to BaseMessage[]
-      const messages = chatHistory.map((msg) => {
-        if (msg.type === 'human' || msg.role === 'user') {
-          return new HumanMessage(msg.content);
-        } else if (msg.type === 'ai' || msg.role === 'assistant') {
-          return new AIMessage(msg.content);
-        } else {
-          return new SystemMessage(msg.content);
-        }
-      });
+  if (agent.executionType === 'agent' && agent.agentExecutor) {
+    logger.info('Using AgentExecutor execution path for streaming');
 
-      // Add system prompt and user input
-      const wrapperConfig = agent.langGraphWrapper.getConfig();
-      const fullConversation = [
-        new SystemMessage(wrapperConfig.systemPrompt),
-        ...messages,
-        new HumanMessage(input),
-      ];
+    const executorStream = await agent.agentExecutor.stream({
+      input,
+      chat_history: chatHistory,
+    });
 
-      // *** THE CORE FIX: Check if we're already inside a stream ***
-      if (contextConfig?.dataStream) {
-        // We're being called from within brainOrchestrator's createDataStreamResponse
-        // Use the provided dataStreamWriter directly
-        logger.info(
-          '[LangchainBridge] Using provided dataStreamWriter (called from within stream)',
-        );
+    const transformStream = new ReadableStream({
+      async start(controller) {
+        let finalResponse = '';
+        let iterationCount = 0;
+        const maxIterations = 15; // Set a hard limit to prevent infinite loops
 
-        const dataStreamWriter = contextConfig.dataStream;
-
-        // *** Create RunnableConfig with context ***
-        const { v4: uuidv4 } = await import('uuid');
-        const langGraphConfig = {
-          configurable: {
-            // Keys must match what getContextVariable looks for in tools
-            dataStream: dataStreamWriter,
-            session: contextConfig.session || null,
-          },
-          runId: uuidv4(),
-          callbacks: callbacks ? [callbacks] : undefined,
-        };
-
-        logger.info('[LangchainBridge] Passing context to LangGraph:', {
-          hasDataStream: !!langGraphConfig.configurable.dataStream,
-          hasSession: !!langGraphConfig.configurable.session,
-          runId: langGraphConfig.runId,
-        });
-
-        // Get the LangGraph stream WITH context configuration
-        if (!agent.langGraphWrapper) {
-          throw new Error('LangGraph wrapper is not available');
-        }
-        const langGraphStream = agent.langGraphWrapper.stream(
-          fullConversation,
-          langGraphConfig,
-        );
-
-        let eventCount = 0;
-        let isStreamingArtifact = false; // This flag is key
-        let collectedResponse = ''; // Collect the complete response for saving
-
-        for await (const event of langGraphStream) {
-          eventCount++;
-
-          // Simplified event logging
-          if (eventCount <= 5 || eventCount % 25 === 0) {
-            logger.info(
-              `[LangchainBridge] Event ${eventCount}: ${event.event}`,
-              { name: event.name },
+        logger.info('[AgentExecutor] Starting to process stream...');
+        for await (const chunk of executorStream) {
+          iterationCount++;
+          if (iterationCount > maxIterations) {
+            logger.warn(
+              '[AgentExecutor] Max iterations reached. Breaking loop.',
+              { maxIterations },
             );
+            const errorMessage =
+              'I seem to be stuck in a loop. I will stop for now. Please try rephrasing your request.';
+            finalResponse = errorMessage;
+            controller.enqueue(`0:${JSON.stringify(errorMessage)}\n`);
+            break;
           }
 
-          // --- Primary Logic for Handling UI Events from Tools ---
-          if (
-            event.event === 'on_tool_end' &&
-            event.name === 'tools' &&
-            event.data?.output?.ui
-          ) {
-            const uiEvents = (event.data.output.ui || []) as any[];
-            logger.info(
-              `[LangchainBridge] Found ${uiEvents.length} UI events from 'tools' node.`,
-            );
-
-            for (const uiEvent of uiEvents) {
-              if (uiEvent.props?.eventType === 'artifact-start') {
-                isStreamingArtifact = true;
-                console.log(
-                  '[LangchainBridge] --> Artifact streaming STARTED.',
-                );
-              }
-
-              // Pass the UI event directly to the frontend
-              await dataStreamWriter.writeData([uiEvent]);
-
-              if (uiEvent.props?.eventType === 'artifact-end') {
-                isStreamingArtifact = false;
-                console.log(
-                  '[LangchainBridge] --> Artifact streaming FINISHED.',
-                );
-              }
-            }
-            // This part of the stream is fully handled, move to the next event
-            continue;
-          }
-
-          // --- Logic for Handling the Final LLM Text Answer ---
-          if (
-            event.event === 'on_chat_model_stream' &&
-            event.data?.chunk?.content
-          ) {
-            // ---> THIS IS THE CRITICAL GATE <---
-            // ONLY stream text to the main chat window if an artifact is NOT active.
-            if (!isStreamingArtifact) {
-              const textContent = event.data.chunk.content;
-              if (typeof textContent === 'string' && textContent.length > 0) {
-                // Collect the response for saving later
-                collectedResponse += textContent;
-
-                // Use the correct method to stream text tokens
-                // writeData streams to the Vercel AI SDK protocol (0: prefix for text)
-                await dataStreamWriter.write(
-                  `0:${JSON.stringify(textContent)}\n`,
-                );
-              }
-            } else {
-              // Otherwise, we log that we are correctly suppressing the duplicate text
-              console.log(
-                '[LangchainBridge] Suppressing chat text because artifact is streaming.',
-              );
-            }
-          }
-        }
-
-        logger.info(`[LangchainBridge] Stream processing completed`, {
-          totalEvents: eventCount,
-        });
-
-        // Store the collected response for saving later
-        if (contextConfig?.responseCollector && collectedResponse) {
-          contextConfig.responseCollector.fullResponse = collectedResponse;
-          logger.info('Collected response for saving', {
-            responseLength: collectedResponse.length,
+          const chunkKeys = Object.keys(chunk);
+          logger.info('[AgentExecutor] Received stream chunk', {
+            keys: chunkKeys,
+            iteration: iterationCount,
           });
+
+          // Log intermediate steps for debugging the loop
+          if (chunk.intermediate_steps) {
+            logger.info('[AgentExecutor] Intermediate step:', {
+              steps: JSON.stringify(chunk.intermediate_steps, null, 2),
+            });
+          }
+
+          // Check for final messages from the agent
+          if (chunk.messages) {
+            logger.info('[AgentExecutor] Received messages chunk', {
+              messageCount: chunk.messages.length,
+            });
+            const lastMessage = chunk.messages[chunk.messages.length - 1];
+            if (lastMessage.content) {
+              const content =
+                typeof lastMessage.content === 'string'
+                  ? lastMessage.content
+                  : JSON.stringify(lastMessage.content);
+              finalResponse += content;
+              controller.enqueue(`0:${JSON.stringify(content)}\n`);
+              logger.info('[AgentExecutor] Enqueued final message content', {
+                contentLength: content.length,
+              });
+            }
+          }
         }
-
-        // Return void since we're writing to the provided stream
-        return;
-      } else {
-        // Original standalone streaming logic (fallback)
-        logger.info(
-          '[LangchainBridge] Using createDataStreamResponse for standalone LangGraph streaming',
-        );
-
-        const { createDataStreamResponse } = await import('ai');
-
-        return createDataStreamResponse({
-          execute: async (dataStreamWriter) => {
-            // ... rest of original implementation ...
-            // (This is the fallback case and can remain as-is)
-          },
-          onError: (error) => {
-            logger.error('[LangchainBridge] DataStream error:', error);
-            return error instanceof Error ? error.message : String(error);
-          },
-          headers: {
-            'Content-Type': 'text/plain; charset=utf-8',
-            'X-Execution-Path': 'langgraph-enhanced',
-            'X-LangGraph-Enabled': 'true',
-            'X-Vercel-AI-Data-Stream': 'v1',
-          },
+        logger.info('[AgentExecutor] Stream processing finished.', {
+          finalResponseLength: finalResponse.length,
+          totalIterations: iterationCount,
         });
-      }
-    } else if (agent.executionType === 'agent' && agent.agentExecutor) {
-      // Use regular AgentExecutor streaming with LangChainAdapter
-      logger.info('Using AgentExecutor execution path');
 
-      // Create input for AgentExecutor
-      const executorInput = {
-        input: input,
-        chat_history: chatHistory,
-      };
+        // Save assistant message to database
+        if (brainRequest?.id && finalResponse) {
+          try {
+            const session = await auth();
+            if (session?.user?.id) {
+              const assistantMessage: DBMessage = {
+                id: randomUUID(),
+                chatId: brainRequest.id,
+                role: 'assistant',
+                parts: [{ type: 'text', text: finalResponse }],
+                attachments: [],
+                createdAt: new Date(),
+                clientId: session.user.clientId || 'default',
+              };
 
-      // For AgentExecutor, we can't use direct streaming the same way
-      // Let's use the underlying LLM stream directly like we do for LangGraph
-      const messages = chatHistory.map((msg) => {
-        if (msg.type === 'human' || msg.role === 'user') {
-          return new HumanMessage(msg.content);
-        } else if (msg.type === 'ai' || msg.role === 'assistant') {
-          return new AIMessage(msg.content);
-        } else {
-          return new SystemMessage(msg.content);
+              await saveMessages({ messages: [assistantMessage] });
+              logger.info('Assistant message saved successfully', {
+                messageId: assistantMessage.id,
+                chatId: assistantMessage.chatId,
+                responseLength: finalResponse.length,
+              });
+            }
+          } catch (error) {
+            logger.error('Failed to save assistant message', {
+              chatId: brainRequest.id,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
         }
-      });
 
-      // Create full conversation with system prompt and user input
-      const fullConversation = [
-        new SystemMessage(
-          config.selectedChatModel || 'You are a helpful AI assistant.',
-        ),
-        ...messages,
-        new HumanMessage(input),
-      ];
+        controller.close();
+      },
+    });
 
-      // Use the LLM directly for streaming with LangChainAdapter
-      const llmStream = await agent.llm.stream(fullConversation);
-
-      // Use LangChainAdapter with the actual LangChain stream
-      return LangChainAdapter.toDataStreamResponse(llmStream, {
-        init: {
-          headers: {
-            'X-Execution-Path': 'langchain',
-            'X-LangGraph-Enabled': 'false',
-          },
-        },
-      });
-    } else {
-      throw new Error('Invalid agent configuration or missing components');
-    }
-  } catch (error) {
-    logger.error('Error in streamLangChainAgent', { error });
-    throw error;
+    return new Response(transformStream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'X-Execution-Path': 'langchain-agent-executor-manual-stream',
+      },
+    });
   }
+
+  if (agent.executionType === 'langgraph' && agent.langGraphWrapper) {
+    logger.info(
+      '[LangGraph] LangGraph streaming path selected in streamLangChainAgent',
+    );
+
+    // Convert chat history to BaseMessage format
+    const messages = chatHistory.map((msg) => {
+      if (msg.type === 'human' || msg.role === 'user') {
+        return new HumanMessage(msg.content);
+      } else if (msg.type === 'ai' || msg.role === 'assistant') {
+        return new AIMessage(msg.content);
+      } else {
+        return new SystemMessage(msg.content);
+      }
+    });
+
+    // Add system prompt and user input
+    const wrapperConfig = agent.langGraphWrapper.getConfig();
+    const fullConversation = [
+      new SystemMessage(wrapperConfig.systemPrompt),
+      ...messages,
+      new HumanMessage(input),
+    ];
+
+    // Create a ReadableStream that processes LangGraph streaming events
+    const transformStream = new ReadableStream({
+      async start(controller) {
+        try {
+          logger.info('[LangGraph] Starting streaming execution');
+
+          let finalResponse = '';
+          let hasStartedStreaming = false;
+
+          // Stream from the LangGraph wrapper
+          if (!agent.langGraphWrapper) {
+            throw new Error('LangGraph wrapper is not available');
+          }
+
+          for await (const event of agent.langGraphWrapper.stream(
+            fullConversation,
+          )) {
+            try {
+              // Enhanced logging for all events
+              logger.info('[LangGraph] Processing streaming event', {
+                eventType: event.event,
+                eventName: event.name,
+                hasData: !!event.data,
+                hasChunk: !!event.data?.chunk,
+                chunkContent: event.data?.chunk?.content
+                  ? typeof event.data.chunk.content === 'string'
+                    ? event.data.chunk.content.substring(0, 100)
+                    : 'Non-string content'
+                  : 'No chunk content',
+                hasOutput: !!event.data?.output,
+                outputType: event.data?.output
+                  ? typeof event.data.output
+                  : 'none',
+              });
+
+              // Process different types of streaming events
+              if (event.event === 'on_chat_model_stream' && event.data?.chunk) {
+                // Handle AI model streaming chunks
+                const chunk = event.data.chunk;
+                if (chunk.content && typeof chunk.content === 'string') {
+                  if (!hasStartedStreaming) {
+                    hasStartedStreaming = true;
+                    logger.info('[LangGraph] Started streaming AI response');
+                  }
+                  finalResponse += chunk.content;
+
+                  // Format for Vercel AI SDK streaming (match AgentExecutor format)
+                  const formattedChunk = `0:${JSON.stringify(chunk.content)}\n`;
+                  controller.enqueue(formattedChunk);
+
+                  logger.info('[LangGraph] Streamed chunk', {
+                    chunkLength: chunk.content.length,
+                    totalResponseLength: finalResponse.length,
+                  });
+                }
+              } else if (
+                event.event === 'on_chain_end' &&
+                event.name === 'LangGraph'
+              ) {
+                // Handle final state from LangGraph completion
+                logger.info('[LangGraph] LangGraph chain ended', {
+                  hasOutput: !!event.data?.output,
+                  outputMessageCount: event.data?.output?.messages?.length || 0,
+                });
+
+                const finalState = event.data?.output;
+                if (finalState?.messages?.length > 0) {
+                  const lastMessage =
+                    finalState.messages[finalState.messages.length - 1];
+                  logger.info('[LangGraph] Final state last message', {
+                    messageType: lastMessage._getType?.() || 'unknown',
+                    hasContent: !!lastMessage.content,
+                    contentLength:
+                      typeof lastMessage.content === 'string'
+                        ? lastMessage.content.length
+                        : 0,
+                    contentPreview:
+                      typeof lastMessage.content === 'string'
+                        ? lastMessage.content.substring(0, 200)
+                        : 'Non-string content',
+                  });
+
+                  if (lastMessage.content && !hasStartedStreaming) {
+                    // If we haven't streamed anything yet, send the final content
+                    finalResponse = lastMessage.content;
+                    const formattedChunk = `0:${JSON.stringify(lastMessage.content)}\n`;
+                    controller.enqueue(formattedChunk);
+                    hasStartedStreaming = true;
+                    logger.info(
+                      '[LangGraph] Sent final state content as fallback',
+                    );
+                  }
+                }
+              } else if (
+                event.event === 'on_chain_end' &&
+                event.name === 'agent'
+              ) {
+                // Handle AI agent responses that may not have streaming chunks
+                logger.info('[LangGraph] Agent node ended', {
+                  hasOutput: !!event.data?.output,
+                  outputType: event.data?.output
+                    ? typeof event.data.output
+                    : 'none',
+                });
+
+                const output = event.data?.output;
+                if (output?.content) {
+                  // Always capture agent responses, whether streaming started or not
+                  if (!hasStartedStreaming) {
+                    finalResponse = output.content;
+                    const formattedChunk = `0:${JSON.stringify(output.content)}\n`;
+                    controller.enqueue(formattedChunk);
+                    hasStartedStreaming = true;
+                    logger.info('[LangGraph] Sent non-streaming AI response', {
+                      contentLength: output.content.length,
+                    });
+                  } else {
+                    // If we were already streaming, this might be a follow-up response after tools
+                    finalResponse += output.content;
+                    const formattedChunk = `0:${JSON.stringify(output.content)}\n`;
+                    controller.enqueue(formattedChunk);
+                    logger.info(
+                      '[LangGraph] Sent follow-up AI response after tools',
+                      {
+                        contentLength: output.content.length,
+                        totalResponseLength: finalResponse.length,
+                      },
+                    );
+                  }
+                }
+              } else if (event.event === 'on_tool_start') {
+                // Handle tool execution start
+                logger.info('[LangGraph] Tool execution started', {
+                  toolName: event.name,
+                });
+              } else if (event.event === 'on_tool_end') {
+                // Handle tool execution completion
+                logger.info('[LangGraph] Tool execution completed', {
+                  toolName: event.name,
+                });
+              }
+
+              // Handle UI events (artifacts, etc.)
+              if (
+                event.data?.ui &&
+                Array.isArray(event.data.ui) &&
+                event.data.ui.length > 0
+              ) {
+                for (const uiEvent of event.data.ui) {
+                  if (uiEvent && typeof uiEvent === 'object') {
+                    // Send UI events in the proper format for the frontend
+                    const uiChunk = `2:${JSON.stringify(uiEvent)}\n`;
+                    controller.enqueue(uiChunk);
+                  }
+                }
+              }
+            } catch (eventError) {
+              logger.warn('[LangGraph] Error processing streaming event', {
+                error:
+                  eventError instanceof Error
+                    ? eventError.message
+                    : 'Unknown error',
+                eventType: event.event,
+              });
+            }
+          }
+
+          // Ensure we have some response - if streaming didn't capture the final response,
+          // invoke the LangGraph directly to get the result
+          if (!hasStartedStreaming && !finalResponse) {
+            logger.info(
+              '[LangGraph] No streaming response captured, invoking directly',
+            );
+            try {
+              const directResult =
+                await agent.langGraphWrapper.invoke(fullConversation);
+              if (directResult?.messages?.length > 0) {
+                const lastMessage =
+                  directResult.messages[directResult.messages.length - 1];
+                if (lastMessage.content) {
+                  finalResponse =
+                    typeof lastMessage.content === 'string'
+                      ? lastMessage.content
+                      : JSON.stringify(lastMessage.content); // Ensure we capture this for message saving
+                  const formattedChunk = `0:${JSON.stringify(lastMessage.content)}\n`;
+                  controller.enqueue(formattedChunk);
+                  hasStartedStreaming = true;
+                  logger.info(
+                    '[LangGraph] Successfully sent direct invocation result',
+                    {
+                      contentLength: lastMessage.content.length,
+                    },
+                  );
+                }
+              }
+            } catch (directError) {
+              logger.error('[LangGraph] Direct invocation also failed', {
+                error:
+                  directError instanceof Error
+                    ? directError.message
+                    : 'Unknown error',
+              });
+            }
+          }
+
+          // Final fallback if nothing worked
+          if (!hasStartedStreaming) {
+            const fallbackMessage =
+              'I apologize, but I was unable to process your request properly.';
+            const formattedChunk = `0:${JSON.stringify(fallbackMessage)}\n`;
+            controller.enqueue(formattedChunk);
+          }
+
+          logger.info('[LangGraph] Streaming completed successfully', {
+            hasStartedStreaming,
+            finalResponseLength: finalResponse.length,
+            finalResponsePreview: finalResponse.substring(0, 200),
+          });
+
+          // Save assistant message to database
+          if (brainRequest?.id && finalResponse) {
+            logger.info('[LangGraph] Attempting to save assistant message', {
+              chatId: brainRequest.id,
+              responseLength: finalResponse.length,
+            });
+            try {
+              const session = await auth();
+              if (session?.user?.id) {
+                const assistantMessage: DBMessage = {
+                  id: randomUUID(),
+                  chatId: brainRequest.id,
+                  role: 'assistant',
+                  parts: [{ type: 'text', text: finalResponse }],
+                  attachments: [],
+                  createdAt: new Date(),
+                  clientId: session.user.clientId || 'default',
+                };
+
+                await saveMessages({ messages: [assistantMessage] });
+                logger.info('Assistant message saved successfully', {
+                  messageId: assistantMessage.id,
+                  chatId: assistantMessage.chatId,
+                  responseLength: finalResponse.length,
+                });
+              }
+            } catch (error) {
+              logger.error('Failed to save assistant message', {
+                chatId: brainRequest.id,
+                error: error instanceof Error ? error.message : 'Unknown error',
+              });
+            }
+          }
+
+          controller.close();
+        } catch (error) {
+          logger.error('[LangGraph] Error in streaming execution', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+
+          // Send error message to user
+          const errorMessage =
+            'I encountered an error while processing your request. Please try again.';
+          const errorChunk = `0:${JSON.stringify(errorMessage)}\n`;
+          controller.enqueue(errorChunk);
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(transformStream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'X-Execution-Path': 'langchain-langgraph-streaming',
+      },
+    });
+  }
+
+  // Fallback for invalid configuration
+  logger.error('Invalid agent configuration for streaming');
+  throw new Error('Invalid agent configuration or missing components');
 }
 
 /**

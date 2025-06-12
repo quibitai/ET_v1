@@ -1,10 +1,7 @@
 'use client';
 
 import React from 'react';
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-} from '@/components/ui/resizable';
+import { ResizablePanelGroup, ResizablePanel } from '@/components/ui/resizable';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
 

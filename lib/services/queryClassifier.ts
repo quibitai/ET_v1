@@ -270,7 +270,7 @@ export class QueryClassifier {
       // Prioritize tool forcing by confidence level
       const toolIntents = [
         { name: 'tavilySearch', intent: webSearchIntent },
-        { name: 'asanaGetMyTasks', intent: asanaIntent }, // Use most common Asana tool
+        { name: 'asana_list_tasks', intent: asanaIntent }, // Use most common Asana tool
         { name: 'searchInternalKnowledgeBase', intent: knowledgeBaseIntent },
       ];
 
@@ -466,16 +466,23 @@ export class QueryClassifier {
     hasIntent: boolean;
     confidence: number;
   } {
+    // Simple document creation detection without external patterns
+    const documentKeywords = [
+      'create document',
+      'write report',
+      'make document',
+      'draft',
+      'generate file',
+    ];
     let matchCount = 0;
-    const totalPatterns = DOCUMENT_CREATION_PATTERNS.length;
 
-    for (const pattern of DOCUMENT_CREATION_PATTERNS) {
-      if (pattern.test(userInput)) {
+    for (const keyword of documentKeywords) {
+      if (userInput.toLowerCase().includes(keyword)) {
         matchCount++;
       }
     }
 
-    const confidence = matchCount / totalPatterns;
+    const confidence = matchCount / documentKeywords.length;
     const hasIntent = confidence > 0; // Any match indicates document creation intent
 
     // Additional confidence boosters
