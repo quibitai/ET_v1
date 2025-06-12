@@ -66,29 +66,7 @@ export interface VercelAIResult {
   artifactEvents?: any[]; // Buffered artifact events for image/document generation
 }
 
-/**
- * Simple weather tool for Vercel AI SDK
- */
-const getWeatherTool = {
-  name: 'getWeather',
-  description: 'Get current weather for a location',
-  parameters: z.object({
-    location: z.string().describe('The city and state/country'),
-  }),
-  execute: async ({ location }: { location: string }) => {
-    // Mock weather data for now - in production this would call a real API
-    const weatherData = {
-      location,
-      temperature: Math.floor(Math.random() * 30) + 15, // 15-45°C
-      condition: ['sunny', 'cloudy', 'rainy', 'partly cloudy'][
-        Math.floor(Math.random() * 4)
-      ],
-      humidity: Math.floor(Math.random() * 40) + 40, // 40-80%
-    };
-
-    return `Current weather in ${location}: ${weatherData.temperature}°C, ${weatherData.condition}, humidity ${weatherData.humidity}%`;
-  },
-};
+// Weather tool removed - focusing on core business tools
 
 /**
  * Simple suggestion tool for Vercel AI SDK

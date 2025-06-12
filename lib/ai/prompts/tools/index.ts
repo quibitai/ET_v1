@@ -1,5 +1,5 @@
-
 import { dataAnalysisToolInstructions } from './data-analysis';
+import { getAvailableTools } from '../../tools';
 // Document tool instructions removed as part of Echo Tango v1 simplification
 // Import instructions for other tools as they are created
 
@@ -45,7 +45,7 @@ BUDGET CREATION WORKFLOW: When users ask to create budgets or estimates:
 
   // Other tools
   getMessagesFromOtherChat: `When retrieving messages from other chats, summarize the key points relevant to the user's current query. Note the source chat (e.g., "In the Echo Tango chat...").`,
-  getWeather: `When providing weather information, state the location and key conditions (temperature, precipitation).`,
+  // Weather tool removed - focusing on core business tools
   requestSuggestions: `When suggestions are requested, confirm the request and mention that suggestions will appear in the document interface.`,
 
   // Add mappings for any other tools as needed
@@ -57,17 +57,26 @@ BUDGET CREATION WORKFLOW: When users ask to create budgets or estimates:
  * @param toolIds - Array of tool names available in the current context.
  * @returns A single string containing relevant, unique instructions, or an empty string if none apply.
  */
-export function getToolPromptInstructions(toolIds: string[] = []): string {
+export function getToolPromptInstructions(
+  // The toolIds parameter is now ignored to ensure we always use the single source of truth.
+  toolIds: string[] = [],
+): string {
   const relevantInstructions = new Set<string>();
-  for (const toolId of toolIds) {
-    const instruction = toolInstructionMap[toolId];
+  const availableTools = getAvailableTools(); // Get the single source of truth.
+
+  console.log(
+    '[ToolInstructions] Generating instructions from dynamically loaded tools.',
+    { toolCount: availableTools.length },
+  );
+
+  for (const tool of availableTools) {
+    const instruction = toolInstructionMap[tool.name];
     if (instruction) {
       // Add the trimmed instruction to avoid extra whitespace issues
       relevantInstructions.add(instruction.trim());
     } else {
-      console.warn(
-        `[ToolInstructions] No specific instruction found for tool: ${toolId}`,
-      );
+      // This is now an expected case for tools that don't need special instructions.
+      // console.log(`[ToolInstructions] No specific instruction found for tool: ${tool.name}`);
     }
   }
   // Join the unique instructions with double newlines for better separation

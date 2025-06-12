@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { queryDocumentRowsTool } from './query-document-rows';
 import { searchAndRetrieveKnowledgeBase } from './search-internal-knowledge-base';
 import { requestSuggestionsTool } from './request-suggestions';
-import { getWeatherTool } from './get-weather';
+// Weather tool removed - focusing on core business functionality
 import { tavilySearchTool } from './tavily-search';
 import { tavilyExtractTool } from './tavilyExtractTool';
 import { googleCalendarTool } from './googleCalendarTool';
@@ -21,11 +21,30 @@ import {
   ANALYTICS_EVENTS,
 } from '@/lib/services/observabilityService';
 
-// Import Asana tools from the asana directory
-import { createAsanaFunctionCallingTools } from './asana/function-calling-tools';
+// Import Asana tools from the new modular structure
+import { createAsanaTools } from './asana/integration/tool-factory-simple';
 
-// Create Asana tool instances
-const asanaTools = createAsanaFunctionCallingTools();
+// Create Asana tool instances lazily to avoid startup validation errors
+let asanaTools: ReturnType<typeof createAsanaTools> | null = null;
+
+function getAsanaTools() {
+  if (!asanaTools) {
+    try {
+      console.log('[AsanaTools] Creating Asana tools...');
+      asanaTools = createAsanaTools('default-session');
+      console.log(
+        '[AsanaTools] Successfully created',
+        asanaTools.length,
+        'tools:',
+        asanaTools.map((t) => t.name),
+      );
+    } catch (error) {
+      console.error('[AsanaTools] Failed to create Asana tools:', error);
+      asanaTools = []; // Return empty array on error to prevent crashes
+    }
+  }
+  return asanaTools;
+}
 
 // Create budget creation helper tool
 const createBudgetTool = new DynamicStructuredTool({
@@ -103,25 +122,38 @@ const createBudgetTool = new DynamicStructuredTool({
   },
 });
 
-export const availableTools = [
-  queryDocumentRowsTool,
-  searchAndRetrieveKnowledgeBase,
-  requestSuggestionsTool,
-  getWeatherTool,
-  tavilySearchTool,
-  tavilyExtractTool,
-  googleCalendarTool,
-  getMessagesFromOtherChatTool,
-  createBudgetTool,
-  ...asanaTools, // Modern Asana tools with LLM function calling, semantic resolution, error recovery
-];
+export function getAvailableTools() {
+  const staticTools = [
+    queryDocumentRowsTool,
+    searchAndRetrieveKnowledgeBase,
+    requestSuggestionsTool,
+    tavilySearchTool,
+    tavilyExtractTool,
+    googleCalendarTool,
+    getMessagesFromOtherChatTool,
+    createBudgetTool,
+  ];
+
+  // Get Asana tools dynamically each time
+  const asanaTools = getAsanaTools();
+
+  console.log('[ToolIndex] Loading tools:', {
+    staticTools: staticTools.length,
+    asanaTools: asanaTools.length,
+    total: staticTools.length + asanaTools.length,
+  });
+
+  return [...staticTools, ...asanaTools];
+}
+
+// For backward compatibility, export availableTools as a getter
+export const availableTools = getAvailableTools();
 
 export {
   searchAndRetrieveKnowledgeBase,
-  getWeatherTool,
   requestSuggestionsTool,
   tavilySearchTool,
   getMessagesFromOtherChatTool,
   googleCalendarTool,
-  asanaTools, // Modern Asana function calling tools
+  getAsanaTools, // Modern Asana function calling tools getter
 };

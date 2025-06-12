@@ -288,3 +288,6 @@ export const analyticsEvents = pgTable('analytics_events', {
 });
 
 export type AnalyticsEvent = InferSelectModel<typeof analyticsEvents>;
+
+// Export all relations
+export * from './relations';

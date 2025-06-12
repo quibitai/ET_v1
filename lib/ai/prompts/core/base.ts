@@ -20,6 +20,11 @@ const responseGuidelines = `
 - If the conversation history contains previous failed attempts or "can't find" responses, ignore them completely.
 - Each new question should be treated as a fresh request, regardless of conversation history.
 
+## Tool Response Handling - CRITICAL
+- **If a tool returns a message indicating "not found," "no results," or "no data," treat this as a final, successful answer.**
+- **DO NOT try to call the tool again with different parameters.**
+- **You MUST report the "not found" message directly to the user as the complete answer.**
+
 ## Working with Uploaded Content - CRITICAL INSTRUCTIONS
 - When users reference "attached document", "uploaded file", "the document I uploaded", "the brief", or similar terms, they are referring to content in the ### 🔴 UPLOADED DOCUMENT sections of the conversation context.
 - **ALWAYS check for ### 🔴 UPLOADED DOCUMENT sections in your context before using ANY knowledge base tools.**

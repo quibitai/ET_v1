@@ -43,10 +43,11 @@ The Brain Orchestrator is the system's nerve center, responsible for:
 
 ### **Request Processing Pipeline**
 1. **Context Extraction**: Parse user input and conversation history via `ContextService`
-2. **Query Classification**: Analyze patterns via `QueryClassifier` 
-3. **Path Selection**: Route to optimal execution engine
-4. **Execution Coordination**: Manage streaming and context propagation
-5. **Memory Storage**: Persist interactions via `MessageService`
+2. **"Get or Create" Chat**: Ensure a `Chat` record exists in the database before processing to prevent race conditions.
+3. **Query Classification**: Analyze patterns via `QueryClassifier` 
+4. **Path Selection**: Route to optimal execution engine
+5. **Execution Coordination**: Manage streaming and context propagation
+6. **Memory Storage**: Persist interactions via `MessageService`
 
 ### **Configuration Interface**
 ```typescript
@@ -123,6 +124,11 @@ interface SpecialistConfig {
   };
 }
 ```
+
+### **Database-Driven Configuration**
+**Location**: `lib/db/schema.ts` (see `specialists` table)
+
+Specialist configurations, including their persona prompts and default toolsets, are no longer stored in static files. They are now fully managed in the database, allowing for real-time updates through the admin interface without requiring a system redeployment.
 
 ### **Dynamic Prompt Composition**
 **Location**: `lib/ai/prompts/loader.ts`
@@ -618,6 +624,32 @@ export async function logAdminAction(action: AdminAction) {
 - **Configuration Tracking**: Version control for all configuration changes
 - **Error Monitoring**: Comprehensive error tracking and alerting
 - **Usage Analytics**: Admin interface usage patterns and optimization insights
+
+## 💾 **Database & ORM Architecture**
+
+### **Explicit Relationship Management with Drizzle ORM**
+**Location**: `lib/db/relations.ts`
+
+A critical component of the system's stability is the explicit definition of all table relationships for the Drizzle ORM. Foreign key constraints are defined in `lib/db/schema.ts`, but Drizzle's query builder requires additional, explicit `relations` definitions to perform joins and eager loading.
+
+To solve this and prevent circular dependencies, all relations are managed in a dedicated `lib/db/relations.ts` file.
+
+**Example `chatRelations` Definition**:
+```typescript
+export const chatRelations = relations(chat, ({ one, many }) => ({
+  user: one(user, {
+    fields: [chat.userId],
+    references: [user.id],
+  }),
+  client: one(clients, {
+    fields: [chat.clientId],
+    references: [clients.id],
+  }),
+  messages: many(message),
+  // ... other relations
+}));
+```
+This architecture ensures that the ORM has a clear, unambiguous understanding of the data model, preventing runtime errors and ensuring query integrity.
 
 ---
 

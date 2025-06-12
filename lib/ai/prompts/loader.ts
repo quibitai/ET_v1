@@ -124,9 +124,7 @@ You are a helpful general assistant within the Quibit system. Address user queri
             }
           }
 
-          const toolInstructions = getToolPromptInstructions(
-            (specialistConfig.defaultTools as string[]) || [],
-          );
+          const toolInstructions = getToolPromptInstructions();
 
           console.log(
             `[PromptLoader] Successfully composed prompt for specialist: ${contextId}`,
@@ -239,12 +237,7 @@ You are a helpful general assistant within the Quibit system. Address user queri
         }
 
         // Get tool instructions for the chat model specialist
-        const toolInstructions =
-          chatModelResult.length > 0
-            ? getToolPromptInstructions(
-                (chatModelResult[0].defaultTools as string[]) || [],
-              )
-            : '';
+        const toolInstructions = getToolPromptInstructions();
 
         console.log(
           `[PromptLoader] Successfully composed prompt for Chat Model specialist`,

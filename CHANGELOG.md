@@ -5,7 +5,32 @@ All notable changes to the Echo Tango RAG System will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2025-01-12
+## [1.2.0] - 2025-06-12
+
+### 🛠️ **Architectural Stability & Streaming Integrity**
+
+This release delivers critical architectural fixes to resolve persistent streaming failures, database race conditions, and ORM misconfigurations. The system is now significantly more robust, and the RAG pipeline provides complete, uninterrupted responses.
+
+### ✅ **Added**
+
+- **Database-Aware Chat Creation**: Implemented a "get or create" pattern in the `BrainOrchestrator` to ensure a `Chat` database record exists *before* message processing begins, eliminating a critical race condition.
+- **Explicit Drizzle ORM Relations**: Created a dedicated `lib/db/relations.ts` file to explicitly define all table relationships for the Drizzle ORM. This is the architecturally correct approach to prevent circular dependencies and provide the query builder with the metadata it needs.
+- **Robust Session Handling**: Added more explicit type guards and checks for the user session in the `BrainOrchestrator` to improve type safety and prevent runtime errors.
+
+### 🔄 **Changed**
+
+- **Corrected Versioning**: Re-tagged the previous "1.1.0" release as "1.0.1" to better align with semantic versioning, as it primarily consisted of enhancements and fixes rather than new, breaking features.
+
+### 🔧 **Fixed**
+
+- **CRITICAL: Incomplete Chat Responses**: Resolved the root cause of chat streams being cut off mid-response. The fix prevents a foreign key violation that occurred when attempting to save an assistant message before its parent chat was created.
+- **CRITICAL: Drizzle ORM Crash**: Fixed a fatal `Cannot read properties of undefined (reading 'referencedTable')` error by correctly defining all table relationships in `lib/db/relations.ts`, allowing the ORM's query builder to function correctly.
+- **Corrected Schema Mismatches**: Aligned the new relation definitions with the actual database schema, fixing errors related to missing or mismatched columns in the `conversationalMemory`, `specialists`, and `analyticsEvents` tables.
+- **LangGraph Response Generation**: Fixed an issue where the LangGraph agent would execute tools but fail to generate or stream the final response.
+- **Agent Execution Loop**: Removed the flawed `AgentExecutor.stream()` path and now exclusively use LangGraph for all agentic workflows to prevent infinite loops during multi-step tool use.
+- **Assistant Message Persistence**: Ensured assistant messages are now correctly saved to the database after a successful response from the LangGraph agent.
+
+## [1.0.1] - 2025-01-12
 
 ### 🎛️ **Admin Dashboard Consolidation & Enhancement**
 

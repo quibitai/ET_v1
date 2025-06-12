@@ -47,6 +47,11 @@ export function createGraphForPatterns(patterns: string[], config: any) {
  * Determine if a query should use LangGraph based on patterns
  */
 export function shouldUseLangGraph(patterns: string[]): boolean {
+  // Safety check for undefined or null patterns
+  if (!patterns || !Array.isArray(patterns)) {
+    return false;
+  }
+
   // Criteria for using LangGraph:
   // - Complex tool operations
   // - Multi-step reasoning needed
@@ -59,7 +64,11 @@ export function shouldUseLangGraph(patterns: string[]): boolean {
     'KNOWLEDGE_RETRIEVAL',
   ];
 
-  return patterns.some((pattern) =>
-    complexPatterns.some((complex) => pattern.includes(complex)),
-  );
+  return patterns.some((pattern) => {
+    // Safety check for undefined pattern
+    if (!pattern || typeof pattern !== 'string') {
+      return false;
+    }
+    return complexPatterns.some((complex) => pattern.includes(complex));
+  });
 }
