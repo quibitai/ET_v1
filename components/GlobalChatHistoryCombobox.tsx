@@ -23,6 +23,7 @@ import useSWR, { useSWRConfig } from 'swr';
 // import { useChatPane } from '@/context/ChatPaneContext';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { unstable_serialize } from 'swr/infinite';
+import { useSession } from 'next-auth/react';
 import { getChatHistoryPaginationKey } from '@/hooks/use-chat-history';
 
 // Define the chat history item type
@@ -44,10 +45,14 @@ export function GlobalChatHistoryCombobox() {
   const globalPaneChatId = null;
   const setGlobalPaneChatId = (_: string) => {};
   const { mutate: globalMutate } = useSWRConfig();
+  const { data: session, status } = useSession();
+
+  // Don't make SWR requests until session is loaded
+  const isSessionReady = status !== 'loading' && session?.user?.id;
 
   // Fetch chat history with more frequent polling but less aggressive
   const { data, error, isLoading, mutate } = useSWR<ChatHistory>(
-    '/api/history?limit=50',
+    isSessionReady ? '/api/history?limit=50' : null,
     fetcher,
     {
       refreshInterval: 30000, // Poll every 30 seconds instead of 15

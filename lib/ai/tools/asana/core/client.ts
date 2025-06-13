@@ -28,10 +28,10 @@ export class AsanaApiClient {
     await this.enforceRateLimit();
 
     return this.executeWithRetry(async () => {
-      const response = await fetch(`${this.config.baseUrl}${endpoint}`, {
+      const response = await fetch(`${this.config.apiBaseUrl}${endpoint}`, {
         method: options.method || 'GET',
         headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
+          Authorization: `Bearer ${this.config.personalAccessToken}`,
           'Content-Type': 'application/json',
           Accept: 'application/json',
           ...options.headers,

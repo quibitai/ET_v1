@@ -1,8 +1,12 @@
 /**
  * Document Module Index
  *
- * This file exports the Document interface and document-related functions.
+ * This file exports deprecated document-related functions for legacy compatibility.
  */
 
-export type { Document, CreateDocumentParams } from '../document';
-export { createDocument } from '../document';
+// Document functionality has been deprecated
+export {
+  saveDocument,
+  getDocumentById,
+  getDocumentsByUserId,
+} from '../document';

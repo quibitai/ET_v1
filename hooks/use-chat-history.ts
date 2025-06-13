@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 import useSWRInfinite from 'swr/infinite';
+import { useSession } from 'next-auth/react';
 import { isToday, isYesterday, subMonths, subWeeks } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -276,7 +277,12 @@ export function useChatHistory(currentChatId?: string) {
   );
 
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [isPending, startTransition] = useTransition();
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Determine if the session is ready for fetching
+  const isSessionReady = status !== 'loading' && session?.user?.id;
 
   // State for expanded day sections and number of chats to show per day
   const [expandedDays, setExpandedDays] = useState<ExpandedSections>({
@@ -322,46 +328,69 @@ export function useChatHistory(currentChatId?: string) {
   // Log when SWR is about to make API calls
   console.log('[useChatHistory] Setting up SWR infinite hook for chat history');
 
+  // Helper function for robust error handling
+  const handleSWRError = useCallback((error: any, context: string) => {
+    // Create a comprehensive error log
+    const errorDetails = {
+      message: error?.message || 'Unknown error',
+      status: error?.status || error?.code || 'No status',
+      name: error?.name || 'Unknown error type',
+      stack: error?.stack || 'No stack trace',
+      fullError: error,
+      timestamp: new Date().toISOString(),
+      context,
+    };
+
+    console.error(`[useChatHistory] SWR Error in ${context}:`, errorDetails);
+
+    // Provide user-friendly error messages based on error type
+    if (error?.status === 401 || error?.status === 403) {
+      toast.error('Authentication required. Please log in again.');
+    } else if (error?.status >= 500) {
+      toast.error('Server error. Please try again later.');
+    } else if (
+      error?.name === 'TypeError' &&
+      error?.message?.includes('fetch')
+    ) {
+      toast.error('Network error. Please check your connection.');
+    } else {
+      toast.error(
+        `Could not load ${context.toLowerCase()}. Please try again later.`,
+      );
+    }
+  }, []);
+
   // Chat History fetching with SWR
   const {
-    data: paginatedChatHistories,
-    setSize: setChatSize,
-    isValidating: isChatValidating,
-    isLoading: isChatLoading,
+    data: chatHistory,
+    error: chatHistoryError,
+    isLoading: isLoadingChatHistory,
+    isValidating: isValidatingChatHistory,
     mutate: mutateChatHistory,
-  } = useSWRInfinite<ChatHistory>(getChatHistoryPaginationKey, fetcher, {
-    fallbackData: [],
-    revalidateOnFocus: false,
-    revalidateOnMount: true,
-    dedupingInterval: 60000,
-    refreshInterval: 0,
-    refreshWhenHidden: false,
-    revalidateIfStale: false,
-    loadingTimeout: 3000,
-    onSuccess: (data) => {
-      console.log('[useChatHistory] SWR onSuccess for chat history:', {
-        pages: data.length,
-        totalChats: data.reduce(
-          (acc, page) => acc + (page.chats?.length || 0),
-          0,
-        ),
-      });
+    size: chatHistoryPageSize,
+    setSize: setChatHistoryPageSize,
+  } = useSWRInfinite<ChatHistory>(
+    // Only fetch if session is ready
+    isSessionReady ? getChatHistoryPaginationKey : () => null,
+    fetcher,
+    {
+      revalidateFirstPage: false,
+      revalidateOnFocus: true, // Auto-refresh on window focus
+      revalidateIfStale: true, // Revalidate if stale on mount
+      onError: (error) => handleSWRError(error, 'Chat History'),
     },
-    onError: (error) => {
-      console.error('[useChatHistory] SWR onError for chat history:', error);
-    },
-  });
+  );
 
   // Log SWR state changes
   useEffect(() => {
     console.log('[useChatHistory] SWR state update:', {
-      paginatedChatHistories: paginatedChatHistories?.length || 0,
-      isValidating: isChatValidating,
-      isLoading: isChatLoading,
+      chatHistory: chatHistory?.length || 0,
+      isValidating: isValidatingChatHistory,
+      isLoading: isLoadingChatHistory,
     });
-  }, [paginatedChatHistories, isChatValidating, isChatLoading]);
+  }, [chatHistory, isValidatingChatHistory, isLoadingChatHistory]);
 
-  // Document History fetching with SWR
+  // Document History fetching with SWR - DISABLED (deprecated in Phase 1, Task 1.2)
   const {
     data: paginatedDocumentHistories,
     setSize: setDocSize,
@@ -369,12 +398,13 @@ export function useChatHistory(currentChatId?: string) {
     isLoading: isDocLoading,
     mutate: mutateDocumentHistory,
   } = useSWRInfinite<DocumentHistory>(
-    getDocumentHistoryPaginationKey,
+    // Disable document history fetching since it's been deprecated
+    () => null,
     fetcher,
     {
       fallbackData: [],
       revalidateOnFocus: false,
-      revalidateOnMount: true,
+      revalidateOnMount: false,
       dedupingInterval: 60000,
       refreshInterval: 0,
       refreshWhenHidden: false,
@@ -383,18 +413,13 @@ export function useChatHistory(currentChatId?: string) {
       onSuccess: (data) => {
         console.log('[useChatHistory] SWR onSuccess for document history:', {
           pages: data.length,
-          totalDocs: data.reduce(
+          totalItems: data.reduce(
             (acc, page) => acc + (page.documents?.length || 0),
             0,
           ),
         });
       },
-      onError: (error) => {
-        console.error(
-          '[useChatHistory] SWR onError for document history:',
-          error,
-        );
-      },
+      onError: (error) => handleSWRError(error, 'Document History'),
     },
   );
 
@@ -403,25 +428,25 @@ export function useChatHistory(currentChatId?: string) {
 
   // Memoize grouped chats to prevent excessive recalculation
   const groupedChats = useMemo(() => {
-    if (!paginatedChatHistories) {
+    if (!chatHistory) {
       console.log('[useChatHistory] No paginated chat histories available yet');
       return null;
     }
 
     console.log(
       '[useChatHistory] Processing paginated chat histories:',
-      paginatedChatHistories.length,
+      chatHistory.length,
       'pages',
     );
 
     // Log details of each pagination page
-    paginatedChatHistories.forEach((page, idx) => {
+    chatHistory.forEach((page, idx) => {
       console.log(
         `[useChatHistory] Page ${idx + 1} contains ${page.chats.length} chats, hasMore: ${page.hasMore}`,
       );
     });
 
-    const chatsFromHistory = paginatedChatHistories.flatMap(
+    const chatsFromHistory = chatHistory.flatMap(
       (paginatedChatHistory) => paginatedChatHistory.chats,
     );
 
@@ -448,7 +473,7 @@ export function useChatHistory(currentChatId?: string) {
     });
 
     return result;
-  }, [paginatedChatHistories]);
+  }, [chatHistory]);
 
   // Check if chat history is empty
   const hasEmptyChatHistory = useMemo(() => {
@@ -465,11 +490,10 @@ export function useChatHistory(currentChatId?: string) {
 
   // Check if we've reached the end of pagination
   const hasReachedChatEnd = useMemo(() => {
-    if (!paginatedChatHistories || paginatedChatHistories.length === 0)
-      return false;
-    const lastPage = paginatedChatHistories[paginatedChatHistories.length - 1];
+    if (!chatHistory || chatHistory.length === 0) return false;
+    const lastPage = chatHistory[chatHistory.length - 1];
     return lastPage && lastPage.hasMore === false;
-  }, [paginatedChatHistories]);
+  }, [chatHistory]);
 
   // Memoize grouped documents
   const groupedDocuments = useMemo(() => {
@@ -580,8 +604,8 @@ export function useChatHistory(currentChatId?: string) {
 
   // Load more chats
   const loadMoreChats = useCallback(() => {
-    setChatSize((size) => size + 1);
-  }, [setChatSize]);
+    setChatHistoryPageSize((size) => size + 1);
+  }, [setChatHistoryPageSize]);
 
   // Load more documents
   const loadMoreDocuments = useCallback(() => {
@@ -593,8 +617,8 @@ export function useChatHistory(currentChatId?: string) {
     groupedChats,
     hasEmptyChatHistory,
     hasReachedChatEnd,
-    isChatLoading,
-    isChatValidating,
+    isLoadingChatHistory,
+    isValidatingChatHistory,
 
     // Document data
     groupedDocuments,

@@ -29,13 +29,13 @@ const responseGuidelines = `
 - When users reference "attached document", "uploaded file", "the document I uploaded", "the brief", or similar terms, they are referring to content in the ### 🔴 UPLOADED DOCUMENT sections of the conversation context.
 - **ALWAYS check for ### 🔴 UPLOADED DOCUMENT sections in your context before using ANY knowledge base tools.**
 - **If uploaded content is available (marked with 🔴), you MUST use it directly rather than searching external knowledge bases.**
-- **DO NOT use listDocuments, getFileContents, or any knowledge base tools when uploaded content exists in the context.**
+- **DO NOT use listDocuments, getDocumentContents, or any knowledge base tools when uploaded content exists in the context.**
 - When users ask to "revise based on the attached document" or similar requests, prioritize the uploaded content over all other sources.
 - If you cannot find uploaded content and the user references an attachment, ask them to verify the upload was successful rather than falling back to knowledge base tools.
 - The uploaded content takes precedence over ALL other documents, templates, or knowledge base materials.
 
 ## Knowledge Base Tool Usage
-- Only use listDocuments and getFileContents when:
+- Only use listDocuments and getDocumentContents when:
   1. No uploaded content is available in the current context
   2. User explicitly asks for knowledge base documents by name or ID
   3. User asks to "search the knowledge base" specifically

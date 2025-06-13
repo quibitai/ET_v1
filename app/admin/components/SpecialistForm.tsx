@@ -29,6 +29,18 @@ const AVAILABLE_TOOLS = [
     icon: '🔍',
   },
   {
+    name: 'listDocuments',
+    category: 'Search & Knowledge',
+    description: 'Lists available documents in the knowledge base',
+    icon: '📋',
+  },
+  {
+    name: 'getDocumentContents',
+    category: 'Search & Knowledge',
+    description: 'Retrieves full content of a document by ID or title',
+    icon: '📄',
+  },
+  {
     name: 'tavilySearch',
     category: 'Search & Knowledge',
     description: 'Perform web searches using Tavily for current information',
@@ -515,13 +527,13 @@ Make it more professional and tool-focused.`;
                 <p className="text-sm text-red-600">{errors.personaPrompt}</p>
               )}
               <div className="text-sm text-muted-foreground">
-                Define the specialist's personality, expertise, communication
-                style, and how they should use their tools.
+                Define the specialist&apos;s personality, expertise,
+                communication style, and how they should use their tools.
                 {formData.selectedTools?.length > 0 && (
                   <div className="mt-2 p-2 bg-blue-50 rounded text-blue-800">
-                    💡 Selected {formData.selectedTools.length} tools. Use "AI
-                    Enhance" to optimize this prompt for the selected
-                    capabilities.
+                    💡 Selected {formData.selectedTools.length} tools. Use
+                    &quot;AI Enhance&quot; to optimize this prompt for the
+                    selected capabilities.
                   </div>
                 )}
               </div>

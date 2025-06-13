@@ -41,11 +41,102 @@ export class BrainOrchestrator {
   ): ReadableStream {
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
+    let streamClosed = false;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    // Helper to safely close the stream
+    const safeCloseStream = async (reason?: string) => {
+      if (streamClosed) return;
+      streamClosed = true;
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
+      try {
+        this.logger.info('Closing stream writer', { reason });
+
+        // Ensure any pending writes are flushed before closing
+        if (!writer.closed) {
+          // Add a small delay to ensure all data is flushed
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          await writer.close();
+          this.logger.info('Stream writer closed successfully');
+        }
+      } catch (error) {
+        this.logger.warn('Error closing stream writer', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    };
+
+    // Helper to safely write to stream
+    const safeWrite = async (chunk: Uint8Array): Promise<boolean> => {
+      if (streamClosed) return false;
+      try {
+        await writer.write(chunk);
+        return true;
+      } catch (error) {
+        this.logger.error('Error writing to stream', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+        await safeCloseStream('write error');
+        return false;
+      }
+    };
+
+    // Helper to safely pipe a response stream
+    const safePipeResponse = async (response: Response): Promise<void> => {
+      if (!response.body) {
+        this.logger.warn('Response has no body to pipe');
+        return;
+      }
+
+      try {
+        const reader = response.body.getReader();
+
+        while (!streamClosed) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            this.logger.info('Source stream completed');
+            break;
+          }
+
+          if (value) {
+            const success = await safeWrite(value);
+            if (!success) {
+              this.logger.warn('Failed to write chunk, stopping pipe');
+              break;
+            }
+          }
+        }
+
+        reader.releaseLock();
+      } catch (error) {
+        this.logger.error('Error during stream piping', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+        throw error;
+      }
+    };
+
+    // Set up timeout protection (30 seconds)
+    timeoutId = setTimeout(() => {
+      this.logger.warn('Stream processing timeout reached');
+      safeCloseStream('timeout');
+    }, 30000);
 
     // We define the async work but start it without awaiting
     const runAsync = async () => {
       try {
         this.logger.info('Brain orchestrator async process starting...');
+
+        // Validate required fields
+        if (!request.chatId) {
+          throw new Error('Chat ID is required but was not provided.');
+        }
 
         // Ensure the chat record exists before processing messages
         const session = await auth();
@@ -82,6 +173,28 @@ export class BrainOrchestrator {
             [], // Start with no messages; they will be saved later
           );
           this.logger.info(`Successfully created chat ${request.chatId}`);
+        }
+
+        // Save user messages before processing
+        const userMessages = request.messages.filter((m) => m.role === 'user');
+        if (userMessages.length > 0) {
+          try {
+            await this.messageService.saveUserMessages(
+              userMessages,
+              request.chatId,
+              clientId,
+            );
+            this.logger.info('User messages saved successfully', {
+              messageCount: userMessages.length,
+              chatId: request.chatId,
+            });
+          } catch (error) {
+            this.logger.error('Failed to save user messages', {
+              error: error instanceof Error ? error.message : 'Unknown error',
+              chatId: request.chatId,
+            });
+            // Continue processing even if message saving fails
+          }
         }
 
         // Extract user input for classification
@@ -142,19 +255,8 @@ export class BrainOrchestrator {
             request, // brainRequest for message saving
           );
 
-          // Pipe the response to our writer
-          if (response.body) {
-            const reader = response.body.getReader();
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                await writer.write(value);
-              }
-            } finally {
-              reader.releaseLock();
-            }
-          }
+          // Pipe the response using our safe piping method
+          await safePipeResponse(response);
         } else {
           this.logger.info('Routing to simple Vercel AI path');
 
@@ -183,19 +285,8 @@ export class BrainOrchestrator {
             request,
           );
 
-          // Pipe the response to our writer
-          if (response.body) {
-            const reader = response.body.getReader();
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                await writer.write(value);
-              }
-            } finally {
-              reader.releaseLock();
-            }
-          }
+          // Pipe the response using our safe piping method
+          await safePipeResponse(response);
         }
 
         this.logger.info('Async processing completed successfully.');
@@ -204,21 +295,28 @@ export class BrainOrchestrator {
           error: error instanceof Error ? error.message : 'Unknown error',
         });
 
-        // Write error to stream
-        const errorMessage =
-          error instanceof Error ? error.message : 'Unknown error occurred';
-        const errorChunk = `0:${JSON.stringify(`Error: ${errorMessage}`)}\n`;
-        await writer.write(new TextEncoder().encode(errorChunk));
-      } finally {
-        this.logger.info('Closing stream writer.');
-        if (!writer.closed) {
-          await writer.close();
+        // Write error to stream if still open
+        if (!streamClosed) {
+          const errorMessage =
+            error instanceof Error ? error.message : 'Unknown error occurred';
+          const errorChunk = `0:${JSON.stringify(`Error: ${errorMessage}`)}\n`;
+          await safeWrite(new TextEncoder().encode(errorChunk));
         }
+      } finally {
+        // Stream termination is handled by the underlying services
+        this.logger.info('Stream processing completed, closing stream');
+
+        await safeCloseStream('processing complete');
       }
     };
 
     // Start the process
-    runAsync();
+    runAsync().catch((error) => {
+      this.logger.error('Unhandled error in async processing', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      safeCloseStream('unhandled error');
+    });
 
     // Return the readable stream immediately
     return stream.readable;

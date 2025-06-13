@@ -12,6 +12,9 @@ import type {
 } from '@/lib/validation/brainValidation';
 import type { RequestLogger } from './observabilityService';
 import type { Attachment } from 'ai';
+import { saveMessages } from '@/lib/db/queries';
+import type { DBMessage } from '@/lib/db/schema';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Message formats for different systems
@@ -284,6 +287,37 @@ export class MessageService {
     });
 
     return { valid: errors.length === 0, errors };
+  }
+
+  /**
+   * Save user messages to the database
+   */
+  public async saveUserMessages(
+    userMessages: (UIMessage | MessageData)[],
+    chatId: string,
+    clientId: string,
+  ): Promise<void> {
+    if (!userMessages || userMessages.length === 0) {
+      return;
+    }
+
+    const dbMessages: DBMessage[] = userMessages.map((message) => ({
+      id: randomUUID(),
+      chatId: chatId,
+      role: 'user',
+      parts: [{ type: 'text', text: this.sanitizeContent(message.content) }],
+      attachments:
+        message.attachments || message.experimental_attachments || [],
+      createdAt: new Date(),
+      clientId: clientId,
+    }));
+
+    this.logger.info('Saving user messages to database', {
+      messageCount: dbMessages.length,
+      chatId: chatId,
+    });
+
+    await saveMessages({ messages: dbMessages });
   }
 
   /**

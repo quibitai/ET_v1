@@ -11,11 +11,12 @@ import { z } from 'zod';
 import { queryDocumentRowsTool } from './query-document-rows';
 import { searchAndRetrieveKnowledgeBase } from './search-internal-knowledge-base';
 import { requestSuggestionsTool } from './request-suggestions';
-// Weather tool removed - focusing on core business functionality
 import { tavilySearchTool } from './tavily-search';
 import { tavilyExtractTool } from './tavilyExtractTool';
 import { googleCalendarTool } from './googleCalendarTool';
 import { getMessagesFromOtherChatTool } from './getMessagesFromOtherChatTool';
+import { listDocumentsTool } from './list-documents';
+import { getDocumentContentsTool } from './get-document-contents';
 import {
   trackEvent,
   ANALYTICS_EVENTS,
@@ -124,14 +125,20 @@ const createBudgetTool = new DynamicStructuredTool({
 
 export function getAvailableTools() {
   const staticTools = [
-    queryDocumentRowsTool,
+    // Knowledge Base Tools
+    listDocumentsTool,
+    getDocumentContentsTool,
     searchAndRetrieveKnowledgeBase,
+    queryDocumentRowsTool,
+    // Utility Tools
     requestSuggestionsTool,
+    createBudgetTool,
+    // Search & Retrieval Tools
     tavilySearchTool,
     tavilyExtractTool,
+    // Integration Tools
     googleCalendarTool,
     getMessagesFromOtherChatTool,
-    createBudgetTool,
   ];
 
   // Get Asana tools dynamically each time
@@ -150,6 +157,8 @@ export function getAvailableTools() {
 export const availableTools = getAvailableTools();
 
 export {
+  listDocumentsTool,
+  getDocumentContentsTool,
   searchAndRetrieveKnowledgeBase,
   requestSuggestionsTool,
   tavilySearchTool,

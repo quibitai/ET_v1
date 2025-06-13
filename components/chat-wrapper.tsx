@@ -67,6 +67,7 @@ export function ChatWrapper({
     initialMessages,
     generateId: generateUUID,
     sendExtraMessageFields: true,
+    streamProtocol: 'data',
     body: {
       id: id,
       chatId: id,
@@ -74,6 +75,24 @@ export function ChatWrapper({
       artifactContext: null,
       collapsedArtifactsContext: null,
       activeBitContextId: activeBitContextId,
+    },
+    onError: (error) => {
+      console.error('🚨 [ChatWrapper useChat Error]', error);
+    },
+    onResponse: (response) => {
+      console.log('📡 [ChatWrapper Response]', {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        contentType: response.headers.get('content-type'),
+      });
+    },
+    onFinish: (message) => {
+      console.log('✅ [ChatWrapper Stream Finished]', {
+        messageId: message.id,
+        role: message.role,
+        contentLength: message.content.length,
+        status: 'completed',
+      });
     },
   });
 
@@ -98,6 +117,15 @@ export function ChatWrapper({
     });
     stateLogRef.current = currentStateLog;
   }
+
+  // Debug status changes specifically
+  useEffect(() => {
+    console.log('[ChatWrapper] Status changed:', {
+      status,
+      isLoading,
+      timestamp: new Date().toISOString(),
+    });
+  }, [status, isLoading]);
 
   // Log any errors
   useEffect(() => {

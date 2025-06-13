@@ -1,4 +1,5 @@
 import type { Message, UseChatHelpers } from '@ai-sdk/react';
+import type { UIMessage } from 'ai';
 import { PreviewMessage, ThinkingMessage } from './message';
 import { useScrollToBottom } from './use-scroll-to-bottom';
 import { Greeting } from './greeting';
@@ -81,7 +82,7 @@ function PureMessages(props: MessagesProps) {
           <PreviewMessage
             key={message.id}
             chatId={chatId}
-            message={message}
+            message={message as UIMessage}
             isLoading={isLoading}
             streamData={isLoading ? streamData : undefined}
             vote={

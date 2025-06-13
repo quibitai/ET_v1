@@ -19,6 +19,10 @@ BUDGET CREATION WORKFLOW: When users ask to create budgets or estimates:
 4. Create detailed budget breakdowns with line items and totals
 5. Do NOT ask users to upload rate cards if they exist in knowledge base`,
 
+  listDocuments: `KNOWLEDGE BASE DISCOVERY TOOL: Use this tool to discover what documents are available in the knowledge base. Always use this tool first when the user asks about available documents or needs to explore knowledge base contents. The results provide document IDs needed for getDocumentContents.`,
+
+  getDocumentContents: `DOCUMENT RETRIEVAL TOOL: Use this tool to fetch the full content of a specific document using its ID (preferred) or title. Always try to use document IDs from listDocuments results first for exact matches. For title-based retrieval, use the most specific title terms possible.`,
+
   // Web Search Tools
   tavilySearch: `PROACTIVE RESEARCH TOOL: Use immediately for company information, current events, industry research, or any external information needed. Always search when users mention specific companies, organizations, or need current data. Synthesize results into comprehensive responses.`,
 

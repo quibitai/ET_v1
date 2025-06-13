@@ -84,8 +84,8 @@ export interface ToolResult {
 // ===== SEMANTIC TOOL SELECTION ENGINE =====
 
 export class SemanticToolSelector {
-  private tools: Map<string, EnhancedTool> = new Map();
-  private toolVectors: Map<string, number[]> = new Map();
+  private tools = new Map<string, EnhancedTool>();
+  private toolVectors = new Map<string, number[]>();
 
   /**
    * Register a tool with the selector
@@ -109,7 +109,8 @@ export class SemanticToolSelector {
     const scored: Array<{ tool: EnhancedTool; confidence: number }> = [];
 
     for (const [toolId, tool] of this.tools) {
-      const toolVector = this.toolVectors.get(toolId)!;
+      const toolVector = this.toolVectors.get(toolId);
+      if (!toolVector) continue;
       const semanticScore = this.cosineSimilarity(queryVector, toolVector);
 
       // Adjust score based on context
@@ -395,23 +396,19 @@ export function convertLangChainTool(
     id: langchainTool.name,
     name: langchainTool.name,
     description: langchainTool.description,
-    schema: langchainTool.schema,
+    schema: langchainTool.schema as z.ZodSchema,
     handler: async (params: any, context: ToolExecutionContext) => {
-      try {
-        const result = await langchainTool.func(params);
-        return {
-          success: true,
-          data: result,
-          metadata: {
-            toolId: langchainTool.name,
-            duration: 0, // Will be set by execution engine
-            retryCount: 0,
-            confidence: 1,
-          },
-        };
-      } catch (error) {
-        throw error; // Let execution engine handle retries
-      }
+      const result = await langchainTool.func(params);
+      return {
+        success: true,
+        data: result,
+        metadata: {
+          toolId: langchainTool.name,
+          duration: 0, // Will be set by execution engine
+          retryCount: 0,
+          confidence: 1,
+        },
+      };
     },
     metadata,
   };
