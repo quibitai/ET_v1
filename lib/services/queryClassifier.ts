@@ -102,6 +102,17 @@ const WEB_SEARCH_PATTERNS = [
   /(?:find|get|lookup|research)\s+(?:current|latest|recent|up-to-date)\s+(?:information|data|news)/i,
   /(?:what's|what is)\s+(?:the\s+)?(?:latest|current|recent)\s+(?:news|information|data)\s+(?:about|on)/i,
 
+  // Report and content generation patterns - CRITICAL FOR RESEARCH REQUESTS
+  /(?:generate|create|write|produce|make)\s+(?:a\s+)?(?:detailed|comprehensive|thorough|complete|full)\s+(?:report|analysis|summary|overview|brief)\s+(?:on|about|regarding)/i,
+  /(?:research|analyze|study|investigate)\s+(?:and\s+)?(?:report\s+on|write\s+about|analyze)/i,
+  /(?:tell me|explain|describe)\s+(?:everything\s+)?(?:about|regarding)\s+(?:[a-zA-Z\s\-]+)/i,
+  /(?:what\s+(?:is|are)|who\s+(?:is|are)|how\s+(?:do|does))\s+(?:[a-zA-Z\s\-]+)/i,
+
+  // Additional research and analysis patterns
+  /(?:research|analyze|investigate|study|examine)\s+(?:[a-zA-Z\s\-]+)/i,
+  /(?:provide|give me|show me)\s+(?:information|details|data)\s+(?:about|on|regarding)\s+(?:[a-zA-Z\s\-]+)/i,
+  /(?:learn|find out)\s+(?:about|more about)\s+(?:[a-zA-Z\s\-]+)/i,
+
   // Company/organization research
   /(?:search|research|find|look up)\s+(?:the\s+)?(?:company|organization|business|corporation)/i,
   /(?:tell me|find|research)\s+(?:about|information on)\s+(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i, // Proper nouns
@@ -676,6 +687,16 @@ export class QueryClassifier {
       userInput.toLowerCase().includes('research')
     ) {
       adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.4);
+    }
+
+    // Boost confidence for report generation terms
+    if (
+      userInput.toLowerCase().includes('generate') ||
+      userInput.toLowerCase().includes('report') ||
+      userInput.toLowerCase().includes('analysis') ||
+      userInput.toLowerCase().includes('create')
+    ) {
+      adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.3);
     }
 
     // Boost for location-specific searches (like "LWCC in Baton Rouge")
