@@ -503,6 +503,29 @@ export class SimpleLangGraphWrapper {
             : 'Non-string content',
       });
 
+      // *** THE FINAL FIX: START ***
+      // If we are in the tool-forcing phase and the LLM fails to produce tool_calls
+      // and instead returns conversational text, we must erase that text to prevent
+      // it from polluting the state for the final synthesis node.
+      const wasForced = !!this.config.forceToolCall && shouldForceTools;
+      const hasNoToolCalls =
+        !response.tool_calls || response.tool_calls.length === 0;
+
+      if (
+        wasForced &&
+        hasNoToolCalls &&
+        typeof response.content === 'string' &&
+        response.content.length > 0
+      ) {
+        this.logger.warn(
+          '[LangGraph Agent] LLM returned conversational text when a tool call was required. Erasing content to prevent state pollution.',
+          { content: response.content },
+        );
+        // Set content to an empty string to neutralize the "ghost message".
+        response.content = '';
+      }
+      // *** THE FINAL FIX: END ***
+
       // Enhanced tool call logging
       if (response.tool_calls && response.tool_calls.length > 0) {
         this.logger.info('Tool calls detected', {
