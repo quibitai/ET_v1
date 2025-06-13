@@ -508,10 +508,29 @@ Use all the tool results from your previous searches to create a detailed, well-
         );
       }
 
+      // *** FINAL FIX: Override model downgrade for synthesis mode ***
+      // Default to the LLM chosen by the context manager
+      let llmForFinalCall = llmWithTools;
+
+      // BUT, if we're in synthesis mode, OVERRIDE any model downgrade and
+      // ensure we use the primary, most powerful LLM for the final report.
+      if (isSynthesisMode && currentLLM !== this.llm) {
+        this.logger.info(
+          '[LangGraph Agent] ⏫ OVERRIDING model downgrade for synthesis. Reverting to primary LLM.',
+          {
+            originalModel: this.llm.modelName,
+            downgradedModel: currentLLM.modelName,
+            reason: 'Synthesis requires maximum reasoning capability',
+          },
+        );
+        // Re-bind the primary LLM to ensure the invocation options are correct.
+        llmForFinalCall = this.llm.bindTools(this.tools);
+      }
+
       // Invoke LLM with final messages (including synthesis instruction if needed) with error recovery
       let response: AIMessage;
       try {
-        response = await llmWithTools.invoke(finalMessages, invokeOptions);
+        response = await llmForFinalCall.invoke(finalMessages, invokeOptions);
       } catch (error: any) {
         // Handle context length exceeded errors
         if (
@@ -537,7 +556,7 @@ Use all the tool results from your previous searches to create a detailed, well-
 
           // Try with emergency truncation
           try {
-            response = await llmWithTools.invoke(
+            response = await llmForFinalCall.invoke(
               emergencyMessages,
               invokeOptions,
             );
