@@ -650,18 +650,71 @@ export class SimpleLangGraphWrapper {
     GraphState,
     Partial<GraphState>
   > {
-    return RunnableLambda.from((state: GraphState): Partial<GraphState> => {
-      this.logger.info(
-        '[LangGraph Conversational] Processing existing conversational response',
-      );
+    const conversationalChain = RunnableSequence.from([
+      RunnableLambda.from((state: GraphState): BaseMessage[] => {
+        this.logger.info(
+          '[LangGraph Conversational] Processing conversational response',
+        );
 
-      // The AI response is already in the state from the agent node
-      // Just pass it through - no need to call LLM again
-      return {};
-    }).withConfig({ tags: ['final_node', 'conversational'] }) as Runnable<
-      GraphState,
-      Partial<GraphState>
-    >;
+        // Check if we have an AI response that's just loading messages
+        const lastAIMessage = state.messages
+          .filter((m) => m._getType() === 'ai')
+          .pop();
+
+        const isLoadingMessage =
+          typeof lastAIMessage?.content === 'string' &&
+          (lastAIMessage.content.includes('🔍 Analyzing your request') ||
+            lastAIMessage.content.includes('💬 Preparing response'));
+
+        // If the AI response is just loading messages, we need to generate actual content
+        if (isLoadingMessage || !lastAIMessage) {
+          this.logger.info(
+            '[LangGraph Conversational] Generating actual response content',
+          );
+
+          // Get the original user message
+          const userMessage = state.messages.find(
+            (m) => m._getType() === 'human',
+          );
+
+          return [
+            new SystemMessage({
+              content: this.config.systemPrompt,
+            }),
+            userMessage || new HumanMessage({ content: 'Please help me.' }),
+          ];
+        } else {
+          // We have a proper AI response, but let's regenerate it with the enhanced prompt
+          // to ensure the file context is properly processed
+          this.logger.info(
+            '[LangGraph Conversational] Regenerating response with enhanced context',
+          );
+
+          // Get the original user message
+          const userMessage = state.messages.find(
+            (m) => m._getType() === 'human',
+          );
+
+          return [
+            new SystemMessage({
+              content: this.config.systemPrompt,
+            }),
+            userMessage || new HumanMessage({ content: 'Please help me.' }),
+          ];
+        }
+      }),
+      this.llm,
+      RunnableLambda.from((aiMessage: AIMessage): Partial<GraphState> => {
+        this.logger.info(
+          '[LangGraph Conversational] Conversational response completed',
+        );
+        return { messages: [aiMessage] };
+      }),
+    ]);
+
+    return conversationalChain.withConfig({
+      tags: ['final_node', 'conversational'],
+    }) as Runnable<GraphState, Partial<GraphState>>;
   }
 
   /**
@@ -690,9 +743,34 @@ export class SimpleLangGraphWrapper {
           ];
         }
 
-        // Check if we have document content results - prioritize these for content requests
-        let hasDocumentContent = false;
-        let documentContentResult = null;
+        // Check the original user query to understand intent
+        const userMessages = state.messages.filter(
+          (msg) => msg._getType() === 'human',
+        );
+        const lastUserMessage = userMessages[userMessages.length - 1];
+        const userQuery =
+          typeof lastUserMessage?.content === 'string'
+            ? lastUserMessage.content
+            : JSON.stringify(lastUserMessage?.content) || '';
+
+        // Detect if this is a document listing request vs content request
+        const isListingRequest =
+          /(?:list|show|display|enumerate)\s+(?:all\s+)?(?:the\s+)?(?:available\s+)?(?:documents|files)/i.test(
+            userQuery,
+          );
+        const isContentRequest =
+          /(?:get|show|display|give\s+me)\s+(?:the\s+)?(?:complete|full|entire|whole)\s+(?:contents?|content|text)/i.test(
+            userQuery,
+          );
+
+        this.logger.info('[LangGraph Simple Response] Query intent analysis', {
+          userQuery: userQuery.substring(0, 100),
+          isListingRequest,
+          isContentRequest,
+        });
+
+        // Process tool results based on intent
+        let formattedContent = '';
 
         for (const toolMsg of toolMessages) {
           const content =
@@ -702,85 +780,49 @@ export class SimpleLangGraphWrapper {
 
           try {
             const parsed = JSON.parse(content);
-            if (
-              parsed.success &&
-              parsed.document &&
-              parsed.content &&
-              String(parsed.content).length > 500
-            ) {
-              hasDocumentContent = true;
-              documentContentResult = parsed;
-              break;
-            }
-          } catch {
-            // Not JSON, continue
-          }
-        }
 
-        // If we have substantial document content, show only that (for content requests)
-        if (hasDocumentContent && documentContentResult) {
-          return [
-            new SystemMessage({
-              content: `Present the following document content clearly to the user. This is the complete content they requested:\n\n${documentContentResult.content}`,
-            }),
-            new HumanMessage({
-              content:
-                'Please present this document content in a clean, readable format.',
-            }),
-          ];
-        }
-
-        // Otherwise, format tool results into a clean response
-        let formattedContent = '📋 **Results:**\n\n';
-
-        for (const toolMsg of toolMessages) {
-          const content =
-            typeof toolMsg.content === 'string'
-              ? toolMsg.content
-              : JSON.stringify(toolMsg.content) || 'No content';
-
-          try {
-            // Try to parse and format JSON content
-            const parsed = JSON.parse(content);
-
-            // Handle different response structures
+            // Handle document listing responses
             if (
               parsed.success &&
               parsed.available_documents &&
               Array.isArray(parsed.available_documents)
             ) {
-              // This is a document list response
-              const cleanContent = parsed.available_documents
-                .map((item: any, index: number) => {
-                  if (
-                    item &&
-                    typeof item === 'object' &&
-                    item.title &&
-                    item.url
-                  ) {
-                    const title = String(item.title).replace(
-                      /[^\w\s\-\.]/g,
-                      '',
-                    );
-                    const createdAt = item.created_at
-                      ? new Date(item.created_at).toLocaleDateString()
-                      : 'Unknown';
-                    const url = String(item.url);
-                    return `${index + 1}. **${title}**\n   - Created: ${createdAt}\n   - URL: ${url}`;
-                  }
-                  return `${index + 1}. ${String(item).substring(0, 200)}...`;
-                })
-                .join('\n');
-              formattedContent += `${cleanContent}\n\n`;
-            } else if (parsed.success && parsed.document && parsed.content) {
-              // This is a document content response - show ONLY the content for content requests
-              // Check if this appears to be a content request by looking at the full content length
+              if (isListingRequest) {
+                // User asked to list files - show the list
+                const cleanContent = parsed.available_documents
+                  .map((item: any, index: number) => {
+                    if (
+                      item &&
+                      typeof item === 'object' &&
+                      item.title &&
+                      item.url
+                    ) {
+                      const title = String(item.title).replace(
+                        /[^\w\s\-\.]/g,
+                        '',
+                      );
+                      const createdAt = item.created_at
+                        ? new Date(item.created_at).toLocaleDateString()
+                        : 'Unknown';
+                      const url = String(item.url);
+                      return `${index + 1}. **${title}**\n   - Created: ${createdAt}\n   - URL: ${url}`;
+                    }
+                    return `${index + 1}. ${String(item).substring(0, 200)}...`;
+                  })
+                  .join('\n');
+                formattedContent = `📋 **Available Documents:**\n\n${cleanContent}`;
+              } else {
+                // Not a listing request, but got document list - this might be for content discovery
+                formattedContent = `Found ${parsed.available_documents.length} documents. Please specify which document you'd like to access.`;
+              }
+            }
+            // Handle document content responses
+            else if (parsed.success && parsed.document && parsed.content) {
               const fullContent = String(parsed.content);
 
-              // If we have substantial content (>500 chars), this is likely a full content request
-              // Show only the content without metadata
-              if (fullContent.length > 500) {
-                formattedContent = fullContent; // Replace the entire formatted content with just the document content
+              if (isContentRequest || fullContent.length > 500) {
+                // User asked for content OR we have substantial content - show it
+                formattedContent = fullContent;
               } else {
                 // Short content - treat as preview
                 const doc = parsed.document;
@@ -792,11 +834,11 @@ export class SimpleLangGraphWrapper {
                   ? new Date(doc.created_at).toLocaleDateString()
                   : 'Unknown';
                 const url = String(doc.url || '');
-                formattedContent += `**${title}**\n- Created: ${createdAt}\n- URL: ${url}\n\n`;
-                formattedContent += `**Content Preview:**\n${fullContent}\n\n`;
+                formattedContent = `**${title}**\n- Created: ${createdAt}\n- URL: ${url}\n\n**Content Preview:**\n${fullContent}`;
               }
-            } else if (Array.isArray(parsed) && parsed.length > 0) {
-              // Handle direct array responses
+            }
+            // Handle direct array responses
+            else if (Array.isArray(parsed) && parsed.length > 0) {
               const cleanContent = parsed
                 .map((item: any, index: number) => {
                   if (
@@ -818,20 +860,20 @@ export class SimpleLangGraphWrapper {
                   return `${index + 1}. ${String(item).substring(0, 200)}...`;
                 })
                 .join('\n');
-              formattedContent += `${cleanContent}\n\n`;
+              formattedContent = `📋 **Results:**\n\n${cleanContent}`;
             } else {
               // Generic object or other structure
-              formattedContent += `${String(content).substring(0, 1000)}\n\n`;
+              formattedContent = String(content).substring(0, 1000);
             }
           } catch {
             // Not JSON, use as-is
-            formattedContent += `${String(content).substring(0, 1000)}\n\n`;
+            formattedContent = String(content).substring(0, 1000);
           }
         }
 
         return [
           new SystemMessage({
-            content: `You are a helpful assistant. Please format and present the following information in a clean, readable way for the user. Do not include any JSON or raw data - just present the information clearly:\n\n${formattedContent.trim()}`,
+            content: `You are a helpful assistant. Please present the following information clearly to the user:\n\n${formattedContent.trim()}`,
           }),
           new HumanMessage({
             content:

@@ -76,8 +76,9 @@ export async function POST(req: NextRequest) {
             // Accumulate the assistant response content
             assistantContent += text;
 
-            // Format as data stream part and encode
-            const dataStreamPart = `0:"${text.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"\n`;
+            // Format as data stream part with proper JSON escaping
+            const escapedText = JSON.stringify(text).slice(1, -1); // Remove outer quotes from JSON.stringify
+            const dataStreamPart = `0:"${escapedText}"\n`;
             controller.enqueue(encoder.encode(dataStreamPart));
           }
 

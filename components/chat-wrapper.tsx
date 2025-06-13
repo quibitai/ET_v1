@@ -93,6 +93,8 @@ export function ChatWrapper({
         contentLength: message.content.length,
         status: 'completed',
       });
+      // Clear file context after the request completes
+      clearFileContext();
     },
   });
 
@@ -177,7 +179,8 @@ export function ChatWrapper({
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     handleSubmit();
-    clearFileContext();
+    // Don't clear file context immediately - let it be available for the request
+    // clearFileContext();
   };
 
   // Reduced render logging to prevent spam

@@ -153,7 +153,13 @@ function PureMultimodalInput({
         }
 
         setAttachments((prev) => [...prev, ...newAttachments]);
-        toast.success(`${files.length} file(s) uploaded successfully`);
+        if (newAttachments.length > 0) {
+          toast.success(
+            `${newAttachments.length} file(s) uploaded successfully`,
+          );
+        } else {
+          toast.warning('Files were processed but no attachments were created');
+        }
       } catch (error) {
         console.error('[MultimodalInput] File upload error:', error);
         toast.error(
@@ -222,7 +228,7 @@ function PureMultimodalInput({
         </div>
       )}
 
-      <div className="flex w-full items-end gap-2">
+      <div className="flex w-full items-end">
         <div className="flex-1 relative">
           <Textarea
             ref={textareaRef}
@@ -230,7 +236,7 @@ function PureMultimodalInput({
             name="message"
             value={input}
             placeholder="Ask a question..."
-            className="min-h-[60px] w-full resize-none border-0 bg-background px-4 py-2 pr-16 text-base focus-visible:ring-0"
+            className="min-h-[60px] w-full resize-none border-0 bg-background px-12 py-2 text-base focus-visible:ring-0"
             onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
               setInput(e.target.value)
             }
@@ -247,7 +253,13 @@ function PureMultimodalInput({
             disabled={!isReady}
           />
 
-          <div className="absolute bottom-0 right-0 p-2">
+          {/* Plus sign (AttachmentsButton) in bottom left */}
+          <div className="absolute bottom-1 left-1 p-1">
+            <AttachmentsButton fileInputRef={fileInputRef} status={status} />
+          </div>
+
+          {/* Arrow (SendButton) in bottom right */}
+          <div className="absolute bottom-1 right-1 p-1">
             {status === 'submitted' || status === 'streaming' ? (
               <StopButton stop={stop} />
             ) : (
@@ -259,8 +271,6 @@ function PureMultimodalInput({
             )}
           </div>
         </div>
-
-        <AttachmentsButton fileInputRef={fileInputRef} status={status} />
       </div>
 
       {/* Hidden file input */}
