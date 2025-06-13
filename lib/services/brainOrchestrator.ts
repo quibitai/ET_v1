@@ -93,8 +93,20 @@ export class BrainOrchestrator {
     this.logger.warn(
       'No suitable execution path found. Returning empty stream.',
     );
-    // eslint-disable-next-line @typescript-eslint/no-empty-function
-    return (async function* () {})();
+
+    // Return an empty async generator
+    return this.createEmptyStream();
+  }
+
+  /**
+   * Creates an empty async generator stream
+   */
+  private async *createEmptyStream(): AsyncGenerator<Uint8Array> {
+    // This generator completes immediately without yielding anything
+    // The empty body satisfies the generator requirement
+    for (const _ of []) {
+      yield new Uint8Array();
+    }
   }
 
   /**
