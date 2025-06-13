@@ -461,11 +461,14 @@ export class SimpleLangGraphWrapper {
             ? userMessages[0].content
             : "the user's request";
 
-        // Create synthesis instruction
+        // Create definitive synthesis instruction with role-play context
         const synthesisInstruction = new HumanMessage({
-          content: `IMPORTANT: You have gathered information using tools. Now synthesize this information to provide a comprehensive answer to the original request: "${originalQuestion}". 
+          content: `All necessary research has been completed. The user is waiting for the final report.
+Analyze the tool results provided in the previous turns and generate the comprehensive research report document directly.
+Begin the report immediately without any introductory phrases like "Here is the report" or "I will now synthesize".
 
-Use all the tool results from your previous searches to create a detailed, well-structured response. Do not ask how you can assist - provide the requested analysis/report using the information you've gathered.`,
+**Report Start:**
+`,
         });
 
         // Add synthesis instruction as the last message
