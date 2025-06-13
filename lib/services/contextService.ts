@@ -33,6 +33,12 @@ export interface ProcessedContext {
   referencedChatId?: string | null;
   clientConfig?: ClientConfig | null;
   memoryContext?: any[];
+  fileContext?: {
+    filename: string;
+    contentType: string;
+    url: string;
+    extractedText?: string;
+  } | null;
 }
 
 /**
@@ -79,6 +85,8 @@ export class ContextService {
       currentActiveSpecialistId: brainRequest.currentActiveSpecialistId,
       isFromGlobalPane: brainRequest.isFromGlobalPane,
       selectedChatModel: brainRequest.selectedChatModel,
+      hasFileContext: !!brainRequest.fileContext,
+      fileContextFilename: brainRequest.fileContext?.filename,
     });
 
     const processedContext: ProcessedContext = {
@@ -91,6 +99,7 @@ export class ContextService {
       isFromGlobalPane: brainRequest.isFromGlobalPane,
       referencedChatId: brainRequest.referencedChatId,
       clientConfig: this.clientConfig,
+      fileContext: brainRequest.fileContext,
     };
 
     // Add memory context if enabled
@@ -213,7 +222,36 @@ export class ContextService {
       additions.push(`Referenced main chat: ${context.referencedChatId}`);
     }
 
-    return additions.length > 0 ? `\n\nContext: ${additions.join(', ')}` : '';
+    // Add file context if available
+    if (context.fileContext) {
+      this.logger.info('Adding file context to prompt', {
+        filename: context.fileContext.filename,
+        contentType: context.fileContext.contentType,
+        hasExtractedText: !!context.fileContext.extractedText,
+        extractedTextLength: context.fileContext.extractedText?.length || 0,
+      });
+
+      const fileInfo = `File uploaded: ${context.fileContext.filename} (${context.fileContext.contentType})`;
+      additions.push(fileInfo);
+    }
+
+    // Handle file context separately for better formatting
+    let fileContextSection = '';
+    if (context.fileContext?.extractedText) {
+      fileContextSection = `\n\n=== UPLOADED DOCUMENT ===
+Filename: ${context.fileContext.filename}
+Content Type: ${context.fileContext.contentType}
+
+IMPORTANT: The user has uploaded a document. When they ask to "summarize this document" or similar requests, you should process the content below directly without using external tools.
+
+DOCUMENT CONTENT:
+${context.fileContext.extractedText}
+=== END DOCUMENT ===`;
+    }
+
+    const contextSection =
+      additions.length > 0 ? `\n\nContext: ${additions.join(', ')}` : '';
+    return contextSection + fileContextSection;
   }
 }
 

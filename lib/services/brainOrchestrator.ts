@@ -56,13 +56,29 @@ export class BrainOrchestrator {
       this.logger.info('Routing to LangChain/LangGraph path');
 
       const context = await this.contextService.processContext(request);
+      this.logger.info('Context processed', {
+        hasFileContext: !!context.fileContext,
+        fileContextFilename: context.fileContext?.filename,
+      });
+
       const conversationHistory = this.messageService.convertToLangChainFormat(
         request.messages,
       );
-      const systemPrompt = await loadPrompt({
+      const baseSystemPrompt = await loadPrompt({
         modelId: request.selectedChatModel || 'gpt-4o',
         contextId: request.activeBitContextId || null,
         clientConfig: config,
+      });
+
+      // Enhance system prompt with context (including file context)
+      const contextAdditions =
+        this.contextService.createContextPromptAdditions(context);
+      const systemPrompt = baseSystemPrompt + contextAdditions;
+
+      this.logger.info('System prompt enhanced', {
+        basePromptLength: baseSystemPrompt.length,
+        contextAdditionsLength: contextAdditions.length,
+        hasContextAdditions: contextAdditions.length > 0,
       });
 
       const langChainConfig: LangChainBridgeConfig = {
