@@ -904,11 +904,15 @@ export class SimpleLangGraphWrapper {
 
         return [
           new SystemMessage({
-            content: `You are a helpful assistant. Please present the following information clearly to the user:\n\n${formattedContent.trim()}`,
+            content: `You are a helpful assistant. Present ONLY the following formatted information to the user. Do NOT include any raw JSON data, tool results, or technical details. Just present the clean, formatted content below:
+
+${formattedContent.trim()}
+
+IMPORTANT: Do not add any additional raw data, JSON, or technical information. Only present the formatted content above.`,
           }),
           new HumanMessage({
             content:
-              'Please present this information in a clean, user-friendly format.',
+              'Please present this information exactly as formatted above, without any additional raw data.',
           }),
         ];
       }),
@@ -1340,6 +1344,7 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
 
     let hasStreamedSynthesis = false;
     let hasStreamedConversational = false;
+    let hasStreamedSimpleResponse = false;
     let finalState: any = null;
     const toolResults: any[] = [];
 
@@ -1390,14 +1395,17 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
           event.event === 'on_chat_model_stream' &&
           event.tags?.includes('final_node')
         ) {
-          // This is a token from a final node's LLM (synthesis or conversational)
+          // This is a token from a final node's LLM (synthesis, conversational, or simple_response)
           const content = event.data?.chunk?.content;
           if (typeof content === 'string') {
-            // Check if this is from synthesis or conversational response
+            // Check which type of final node this is from
             if (event.tags?.includes('synthesis')) {
               hasStreamedSynthesis = true;
             } else if (event.tags?.includes('conversational')) {
               hasStreamedConversational = true;
+            } else {
+              // This must be from simple_response node
+              hasStreamedSimpleResponse = true;
             }
             yield encoder.encode(content);
           }
@@ -1409,14 +1417,15 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
         }
       }
 
-      // If no synthesis or conversational response was streamed, handle accordingly
+      // Only output raw tool results if NO final node has streamed content
       if (
         !hasStreamedSynthesis &&
         !hasStreamedConversational &&
+        !hasStreamedSimpleResponse &&
         !needsSynthesis
       ) {
         this.logger.info(
-          '[LangGraph Stream] No synthesis or conversational response streamed, outputting results directly',
+          '[LangGraph Stream] No final node response streamed, outputting raw tool results',
         );
 
         // Use captured tool results or fall back to final state
@@ -1523,6 +1532,10 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
             yield encoder.encode('\n✅ **Request completed successfully.**\n');
           }
         }
+      } else if (hasStreamedSimpleResponse) {
+        this.logger.info(
+          '[LangGraph Stream] Simple response node has streamed content, skipping raw tool output',
+        );
       }
 
       this.logger.info('LangGraph event stream completed.');
@@ -1533,6 +1546,7 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
       if (
         !hasStreamedSynthesis &&
         !hasStreamedConversational &&
+        !hasStreamedSimpleResponse &&
         !needsSynthesis &&
         toolResults.length > 0
       ) {
