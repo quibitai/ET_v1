@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    setupFiles: ['./lib/ai/tools/asana/__tests__/setup.ts'],
+    setupFiles: ['./lib/ai/tools/__tests__/setup.ts'],
   },
   resolve: {
     alias: {

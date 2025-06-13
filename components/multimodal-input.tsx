@@ -28,6 +28,15 @@ function PureMultimodalInput({
 
   const isReady = status === 'ready';
 
+  // Debug logging for status changes
+  useEffect(() => {
+    console.log('[MultimodalInput] Status changed:', {
+      status,
+      isReady,
+      timestamp: new Date().toISOString(),
+    });
+  }, [status, isReady]);
+
   return (
     <div className="relative flex w-full flex-col items-center justify-center gap-y-2 rounded-2xl border bg-background p-2 transition-all">
       <Textarea

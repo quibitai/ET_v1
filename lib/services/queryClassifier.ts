@@ -140,6 +140,34 @@ const KNOWLEDGE_BASE_PATTERNS = [
   /(?:how\s+(?:do\s+)?(?:they|we)\s+align\s+with)/i,
 ];
 
+// NEW: Document listing intent patterns
+const DOCUMENT_LISTING_PATTERNS = [
+  // Direct listing requests
+  /(?:list|show|display|enumerate)\s+(?:all\s+)?(?:the\s+)?(?:available\s+)?(?:documents|files)/i,
+  /(?:what\s+(?:documents|files)\s+(?:are\s+)?(?:available|exist|do\s+(?:we|you)\s+have))/i,
+  /(?:show\s+me\s+(?:all\s+)?(?:the\s+)?(?:documents|files))/i,
+  /(?:give\s+me\s+a\s+list\s+of\s+(?:all\s+)?(?:the\s+)?(?:documents|files))/i,
+
+  // Knowledge base specific listing
+  /(?:list|show|display)\s+(?:all\s+)?(?:files|documents)\s+(?:in\s+)?(?:the\s+)?(?:knowledge\s+base)/i,
+  /(?:what\s+(?:files|documents)\s+(?:are\s+)?(?:in\s+)?(?:the\s+)?(?:knowledge\s+base))/i,
+  /(?:browse|explore)\s+(?:the\s+)?(?:knowledge\s+base|documents|files)/i,
+];
+
+// NEW: Document content retrieval intent patterns
+const DOCUMENT_CONTENT_PATTERNS = [
+  // Direct content requests
+  /(?:get|show|display|give\s+me)\s+(?:the\s+)?(?:complete|full|entire|whole)\s+(?:contents?|content|text)\s+(?:of|from)/i,
+  /(?:contents?|content|text)\s+(?:of|from)\s+(?:the\s+)?(?:file|document)/i,
+  /(?:read|open|view)\s+(?:the\s+)?(?:file|document)/i,
+  /(?:what\s+(?:is\s+)?(?:in|inside))\s+(?:the\s+)?(?:file|document)/i,
+
+  // Specific file requests
+  /(?:show|get|display|give\s+me)\s+(?:the\s+)?(?:echo\s+tango|core\s+values|rate\s+card|company)/i,
+  /(?:entire|complete|full|whole)\s+(?:echo\s+tango|core\s+values|rate\s+card|company)\s+(?:file|document)/i,
+  /(?:contents?|content|text)\s+(?:of|from)\s+(?:the\s+)?(?:echo\s+tango|core\s+values|rate\s+card|company)/i,
+];
+
 const SIMPLE_PATTERNS = {
   // Basic conversational patterns
   CONVERSATIONAL: [
@@ -220,6 +248,8 @@ export class QueryClassifier {
       const webSearchIntent = this.detectWebSearchIntent(userInput);
       const asanaIntent = this.detectAsanaIntent(userInput);
       const knowledgeBaseIntent = this.detectKnowledgeBaseIntent(userInput);
+      const documentListingIntent = this.detectDocumentListingIntent(userInput);
+      const documentContentIntent = this.detectDocumentContentIntent(userInput);
 
       // 4. Analyze conversation context
       const contextComplexity =
@@ -237,7 +267,9 @@ export class QueryClassifier {
       if (
         webSearchIntent.hasIntent ||
         asanaIntent.hasIntent ||
-        knowledgeBaseIntent.hasIntent
+        knowledgeBaseIntent.hasIntent ||
+        documentListingIntent.hasIntent ||
+        documentContentIntent.hasIntent
       ) {
         shouldUseLangChain = true;
         this.logger.info(
@@ -246,6 +278,8 @@ export class QueryClassifier {
             webSearchIntent: webSearchIntent.hasIntent,
             asanaIntent: asanaIntent.hasIntent,
             knowledgeBaseIntent: knowledgeBaseIntent.hasIntent,
+            documentListingIntent: documentListingIntent.hasIntent,
+            documentContentIntent: documentContentIntent.hasIntent,
           },
         );
       }
@@ -265,57 +299,49 @@ export class QueryClassifier {
       );
 
       // 8. NEW: Comprehensive tool forcing strategy
-      let forceToolCall: { name: string } | 'required' | null = null;
+      let forceToolCall: any = null;
 
       // Prioritize tool forcing by confidence level
       const toolIntents = [
         { name: 'tavilySearch', intent: webSearchIntent },
         { name: 'asana_list_tasks', intent: asanaIntent }, // Use most common Asana tool
+        { name: 'getDocumentContents', intent: documentContentIntent }, // Highest priority for specific content
+        { name: 'listDocuments', intent: documentListingIntent }, // Prioritize listing over searching
         { name: 'searchInternalKnowledgeBase', intent: knowledgeBaseIntent },
       ];
 
       // Sort by confidence descending
       toolIntents.sort((a, b) => b.intent.confidence - a.intent.confidence);
 
-      // Apply forcing logic for the highest confidence tool intent
-      const highestIntent = toolIntents[0];
-      if (highestIntent.intent.hasIntent) {
-        if (highestIntent.intent.confidence > 0.3) {
-          // High confidence - force specific tool
-          forceToolCall = { name: highestIntent.name };
-          this.logger.info(
-            `${highestIntent.name} intent detected - forcing tool`,
-            {
-              tool: highestIntent.name,
-              confidence: highestIntent.intent.confidence,
-              inputPreview: userInput.substring(0, 100),
-            },
-          );
-        } else if (highestIntent.intent.confidence > 0.1) {
-          // Medium confidence - force any tool call
-          forceToolCall = 'required';
-          this.logger.info(
-            'Tool intent detected (medium confidence) - forcing tool usage',
-            {
-              highestTool: highestIntent.name,
-              confidence: highestIntent.intent.confidence,
-              inputPreview: userInput.substring(0, 100),
-            },
-          );
-        }
-      }
+      // Identify all intents with sufficient confidence
+      const confidentIntents = toolIntents.filter(
+        (intent) => intent.intent.confidence > 0.3,
+      );
 
-      // Special case: Multi-tool workflow detection
-      if (webSearchIntent.hasIntent && knowledgeBaseIntent.hasIntent) {
-        // Both search and knowledge base detected - force to use LangChain and require tools
-        forceToolCall = 'required';
+      this.logger.info('[QueryClassifier] Confident tool intents detected', {
+        count: confidentIntents.length,
+        intents: confidentIntents.map((i) => ({
+          name: i.name,
+          confidence: i.intent.confidence,
+        })),
+      });
+
+      if (confidentIntents.length > 1) {
+        // Multi-tool scenario: let the agent decide the order
         this.logger.info(
-          'Multi-tool workflow detected (search + knowledge base) - forcing tool usage',
-          {
-            webSearchConfidence: webSearchIntent.confidence,
-            knowledgeBaseConfidence: knowledgeBaseIntent.confidence,
-            inputPreview: userInput.substring(0, 100),
-          },
+          '[QueryClassifier] Multiple tools detected, letting agent orchestrate.',
+        );
+        forceToolCall = 'required'; // LangGraph will force a tool call from available tools
+      } else if (confidentIntents.length === 1) {
+        // Single-tool scenario: force the specific tool
+        const toolToForce = confidentIntents[0].name;
+        this.logger.info(
+          `[QueryClassifier] Single high-confidence tool detected: ${toolToForce}`,
+        );
+        forceToolCall = { name: toolToForce };
+      } else {
+        this.logger.info(
+          '[QueryClassifier] No high-confidence tool intents detected, no forcing applied.',
         );
       }
 
@@ -344,6 +370,8 @@ export class QueryClassifier {
         webSearchIntentConfidence: webSearchIntent.confidence,
         asanaIntentConfidence: asanaIntent.confidence,
         knowledgeBaseIntentConfidence: knowledgeBaseIntent.confidence,
+        documentListingIntentConfidence: documentListingIntent.confidence,
+        documentContentIntentConfidence: documentContentIntent.confidence,
         forceToolCall: forceToolCall
           ? typeof forceToolCall === 'string'
             ? forceToolCall
@@ -625,6 +653,94 @@ export class QueryClassifier {
       userInput.toLowerCase().includes('company')
     ) {
       adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.2);
+    }
+
+    return {
+      hasIntent: adjustedConfidence > 0.1,
+      confidence: adjustedConfidence,
+    };
+  }
+
+  /**
+   * NEW: Detect document listing intent with high confidence
+   */
+  private detectDocumentListingIntent(userInput: string): {
+    hasIntent: boolean;
+    confidence: number;
+  } {
+    let matchCount = 0;
+    const totalPatterns = DOCUMENT_LISTING_PATTERNS.length;
+
+    for (const pattern of DOCUMENT_LISTING_PATTERNS) {
+      if (pattern.test(userInput)) {
+        matchCount++;
+      }
+    }
+
+    const confidence = matchCount / totalPatterns;
+    let adjustedConfidence = confidence;
+
+    // Boost confidence for explicit listing terms
+    if (
+      userInput.toLowerCase().includes('list') ||
+      userInput.toLowerCase().includes('show') ||
+      userInput.toLowerCase().includes('display') ||
+      userInput.toLowerCase().includes('enumerate')
+    ) {
+      adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.3);
+    }
+
+    // Boost for "all" or "available" modifiers
+    if (
+      userInput.toLowerCase().includes('all') ||
+      userInput.toLowerCase().includes('available')
+    ) {
+      adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.2);
+    }
+
+    return {
+      hasIntent: adjustedConfidence > 0.1,
+      confidence: adjustedConfidence,
+    };
+  }
+
+  /**
+   * NEW: Detect document content retrieval intent with high confidence
+   */
+  private detectDocumentContentIntent(userInput: string): {
+    hasIntent: boolean;
+    confidence: number;
+  } {
+    let matchCount = 0;
+    const totalPatterns = DOCUMENT_CONTENT_PATTERNS.length;
+
+    for (const pattern of DOCUMENT_CONTENT_PATTERNS) {
+      if (pattern.test(userInput)) {
+        matchCount++;
+      }
+    }
+
+    const confidence = matchCount / totalPatterns;
+    let adjustedConfidence = confidence;
+
+    // Boost confidence for explicit content terms
+    if (
+      userInput.toLowerCase().includes('contents') ||
+      userInput.toLowerCase().includes('content') ||
+      userInput.toLowerCase().includes('entire') ||
+      userInput.toLowerCase().includes('complete') ||
+      userInput.toLowerCase().includes('full')
+    ) {
+      adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.4);
+    }
+
+    // Boost for specific file mentions
+    if (
+      userInput.toLowerCase().includes('echo tango') ||
+      userInput.toLowerCase().includes('core values') ||
+      userInput.toLowerCase().includes('rate card')
+    ) {
+      adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.3);
     }
 
     return {

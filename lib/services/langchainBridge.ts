@@ -471,8 +471,32 @@ export async function streamLangChainAgent(
                   finalResponse += chunk.content;
 
                   // Format for Vercel AI SDK streaming (match AgentExecutor format)
-                  const formattedChunk = `0:${JSON.stringify(chunk.content)}\n`;
-                  controller.enqueue(formattedChunk);
+                  try {
+                    // Ensure content is a string and properly escaped
+                    const safeContent =
+                      typeof chunk.content === 'string'
+                        ? chunk.content
+                        : String(chunk.content);
+                    const formattedChunk = `0:${JSON.stringify(safeContent)}\n`;
+                    controller.enqueue(
+                      new TextEncoder().encode(formattedChunk),
+                    );
+                  } catch (jsonError) {
+                    logger.error('[LangGraph] JSON stringify error for chunk', {
+                      error:
+                        jsonError instanceof Error
+                          ? jsonError.message
+                          : 'Unknown error',
+                      chunkContent: typeof chunk.content,
+                      chunkPreview: String(chunk.content).substring(0, 100),
+                    });
+                    // Send safe fallback with proper encoding
+                    const safeContent = String(chunk.content)
+                      .replace(/\r\n/g, '\n')
+                      .replace(/\r/g, '\n');
+                    const safeChunk = `0:${JSON.stringify(safeContent)}\n`;
+                    controller.enqueue(new TextEncoder().encode(safeChunk));
+                  }
 
                   logger.info('[LangGraph] Streamed chunk', {
                     chunkLength: chunk.content.length,
@@ -509,8 +533,25 @@ export async function streamLangChainAgent(
                   if (lastMessage.content && !hasStartedStreaming) {
                     // If we haven't streamed anything yet, send the final content
                     finalResponse = lastMessage.content;
-                    const formattedChunk = `0:${JSON.stringify(lastMessage.content)}\n`;
-                    controller.enqueue(formattedChunk);
+                    try {
+                      const formattedChunk = `0:${JSON.stringify(lastMessage.content)}\n`;
+                      controller.enqueue(
+                        new TextEncoder().encode(formattedChunk),
+                      );
+                    } catch (jsonError) {
+                      logger.error(
+                        '[LangGraph] JSON stringify error for final state',
+                        {
+                          error:
+                            jsonError instanceof Error
+                              ? jsonError.message
+                              : 'Unknown error',
+                          contentType: typeof lastMessage.content,
+                        },
+                      );
+                      const safeChunk = `0:${JSON.stringify(String(lastMessage.content))}\n`;
+                      controller.enqueue(new TextEncoder().encode(safeChunk));
+                    }
                     hasStartedStreaming = true;
                     logger.info(
                       '[LangGraph] Sent final state content as fallback',
@@ -534,8 +575,23 @@ export async function streamLangChainAgent(
                   // Always capture agent responses, whether streaming started or not
                   if (!hasStartedStreaming) {
                     finalResponse = output.content;
-                    const formattedChunk = `0:${JSON.stringify(output.content)}\n`;
-                    controller.enqueue(formattedChunk);
+                    try {
+                      const formattedChunk = `0:${JSON.stringify(output.content)}\n`;
+                      controller.enqueue(formattedChunk);
+                    } catch (jsonError) {
+                      logger.error(
+                        '[LangGraph] JSON stringify error for agent response',
+                        {
+                          error:
+                            jsonError instanceof Error
+                              ? jsonError.message
+                              : 'Unknown error',
+                          contentType: typeof output.content,
+                        },
+                      );
+                      const safeChunk = `0:${JSON.stringify(String(output.content))}\n`;
+                      controller.enqueue(safeChunk);
+                    }
                     hasStartedStreaming = true;
                     logger.info('[LangGraph] Sent non-streaming AI response', {
                       contentLength: output.content.length,
@@ -543,8 +599,23 @@ export async function streamLangChainAgent(
                   } else {
                     // If we were already streaming, this might be a follow-up response after tools
                     finalResponse += output.content;
-                    const formattedChunk = `0:${JSON.stringify(output.content)}\n`;
-                    controller.enqueue(formattedChunk);
+                    try {
+                      const formattedChunk = `0:${JSON.stringify(output.content)}\n`;
+                      controller.enqueue(formattedChunk);
+                    } catch (jsonError) {
+                      logger.error(
+                        '[LangGraph] JSON stringify error for follow-up response',
+                        {
+                          error:
+                            jsonError instanceof Error
+                              ? jsonError.message
+                              : 'Unknown error',
+                          contentType: typeof output.content,
+                        },
+                      );
+                      const safeChunk = `0:${JSON.stringify(String(output.content))}\n`;
+                      controller.enqueue(safeChunk);
+                    }
                     logger.info(
                       '[LangGraph] Sent follow-up AI response after tools',
                       {
@@ -574,9 +645,23 @@ export async function streamLangChainAgent(
               ) {
                 for (const uiEvent of event.data.ui) {
                   if (uiEvent && typeof uiEvent === 'object') {
-                    // Send UI events in the proper format for the frontend
-                    const uiChunk = `2:${JSON.stringify(uiEvent)}\n`;
-                    controller.enqueue(uiChunk);
+                    try {
+                      // Send UI events in the proper format for the frontend
+                      const uiChunk = `2:${JSON.stringify(uiEvent)}\n`;
+                      controller.enqueue(uiChunk);
+                    } catch (jsonError) {
+                      logger.error(
+                        '[LangGraph] JSON stringify error for UI event',
+                        {
+                          error:
+                            jsonError instanceof Error
+                              ? jsonError.message
+                              : 'Unknown error',
+                          eventType: typeof uiEvent,
+                        },
+                      );
+                      // Skip malformed UI events rather than crash
+                    }
                   }
                 }
               }
@@ -608,8 +693,23 @@ export async function streamLangChainAgent(
                     typeof lastMessage.content === 'string'
                       ? lastMessage.content
                       : JSON.stringify(lastMessage.content); // Ensure we capture this for message saving
-                  const formattedChunk = `0:${JSON.stringify(lastMessage.content)}\n`;
-                  controller.enqueue(formattedChunk);
+                  try {
+                    const formattedChunk = `0:${JSON.stringify(lastMessage.content)}\n`;
+                    controller.enqueue(formattedChunk);
+                  } catch (jsonError) {
+                    logger.error(
+                      '[LangGraph] JSON stringify error for direct invocation',
+                      {
+                        error:
+                          jsonError instanceof Error
+                            ? jsonError.message
+                            : 'Unknown error',
+                        contentType: typeof lastMessage.content,
+                      },
+                    );
+                    const safeChunk = `0:${JSON.stringify(String(lastMessage.content))}\n`;
+                    controller.enqueue(safeChunk);
+                  }
                   hasStartedStreaming = true;
                   logger.info(
                     '[LangGraph] Successfully sent direct invocation result',
@@ -633,8 +733,22 @@ export async function streamLangChainAgent(
           if (!hasStartedStreaming) {
             const fallbackMessage =
               'I apologize, but I was unable to process your request properly.';
-            const formattedChunk = `0:${JSON.stringify(fallbackMessage)}\n`;
-            controller.enqueue(formattedChunk);
+            try {
+              const formattedChunk = `0:${JSON.stringify(fallbackMessage)}\n`;
+              controller.enqueue(formattedChunk);
+            } catch (jsonError) {
+              logger.error(
+                '[LangGraph] JSON stringify error for fallback message',
+                {
+                  error:
+                    jsonError instanceof Error
+                      ? jsonError.message
+                      : 'Unknown error',
+                },
+              );
+              // Send minimal safe response
+              controller.enqueue('0:"Error processing request"\n');
+            }
           }
 
           logger.info('[LangGraph] Streaming completed successfully', {
@@ -677,7 +791,17 @@ export async function streamLangChainAgent(
             }
           }
 
-          controller.close();
+          // Ensure proper stream termination (only close once)
+          try {
+            controller.close();
+          } catch (closeError) {
+            logger.warn('[LangGraph] Error closing stream controller', {
+              error:
+                closeError instanceof Error
+                  ? closeError.message
+                  : 'Unknown error',
+            });
+          }
         } catch (error) {
           logger.error('[LangGraph] Error in streaming execution', {
             error: error instanceof Error ? error.message : 'Unknown error',

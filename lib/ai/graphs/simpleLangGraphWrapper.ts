@@ -11,10 +11,12 @@ import {
   type ToolMessage,
   type BaseMessage,
   ToolMessage as ToolMessageClass,
+  HumanMessage,
 } from '@langchain/core/messages';
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { RequestLogger } from '../../services/observabilityService';
+import { ContextWindowManager } from '../core/contextWindowManager';
 import { v4 as uuidv4 } from 'uuid';
 
 // UI message type with proper metadata
@@ -57,6 +59,14 @@ const GraphStateAnnotation = Annotation.Root({
     reducer: (x: any[] = [], y: any[] = []) => [...x, ...y],
     default: () => [],
   }),
+  toolForcingCount: Annotation<number>({
+    reducer: (x = 0, y = 0) => Math.max(x, y),
+    default: () => 0,
+  }),
+  iterationCount: Annotation<number>({
+    reducer: (x = 0, y = 0) => Math.max(x, y),
+    default: () => 0,
+  }),
 });
 
 type GraphState = typeof GraphStateAnnotation.State;
@@ -81,12 +91,21 @@ export class SimpleLangGraphWrapper {
   private tools: any[];
   private logger: RequestLogger;
   private graph: any; // Use any for the compiled graph to avoid complex type issues
+  private contextManager: ContextWindowManager;
 
   constructor(config: LangGraphWrapperConfig) {
     this.config = config;
     this.llm = config.llm;
     this.tools = config.tools;
     this.logger = config.logger;
+    this.contextManager = new ContextWindowManager(config.logger, {
+      enableAutoUpgrade: true,
+    });
+
+    // Fix memory leak warnings by increasing max listeners
+    if (typeof process !== 'undefined' && process.setMaxListeners) {
+      process.setMaxListeners(20);
+    }
 
     // Initialize and compile the LangGraph immediately
     this.graph = this.initializeAndCompileGraph();
@@ -168,6 +187,52 @@ export class SimpleLangGraphWrapper {
           hasToolMessages && lastMessage?._getType() === 'tool',
       });
 
+      // Analyze context and manage token limits
+      const contextAnalysis = this.contextManager.analyzeContext(
+        state.messages,
+        this.llm.modelName || 'gpt-4.1-mini',
+        this.tools.length,
+      );
+
+      // Handle context management
+      let managedMessages = state.messages;
+      let currentLLM = this.llm;
+
+      if (contextAnalysis.exceedsLimit || contextAnalysis.shouldTruncate) {
+        this.logger.warn('[LangGraph Agent] Context management required', {
+          exceedsLimit: contextAnalysis.exceedsLimit,
+          shouldTruncate: contextAnalysis.shouldTruncate,
+          estimatedTokens: contextAnalysis.estimatedTokens,
+          recommendedModel: contextAnalysis.recommendedModel,
+        });
+
+        // Upgrade model if needed and possible
+        if (contextAnalysis.recommendedModel !== this.llm.modelName) {
+          currentLLM = this.contextManager.createUpgradedLLM(
+            this.llm,
+            contextAnalysis.recommendedModel,
+          );
+        }
+
+        // AGGRESSIVE TRUNCATION: Use much smaller context windows to prevent overflow
+        if (contextAnalysis.shouldTruncate) {
+          const targetTokens = 8000; // Much more conservative limit
+          managedMessages = this.contextManager.truncateMessages(
+            state.messages,
+            targetTokens,
+          );
+        }
+
+        // AGGRESSIVE SUMMARIZATION: Always summarize tool results to prevent context overflow
+        if (
+          contextAnalysis.shouldSummarizeTools ||
+          contextAnalysis.estimatedTokens > 10000
+        ) {
+          managedMessages =
+            await this.contextManager.summarizeToolResults(managedMessages);
+        }
+      }
+
       // Enhanced tool binding diagnostics
       if (this.tools.length > 0) {
         const toolNames = this.tools.map((t) => t.name || 'unnamed');
@@ -186,10 +251,10 @@ export class SimpleLangGraphWrapper {
       }
 
       // Bind tools to LLM for structured tool calling
-      let llmWithTools = this.llm.bindTools(this.tools);
+      let llmWithTools = currentLLM.bindTools(this.tools);
 
-      // Get current messages from state
-      const currentMessages = state.messages;
+      // Use managed messages for context
+      const currentMessages = managedMessages;
 
       // Check if this is the first agent call (no AI messages yet) or if we've already executed tools
       const hasAIResponses = currentMessages.some((m) => m._getType() === 'ai');
@@ -198,19 +263,69 @@ export class SimpleLangGraphWrapper {
       );
 
       // NEW: Apply tool forcing from QueryClassifier - bind with tool_choice
-      // Only apply tool forcing on the initial call, not after tool execution
+      // For 'required' mode, continue forcing tools until comprehensive research is done
       const isFollowUpAfterTools =
         hasToolMessages && lastMessage?._getType() === 'tool';
-      if (
-        this.config.forceToolCall &&
-        !hasToolExecutions &&
-        !isFollowUpAfterTools
+
+      // COMPREHENSIVE FIX: Implement proper tool forcing with circuit breakers
+      let shouldForceTools = false;
+      const currentIterationCount = (state.iterationCount || 0) + 1;
+      const currentToolForcingCount = state.toolForcingCount || 0;
+
+      // Circuit breakers - hard limits to prevent infinite loops
+      const MAX_ITERATIONS = 5;
+      const MAX_TOOL_FORCING = 2;
+
+      if (currentIterationCount > MAX_ITERATIONS) {
+        this.logger.warn(
+          '[LangGraph Agent] 🛑 CIRCUIT BREAKER: Maximum iterations exceeded',
+          {
+            currentIterationCount,
+            maxIterations: MAX_ITERATIONS,
+          },
+        );
+        shouldForceTools = false;
+      } else if (currentToolForcingCount >= MAX_TOOL_FORCING) {
+        this.logger.info(
+          '[LangGraph Agent] 🛑 CIRCUIT BREAKER: Maximum tool forcing reached',
+          {
+            currentToolForcingCount,
+            maxToolForcing: MAX_TOOL_FORCING,
+          },
+        );
+        shouldForceTools = false;
+      } else if (this.config.forceToolCall === 'required') {
+        // For 'required' mode, only force tools for the first 2 iterations
+        shouldForceTools = currentToolForcingCount < MAX_TOOL_FORCING;
+
+        this.logger.info(
+          '[LangGraph Agent] Tool forcing check with circuit breakers',
+          {
+            currentIterationCount,
+            currentToolForcingCount,
+            shouldForceTools,
+            maxIterations: MAX_ITERATIONS,
+            maxToolForcing: MAX_TOOL_FORCING,
+          },
+        );
+      } else if (
+        typeof this.config.forceToolCall === 'object' &&
+        this.config.forceToolCall !== null &&
+        'name' in this.config.forceToolCall
       ) {
+        // For specific tool forcing, only apply once
+        shouldForceTools = currentToolForcingCount === 0;
+      }
+
+      if (this.config.forceToolCall && shouldForceTools) {
         this.logger.info(
           '[LangGraph Agent] 🚀 APPLYING TOOL FORCING from QueryClassifier',
           {
             forceToolCall: this.config.forceToolCall,
-            reason: 'Tool forcing directive from classifier',
+            reason:
+              this.config.forceToolCall === 'required'
+                ? 'Multi-tool research mode - continuing until comprehensive'
+                : 'Specific tool forcing',
           },
         );
 
@@ -294,33 +409,116 @@ export class SimpleLangGraphWrapper {
       } else {
         this.logger.info('[LangGraph Agent] No tool forcing applied', {
           hasForceToolCall: !!this.config.forceToolCall,
-          hasToolExecutions,
-          reason: this.config.forceToolCall
-            ? 'Already executed tools'
-            : 'No force directive',
+          shouldForceTools,
+          reason: !this.config.forceToolCall
+            ? 'No force directive'
+            : 'Research complete or specific tool already executed',
         });
+      }
+
+      // CRITICAL FIX: When circuit breaker activates and we have tool results,
+      // inject synthesis instruction to ensure agent uses gathered information
+      let finalMessages = currentMessages;
+      const hasToolResults = currentMessages.some(
+        (m) => m._getType() === 'tool',
+      );
+      const circuitBreakerActivated =
+        this.config.forceToolCall === 'required' &&
+        !shouldForceTools &&
+        (currentToolForcingCount >= MAX_TOOL_FORCING ||
+          currentIterationCount > MAX_ITERATIONS);
+
+      if (circuitBreakerActivated && hasToolResults) {
+        this.logger.info(
+          '[LangGraph Agent] 🔄 SYNTHESIS MODE: Circuit breaker activated with tool results - injecting synthesis instruction',
+        );
+
+        // Find the original user question
+        const userMessages = currentMessages.filter(
+          (m) => m._getType() === 'human',
+        );
+        const originalQuestion =
+          userMessages.length > 0
+            ? userMessages[0].content
+            : "the user's request";
+
+        // Create synthesis instruction
+        const synthesisInstruction = new HumanMessage({
+          content: `IMPORTANT: You have gathered information using tools. Now synthesize this information to provide a comprehensive answer to the original request: "${originalQuestion}". 
+
+Use all the tool results from your previous searches to create a detailed, well-structured response. Do not ask how you can assist - provide the requested analysis/report using the information you've gathered.`,
+        });
+
+        // Add synthesis instruction as the last message
+        finalMessages = [...currentMessages, synthesisInstruction];
+
+        this.logger.info(
+          '[LangGraph Agent] Added synthesis instruction to guide final response generation',
+        );
       }
 
       // Log the actual messages being sent to LLM for diagnosis
       this.logger.info('[LangGraph Agent] Messages being sent to LLM:', {
-        messageCount: currentMessages.length,
+        messageCount: finalMessages.length,
         lastMessage: (() => {
-          const lastMsg = currentMessages[currentMessages.length - 1];
+          const lastMsg = finalMessages[finalMessages.length - 1];
           if (!lastMsg?.content) return 'No content';
           if (typeof lastMsg.content === 'string') {
             return lastMsg.content.substring(0, 200);
           }
           return 'Complex content type';
         })(),
-        hasSystemMessage: currentMessages.some(
-          (m) => m._getType() === 'system',
-        ),
-        messageTypes: currentMessages.map((m) => m._getType()),
+        hasSystemMessage: finalMessages.some((m) => m._getType() === 'system'),
+        messageTypes: finalMessages.map((m) => m._getType()),
         toolChoiceApplied: !!this.config.forceToolCall && !hasToolExecutions,
+        synthesisMode: circuitBreakerActivated && hasToolResults,
       });
 
-      // Invoke LLM with current conversation
-      const response = await llmWithTools.invoke(currentMessages);
+      // Invoke LLM with final messages (including synthesis instruction if needed) with error recovery
+      let response: AIMessage;
+      try {
+        response = await llmWithTools.invoke(finalMessages);
+      } catch (error: any) {
+        // Handle context length exceeded errors
+        if (
+          error?.code === 'context_length_exceeded' ||
+          error?.message?.includes('context length') ||
+          error?.message?.includes('maximum context')
+        ) {
+          this.logger.error(
+            '[LangGraph Agent] Context length exceeded, attempting recovery',
+            {
+              error: error.message,
+              messageCount: finalMessages.length,
+              estimatedTokens:
+                this.contextManager.estimateTokenCount(finalMessages),
+            },
+          );
+
+          // Emergency context reduction
+          const emergencyMessages = this.contextManager.truncateMessages(
+            finalMessages,
+            8000, // Very conservative limit
+          );
+
+          // Try with emergency truncation
+          try {
+            response = await llmWithTools.invoke(emergencyMessages);
+            this.logger.info(
+              '[LangGraph Agent] Recovery successful with emergency truncation',
+            );
+          } catch (recoveryError: any) {
+            this.logger.error('[LangGraph Agent] Recovery failed', {
+              error: recoveryError.message,
+            });
+            throw new Error(
+              `Context management failed: ${recoveryError.message}`,
+            );
+          }
+        } else {
+          throw error;
+        }
+      }
 
       this.logger.info('[LangGraph Agent] LLM Response:', {
         hasToolCalls: (response.tool_calls?.length ?? 0) > 0,
@@ -397,9 +595,21 @@ export class SimpleLangGraphWrapper {
         }
       }
 
+      // Update counters for circuit breakers
+      const newToolForcingCount =
+        shouldForceTools && this.config.forceToolCall
+          ? currentToolForcingCount + 1
+          : currentToolForcingCount;
+
       return {
-        messages: [response],
+        messages:
+          managedMessages !== state.messages
+            ? [...managedMessages.slice(-5), response]
+            : // Keep recent context if truncated
+              [response],
         agent_outcome: response,
+        toolForcingCount: newToolForcingCount,
+        iterationCount: currentIterationCount,
       };
     } catch (error) {
       this.logger.error('Error in agent node', { error });
@@ -630,6 +840,8 @@ export class SimpleLangGraphWrapper {
         agent_outcome: undefined, // Explicitly provide, matches annotation default
         ui: [], // Explicitly provide, matches annotation default
         _lastToolExecutionResults: [], // Explicitly provide, matches annotation default
+        toolForcingCount: 0,
+        iterationCount: 0,
       };
 
       // Invoke the compiled graph
@@ -667,6 +879,8 @@ export class SimpleLangGraphWrapper {
         agent_outcome: undefined, // Explicitly provide, matches annotation default
         ui: [], // Explicitly provide, matches annotation default
         _lastToolExecutionResults: [], // Explicitly provide, matches annotation default
+        toolForcingCount: 0,
+        iterationCount: 0,
       };
 
       // Stream events from the compiled graph
@@ -683,6 +897,29 @@ export class SimpleLangGraphWrapper {
       this.logger.info('LangGraph streaming completed');
     } catch (error) {
       this.logger.error('Error streaming LangGraph', { error });
+
+      // Send error message to client before terminating stream
+      yield {
+        event: 'on_chat_model_stream',
+        data: {
+          chunk: {
+            content:
+              'I encountered an error while processing your request. Please try again.',
+            type: 'AIMessageChunk',
+          },
+        },
+      };
+
+      // Send stream end event
+      yield {
+        event: 'on_chain_end',
+        data: {
+          output: {
+            content: 'Stream terminated due to error',
+          },
+        },
+      };
+
       throw error;
     }
   }

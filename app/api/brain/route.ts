@@ -157,6 +157,9 @@ export async function POST(req: NextRequest) {
     return new Response(readableStream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Vercel-AI-Data-Stream': 'v1',
         'X-Request-ID': logger.correlationId,
         'X-Processing-Time': `${processingTime.toFixed(2)}ms`,
         'X-Implementation': 'hybrid-v2.8.0',

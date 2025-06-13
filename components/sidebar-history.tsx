@@ -13,10 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  SidebarMenu,
-  useSidebar,
-} from '@/components/ui/sidebar';
+import { SidebarMenu, useSidebar } from '@/components/ui/sidebar';
 import type { Chat } from '@/lib/db/schema';
 import { ChatItem } from './sidebar-history-item';
 import {
@@ -27,10 +24,7 @@ import {
   RotateCw,
 } from 'lucide-react';
 import { useChatHistory } from '@/hooks/use-chat-history';
-import type {
-  GroupedChats,
-  ChatSummary,
-} from '@/lib/types';
+import type { GroupedChats, ChatSummary } from '@/lib/types';
 
 const PAGE_SIZE = 20;
 
@@ -103,7 +97,7 @@ const DaySection = memo(
               {visibleChats.map((chat) => (
                 <ChatItem
                   key={chat.id}
-                  chat={chat}
+                  chat={chat as any}
                   onDelete={onDelete}
                   setOpenMobile={setOpenMobile}
                   isActive={currentChatId === chat.id}

@@ -13,6 +13,9 @@ export interface AsanaConfig {
   apiBaseUrl: string;
   apiVersion: string;
   timeout: number;
+  rateLimits: {
+    requestsPerMinute: number;
+  };
   features: {
     workflows: boolean;
     semanticResolution: boolean;
@@ -58,6 +61,9 @@ export function getAsanaConfig(): AsanaConfig {
     apiBaseUrl: 'https://app.asana.com/api',
     apiVersion: '1.0',
     timeout: 30000,
+    rateLimits: {
+      requestsPerMinute: 1500,
+    },
     features: {
       workflows: true,
       semanticResolution: true,
