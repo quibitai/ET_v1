@@ -832,13 +832,11 @@ export class SimpleLangGraphWrapper {
                         /[^\w\s\-\.]/g,
                         '',
                       );
-                      const createdAt = item.created_at
-                        ? new Date(item.created_at).toLocaleDateString()
-                        : 'Unknown';
                       const url = String(item.url);
-                      return `${index + 1}. **${title}**\n   - Created: ${createdAt}\n   - URL: ${url}`;
+                      const description = this.getDocumentDescription(title);
+                      return `${index + 1}. [${title}](${url})\n• ${description}`;
                     }
-                    return `${index + 1}. ${String(item).substring(0, 200)}...`;
+                    return `• ${String(item).substring(0, 200)}...`;
                   })
                   .join('\n');
                 formattedContent = `📋 **Available Documents:**\n\n${cleanContent}`;
@@ -861,11 +859,9 @@ export class SimpleLangGraphWrapper {
                   /[^\w\s\-\.]/g,
                   '',
                 );
-                const createdAt = doc.created_at
-                  ? new Date(doc.created_at).toLocaleDateString()
-                  : 'Unknown';
                 const url = String(doc.url || '');
-                formattedContent = `**${title}**\n- Created: ${createdAt}\n- URL: ${url}\n\n**Content Preview:**\n${fullContent}`;
+                const description = this.getDocumentDescription(title);
+                formattedContent = `[${title}](${url})\n- ${description}\n\n**Content Preview:**\n${fullContent}`;
               }
             }
             // Handle direct array responses
@@ -882,13 +878,11 @@ export class SimpleLangGraphWrapper {
                       /[^\w\s\-\.]/g,
                       '',
                     );
-                    const createdAt = item.created_at
-                      ? new Date(item.created_at).toLocaleDateString()
-                      : 'Unknown';
                     const url = String(item.url);
-                    return `${index + 1}. **${title}**\n   - Created: ${createdAt}\n   - URL: ${url}`;
+                    const description = this.getDocumentDescription(title);
+                    return `${index + 1}. [${title}](${url})\n• ${description}`;
                   }
-                  return `${index + 1}. ${String(item).substring(0, 200)}...`;
+                  return `• ${String(item).substring(0, 200)}...`;
                 })
                 .join('\n');
               formattedContent = `📋 **Results:**\n\n${cleanContent}`;
@@ -904,15 +898,13 @@ export class SimpleLangGraphWrapper {
 
         return [
           new SystemMessage({
-            content: `You are a helpful assistant. Present ONLY the following formatted information to the user. Do NOT include any raw JSON data, tool results, or technical details. Just present the clean, formatted content below:
+            content: `You are a helpful assistant. Present EXACTLY the following formatted information to the user. Do NOT change the formatting, numbering, or bullet points. Do NOT include any raw JSON data, tool results, technical details, or instructions. Copy the content below EXACTLY as it appears:
 
-${formattedContent.trim()}
-
-IMPORTANT: Do not add any additional raw data, JSON, or technical information. Only present the formatted content above.`,
+${formattedContent.trim()}`,
           }),
           new HumanMessage({
             content:
-              'Please present this information exactly as formatted above, without any additional raw data.',
+              'Present this information EXACTLY as formatted above. Do not change bullets to numbers or numbers to bullets. Do not add any additional text or instructions.',
           }),
         ];
       }),
@@ -1096,7 +1088,9 @@ CRITICAL RULES:
 - ${responseInstructions}
 - IMPORTANT: Include a "## References" section at the end that lists both web sources AND knowledge base documents that were used.
 - DO NOT include "End of Report", "End of Document", or any closing statements after the References section.
-- Format Knowledge Base documents as clickable links when URLs are provided: [Document Name](URL)
+- ALWAYS format ALL titles as clickable links when URLs are provided: [Title](URL). Never show titles as plain text with separate URLs below them.
+- For web sources: Format as numbered list with clickable titles: "1. [Article Title](URL)"
+- For knowledge base documents: Format as numbered list with clickable titles: "1. [Document Name](URL)"
 
 Current date: ${new Date().toISOString()}`,
         });
@@ -1618,6 +1612,81 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
         );
       }
     }
+  }
+
+  /**
+   * Generate a descriptive note for a document based on its filename
+   */
+  private getDocumentDescription(filename: string): string {
+    const lowerFilename = filename.toLowerCase();
+
+    // Core business documents
+    if (lowerFilename.includes('core_values')) {
+      return 'Company core values and principles';
+    }
+    if (
+      lowerFilename.includes('income_statement') ||
+      lowerFilename.includes('profit_and_loss')
+    ) {
+      return 'Financial income statement and profit/loss data';
+    }
+    if (
+      lowerFilename.includes('producer') &&
+      lowerFilename.includes('checklist')
+    ) {
+      return 'Production workflow checklist and guidelines';
+    }
+    if (lowerFilename.includes('rate_card')) {
+      return 'Service pricing and rate information';
+    }
+    if (
+      lowerFilename.includes('ideal_client_profile') ||
+      lowerFilename.includes('ideal client profile')
+    ) {
+      return 'Target client characteristics and profile';
+    }
+
+    // Scripts and creative content
+    if (
+      lowerFilename.includes('scripts') ||
+      lowerFilename.includes('storyboards')
+    ) {
+      return 'Creative scripts and storyboard materials';
+    }
+
+    // Example/template documents
+    if (lowerFilename.includes('example')) {
+      if (lowerFilename.includes('brand_marketing')) {
+        return 'Example brand marketing strategy overview';
+      }
+      if (lowerFilename.includes('client_estimate')) {
+        return 'Sample client project estimate template';
+      }
+      if (lowerFilename.includes('client_research')) {
+        return 'Example client research and analysis';
+      }
+      if (lowerFilename.includes('proposal_pitch')) {
+        return 'Sample proposal and pitch template';
+      }
+      return 'Example document or template';
+    }
+
+    // File type based descriptions
+    if (lowerFilename.endsWith('.pdf')) {
+      return 'PDF document';
+    }
+    if (lowerFilename.endsWith('.xlsx') || lowerFilename.endsWith('.xls')) {
+      return 'Excel spreadsheet';
+    }
+    if (lowerFilename.endsWith('.md')) {
+      return 'Markdown document';
+    }
+    if (lowerFilename.endsWith('.txt')) {
+      return 'Text document';
+    }
+
+    // Default fallback
+    return 'Business document';
   }
 
   /**
