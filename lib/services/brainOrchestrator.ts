@@ -95,22 +95,53 @@ export class BrainOrchestrator {
 
       try {
         const reader = response.body.getReader();
+        // *** NEW: Add a timeout mechanism ***
+        let pipeTimeoutId: NodeJS.Timeout | null = null;
+        const streamTimeout = new Promise<void>((_, reject) => {
+          pipeTimeoutId = setTimeout(() => {
+            this.logger.warn(
+              'Stream piping timed out after 5 seconds of inactivity.',
+            );
+            reject(new Error('Stream pipe timeout'));
+          }, 5000); // 5-second timeout
+        });
 
-        while (!streamClosed) {
-          const { done, value } = await reader.read();
+        const readLoop = async () => {
+          while (!streamClosed) {
+            const { done, value } = await reader.read();
 
-          if (done) {
-            this.logger.info('Source stream completed');
-            break;
-          }
+            // NEW: Clear timeout on activity
+            if (pipeTimeoutId) clearTimeout(pipeTimeoutId);
 
-          if (value) {
-            const success = await safeWrite(value);
-            if (!success) {
-              this.logger.warn('Failed to write chunk, stopping pipe');
+            if (done) {
+              this.logger.info('Source stream completed');
               break;
             }
+
+            if (value) {
+              const success = await safeWrite(value);
+              if (!success) {
+                this.logger.warn('Failed to write chunk, stopping pipe');
+                break;
+              }
+              // NEW: Reset timeout after successful write
+              pipeTimeoutId = setTimeout(() => {
+                this.logger.warn(
+                  'Stream piping timed out after 5 seconds of inactivity.',
+                );
+                // Don't reject here, just break the loop
+                if (reader) reader.releaseLock();
+              }, 5000);
+            }
           }
+        };
+
+        // This will now either complete or time out.
+        await Promise.race([readLoop(), streamTimeout]);
+
+        // NEW: Final cleanup of timeout
+        if (pipeTimeoutId) {
+          clearTimeout(pipeTimeoutId);
         }
 
         reader.releaseLock();
@@ -118,7 +149,7 @@ export class BrainOrchestrator {
         this.logger.error('Error during stream piping', {
           error: error instanceof Error ? error.message : 'Unknown error',
         });
-        throw error;
+        // Do not re-throw, allow the finally block to run
       }
     };
 
