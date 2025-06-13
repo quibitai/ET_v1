@@ -387,6 +387,21 @@ export class QueryClassifier {
           '[QueryClassifier] Forcing listDocuments first for sample-based creation',
         );
       } else if (
+        documentListingIntent.hasIntent &&
+        documentListingIntent.confidence > 0.3
+      ) {
+        this.logger.info(
+          '[QueryClassifier] Detected document listing request - using single tool approach',
+        );
+
+        // For document listing requests, force ONLY listDocuments and prevent follow-ups
+        // This ensures we get a clean list without additional content retrieval
+        forceToolCall = { name: 'listDocuments' };
+
+        this.logger.info(
+          '[QueryClassifier] Forcing ONLY listDocuments for clean listing',
+        );
+      } else if (
         documentContentIntent.hasIntent &&
         documentContentIntent.confidence > 0.6
       ) {

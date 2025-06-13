@@ -327,7 +327,38 @@ export class SimpleLangGraphWrapper {
       const MAX_ITERATIONS = 5;
       const MAX_TOOL_FORCING = 2;
 
-      if (currentIterationCount > MAX_ITERATIONS) {
+      // NEW: Check if this is a document listing request that should only call listDocuments once
+      const userMessages = state.messages.filter(
+        (msg) => msg._getType() === 'human',
+      );
+      const lastUserMessage = userMessages[userMessages.length - 1];
+      const userQuery =
+        typeof lastUserMessage?.content === 'string'
+          ? lastUserMessage.content
+          : JSON.stringify(lastUserMessage?.content) || '';
+
+      const isDocumentListingRequest =
+        /(?:list|show|display|enumerate)\s+(?:all\s+)?(?:the\s+)?(?:available\s+)?(?:documents|files)/i.test(
+          userQuery,
+        );
+      const hasListDocumentsResult = state.messages.some(
+        (msg) =>
+          msg._getType() === 'tool' &&
+          typeof msg.content === 'string' &&
+          msg.content.includes('available_documents'),
+      );
+
+      // If this is a document listing request and we already have listDocuments results, don't force more tools
+      if (isDocumentListingRequest && hasListDocumentsResult) {
+        this.logger.info(
+          '[LangGraph Agent] 🛑 Document listing request completed - preventing additional tool calls',
+          {
+            userQuery: userQuery.substring(0, 100),
+            hasListDocumentsResult,
+          },
+        );
+        shouldForceTools = false;
+      } else if (currentIterationCount > MAX_ITERATIONS) {
         this.logger.warn(
           '[LangGraph Agent] 🛑 CIRCUIT BREAKER: Maximum iterations exceeded',
           {
