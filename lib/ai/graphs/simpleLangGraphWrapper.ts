@@ -493,10 +493,25 @@ Use all the tool results from your previous searches to create a detailed, well-
         synthesisMode: circuitBreakerActivated && hasToolResults,
       });
 
+      // *** FINAL FIX: Force non-tool response during synthesis mode ***
+      // Determine if we are in synthesis mode
+      const isSynthesisMode = circuitBreakerActivated && hasToolResults;
+
+      // Set invocation options: If in synthesis mode, force the LLM to generate
+      // a text response and NOT call any more tools.
+      const invokeOptions = isSynthesisMode ? { tool_choice: 'none' } : {};
+
+      if (isSynthesisMode) {
+        this.logger.info(
+          '[LangGraph Agent] 🚫 FORCING NON-TOOL RESPONSE for synthesis mode to prevent recursion',
+          { invokeOptions, synthesisMode: true },
+        );
+      }
+
       // Invoke LLM with final messages (including synthesis instruction if needed) with error recovery
       let response: AIMessage;
       try {
-        response = await llmWithTools.invoke(finalMessages);
+        response = await llmWithTools.invoke(finalMessages, invokeOptions);
       } catch (error: any) {
         // Handle context length exceeded errors
         if (
@@ -522,9 +537,13 @@ Use all the tool results from your previous searches to create a detailed, well-
 
           // Try with emergency truncation
           try {
-            response = await llmWithTools.invoke(emergencyMessages);
+            response = await llmWithTools.invoke(
+              emergencyMessages,
+              invokeOptions,
+            );
             this.logger.info(
               '[LangGraph Agent] Recovery successful with emergency truncation',
+              { usedSynthesisMode: isSynthesisMode },
             );
           } catch (recoveryError: any) {
             this.logger.error('[LangGraph Agent] Recovery failed', {
