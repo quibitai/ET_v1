@@ -127,16 +127,18 @@ export class SimpleLangGraphWrapper {
       // Add nodes with consistent string identifiers
       workflow.addNode('agent', this.callModelNode.bind(this));
       workflow.addNode('tools', this.executeToolsNode.bind(this));
+      workflow.addNode('synthesis', this.synthesisNode.bind(this)); // ADD NEW NODE
 
-      // Add edges using START and proper node names - using type assertions to bypass API incompatibilities
+      // Set the entrypoint
       (workflow as any).addEdge(START, 'agent');
 
-      // Add conditional edge from agent
+      // Add conditional edge from the agent node
       (workflow as any).addConditionalEdges(
         'agent',
-        this.shouldExecuteTools.bind(this),
+        this.routeNextStep.bind(this), // USE THE NEW ROUTER
         {
           use_tools: 'tools',
+          synthesis: 'synthesis', // ADD SYNTHESIS PATH
           finish: END,
         },
       );
@@ -144,16 +146,21 @@ export class SimpleLangGraphWrapper {
       // Add edge from tools back to agent
       (workflow as any).addEdge('tools', 'agent');
 
+      // Add edge from synthesis to the end
+      (workflow as any).addEdge('synthesis', END); // SYNTHESIS IS A TERMINAL NODE
+
       // Compile the graph
       const compiledGraph = workflow.compile();
 
-      this.logger.info('LangGraph compiled successfully', {
-        nodes: ['agent', 'tools'],
+      this.logger.info('LangGraph compiled successfully with synthesis node', {
+        nodes: ['agent', 'tools', 'synthesis'],
         edges: [
           'START->agent',
           'agent->tools (conditional)',
+          'agent->synthesis (conditional)',
           'agent->END (conditional)',
           'tools->agent',
+          'synthesis->END',
         ],
       });
 
@@ -421,119 +428,28 @@ export class SimpleLangGraphWrapper {
         });
       }
 
-      // CRITICAL FIX: When circuit breaker activates and we have tool results,
-      // inject synthesis instruction to ensure agent uses gathered information
-      let finalMessages = currentMessages;
-      const circuitBreakerActivated =
-        this.config.forceToolCall === 'required' &&
-        !shouldForceTools &&
-        (currentToolForcingCount >= MAX_TOOL_FORCING ||
-          currentIterationCount > MAX_ITERATIONS);
-
-      // DEBUG: Log synthesis conditions for diagnosis
-      this.logger.info('[LangGraph Agent] 🔍 SYNTHESIS DEBUG CONDITIONS:', {
-        forceToolCall: this.config.forceToolCall,
-        shouldForceTools,
-        currentToolForcingCount,
-        MAX_TOOL_FORCING,
-        currentIterationCount,
-        MAX_ITERATIONS,
-        hasToolResults,
-        circuitBreakerActivated,
-        originalMessageCount: state.messages.length,
-        managedMessageCount: currentMessages.length,
-        messageTypes: state.messages.map((m) => m._getType()),
-        toolMessageCount: state.messages.filter((m) => m._getType() === 'tool')
-          .length,
-      });
-
-      if (circuitBreakerActivated && hasToolResults) {
-        this.logger.info(
-          '[LangGraph Agent] 🔄 SYNTHESIS MODE: Circuit breaker activated with tool results - injecting synthesis instruction',
-        );
-
-        // Find the original user question
-        const userMessages = currentMessages.filter(
-          (m) => m._getType() === 'human',
-        );
-        const originalQuestion =
-          userMessages.length > 0
-            ? userMessages[0].content
-            : "the user's request";
-
-        // Create definitive synthesis instruction with role-play context
-        const synthesisInstruction = new HumanMessage({
-          content: `All necessary research has been completed. The user is waiting for the final report.
-Analyze the tool results provided in the previous turns and generate the comprehensive research report document directly.
-Begin the report immediately without any introductory phrases like "Here is the report" or "I will now synthesize".
-
-**Report Start:**
-`,
-        });
-
-        // Add synthesis instruction as the last message
-        finalMessages = [...currentMessages, synthesisInstruction];
-
-        this.logger.info(
-          '[LangGraph Agent] Added synthesis instruction to guide final response generation',
-        );
-      }
-
       // Log the actual messages being sent to LLM for diagnosis
       this.logger.info('[LangGraph Agent] Messages being sent to LLM:', {
-        messageCount: finalMessages.length,
+        messageCount: currentMessages.length,
         lastMessage: (() => {
-          const lastMsg = finalMessages[finalMessages.length - 1];
+          const lastMsg = currentMessages[currentMessages.length - 1];
           if (!lastMsg?.content) return 'No content';
           if (typeof lastMsg.content === 'string') {
             return lastMsg.content.substring(0, 200);
           }
           return 'Complex content type';
         })(),
-        hasSystemMessage: finalMessages.some((m) => m._getType() === 'system'),
-        messageTypes: finalMessages.map((m) => m._getType()),
+        hasSystemMessage: currentMessages.some(
+          (m) => m._getType() === 'system',
+        ),
+        messageTypes: currentMessages.map((m) => m._getType()),
         toolChoiceApplied: !!this.config.forceToolCall && !hasToolExecutions,
-        synthesisMode: circuitBreakerActivated && hasToolResults,
       });
 
-      // *** FINAL FIX: Force non-tool response during synthesis mode ***
-      // Determine if we are in synthesis mode
-      const isSynthesisMode = circuitBreakerActivated && hasToolResults;
-
-      // Set invocation options: If in synthesis mode, force the LLM to generate
-      // a text response and NOT call any more tools.
-      const invokeOptions = isSynthesisMode ? { tool_choice: 'none' } : {};
-
-      if (isSynthesisMode) {
-        this.logger.info(
-          '[LangGraph Agent] 🚫 FORCING NON-TOOL RESPONSE for synthesis mode to prevent recursion',
-          { invokeOptions, synthesisMode: true },
-        );
-      }
-
-      // *** FINAL FIX: Override model downgrade for synthesis mode ***
-      // Default to the LLM chosen by the context manager
-      let llmForFinalCall = llmWithTools;
-
-      // BUT, if we're in synthesis mode, OVERRIDE any model downgrade and
-      // ensure we use the primary, most powerful LLM for the final report.
-      if (isSynthesisMode && currentLLM !== this.llm) {
-        this.logger.info(
-          '[LangGraph Agent] ⏫ OVERRIDING model downgrade for synthesis. Reverting to primary LLM.',
-          {
-            originalModel: this.llm.modelName,
-            downgradedModel: currentLLM.modelName,
-            reason: 'Synthesis requires maximum reasoning capability',
-          },
-        );
-        // Re-bind the primary LLM to ensure the invocation options are correct.
-        llmForFinalCall = this.llm.bindTools(this.tools);
-      }
-
-      // Invoke LLM with final messages (including synthesis instruction if needed) with error recovery
+      // Invoke LLM with current messages with error recovery
       let response: AIMessage;
       try {
-        response = await llmForFinalCall.invoke(finalMessages, invokeOptions);
+        response = await llmWithTools.invoke(currentMessages);
       } catch (error: any) {
         // Handle context length exceeded errors
         if (
@@ -545,27 +461,23 @@ Begin the report immediately without any introductory phrases like "Here is the 
             '[LangGraph Agent] Context length exceeded, attempting recovery',
             {
               error: error.message,
-              messageCount: finalMessages.length,
+              messageCount: currentMessages.length,
               estimatedTokens:
-                this.contextManager.estimateTokenCount(finalMessages),
+                this.contextManager.estimateTokenCount(currentMessages),
             },
           );
 
           // Emergency context reduction
           const emergencyMessages = this.contextManager.truncateMessages(
-            finalMessages,
+            currentMessages,
             8000, // Very conservative limit
           );
 
           // Try with emergency truncation
           try {
-            response = await llmForFinalCall.invoke(
-              emergencyMessages,
-              invokeOptions,
-            );
+            response = await llmWithTools.invoke(emergencyMessages);
             this.logger.info(
               '[LangGraph Agent] Recovery successful with emergency truncation',
-              { usedSynthesisMode: isSynthesisMode },
             );
           } catch (recoveryError: any) {
             this.logger.error('[LangGraph Agent] Recovery failed', {
@@ -669,6 +581,47 @@ Begin the report immediately without any introductory phrases like "Here is the 
       };
     } catch (error) {
       this.logger.error('Error in agent node', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Synthesis Node
+   * This node's only job is to generate the final report using the full context.
+   * It ALWAYS uses the primary, high-capability LLM and NEVER calls tools.
+   */
+  private async synthesisNode(state: GraphState): Promise<Partial<GraphState>> {
+    this.logger.info('[LangGraph Synthesis] 🎬 Starting final synthesis node.');
+
+    // Use the definitive role-play prompt to force a direct answer
+    const synthesisInstruction = new HumanMessage({
+      content: `All necessary research has been completed. The user is waiting for the final report.
+Analyze the tool results provided in the previous turns and generate the comprehensive research report document directly.
+Begin the report immediately without any introductory phrases like "Here is the report" or "I will now synthesize".
+
+**Report Start:**
+`,
+    });
+
+    const finalMessages = [...state.messages, synthesisInstruction];
+
+    try {
+      // ALWAYS use the primary, most-capable LLM for this critical step
+      const llmForSynthesis = this.llm.bindTools(this.tools);
+
+      this.logger.info(
+        '[LangGraph Synthesis] Invoking primary LLM and forcing non-tool response.',
+      );
+
+      const response = await llmForSynthesis.invoke(finalMessages, {
+        tool_choice: 'none', // Absolutely ensure no more tool calls
+      });
+
+      this.logger.info('[LangGraph Synthesis] ✅ Synthesis complete.');
+
+      return { messages: [response] };
+    } catch (error) {
+      this.logger.error('Error in synthesis node', { error });
       throw error;
     }
   }
@@ -844,36 +797,44 @@ Begin the report immediately without any introductory phrases like "Here is the 
   }
 
   /**
-   * Conditional edge function
-   * Determines whether to execute tools or end the conversation
+   * Conditional Router Function
+   * Determines the next step: call tools, synthesize the final report, or finish.
    */
-  private shouldExecuteTools(state: GraphState): 'use_tools' | 'finish' {
+  private routeNextStep(
+    state: GraphState,
+  ): 'use_tools' | 'synthesis' | 'finish' {
     const lastMessage = state.messages[state.messages.length - 1];
 
-    // Check if the last message is an AI message with tool calls
+    // 1. If the last AI message has tool calls, route to the tool executor
     if (
       lastMessage?._getType() === 'ai' &&
       (lastMessage as any).tool_calls?.length > 0
     ) {
-      this.logger.info(
-        '[LangGraph Router] Tools found in last AI message, routing to tools node',
-        {
-          toolCount: (lastMessage as any).tool_calls.length,
-          lastMessageType: lastMessage._getType(),
-        },
-      );
+      this.logger.info('[LangGraph Router] Routing to tools node.');
       return 'use_tools';
-    } else {
-      this.logger.info(
-        '[LangGraph Router] No tools found in last message, routing to END',
-        {
-          lastMessageType: lastMessage?._getType(),
-          messageCount: state.messages.length,
-          hasAgentOutcome: !!state.agent_outcome,
-        },
-      );
-      return 'finish';
     }
+
+    // 2. Check for synthesis conditions (circuit breaker + has results)
+    const hasToolResults = state.messages.some((m) => m._getType() === 'tool');
+    const currentToolForcingCount = state.toolForcingCount || 0;
+    const MAX_TOOL_FORCING = 2; // Ensure this is consistent
+
+    if (
+      this.config.forceToolCall === 'required' &&
+      currentToolForcingCount >= MAX_TOOL_FORCING &&
+      hasToolResults
+    ) {
+      this.logger.info(
+        '[LangGraph Router] Circuit breaker hit with results. Routing to synthesis node.',
+      );
+      return 'synthesis';
+    }
+
+    // 3. Otherwise, finish the graph
+    this.logger.info(
+      '[LangGraph Router] No more tools or synthesis needed. Routing to END.',
+    );
+    return 'finish';
   }
 
   /**
