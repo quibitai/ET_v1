@@ -253,6 +253,11 @@ export class SimpleLangGraphWrapper {
       // Bind tools to LLM for structured tool calling
       let llmWithTools = currentLLM.bindTools(this.tools);
 
+      // CRITICAL FIX: Check for tool results BEFORE context management destroys evidence
+      const hasToolResults = state.messages.some(
+        (m) => m._getType() === 'tool',
+      );
+
       // Use managed messages for context
       const currentMessages = managedMessages;
 
@@ -419,14 +424,28 @@ export class SimpleLangGraphWrapper {
       // CRITICAL FIX: When circuit breaker activates and we have tool results,
       // inject synthesis instruction to ensure agent uses gathered information
       let finalMessages = currentMessages;
-      const hasToolResults = currentMessages.some(
-        (m) => m._getType() === 'tool',
-      );
       const circuitBreakerActivated =
         this.config.forceToolCall === 'required' &&
         !shouldForceTools &&
         (currentToolForcingCount >= MAX_TOOL_FORCING ||
           currentIterationCount > MAX_ITERATIONS);
+
+      // DEBUG: Log synthesis conditions for diagnosis
+      this.logger.info('[LangGraph Agent] 🔍 SYNTHESIS DEBUG CONDITIONS:', {
+        forceToolCall: this.config.forceToolCall,
+        shouldForceTools,
+        currentToolForcingCount,
+        MAX_TOOL_FORCING,
+        currentIterationCount,
+        MAX_ITERATIONS,
+        hasToolResults,
+        circuitBreakerActivated,
+        originalMessageCount: state.messages.length,
+        managedMessageCount: currentMessages.length,
+        messageTypes: state.messages.map((m) => m._getType()),
+        toolMessageCount: state.messages.filter((m) => m._getType() === 'tool')
+          .length,
+      });
 
       if (circuitBreakerActivated && hasToolResults) {
         this.logger.info(
@@ -602,11 +621,7 @@ Use all the tool results from your previous searches to create a detailed, well-
           : currentToolForcingCount;
 
       return {
-        messages:
-          managedMessages !== state.messages
-            ? [...managedMessages.slice(-5), response]
-            : // Keep recent context if truncated
-              [response],
+        messages: [response], // CRITICAL FIX: Only return new message for concat reducer
         agent_outcome: response,
         toolForcingCount: newToolForcingCount,
         iterationCount: currentIterationCount,
