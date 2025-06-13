@@ -147,7 +147,7 @@ export const SidebarHistory = memo(function SidebarHistory({
   const {
     groupedChats: chatGroups,
     hasEmptyChatHistory,
-    isChatLoading,
+    isLoadingChatHistory,
     expandedDays,
     expandedChatCounts,
     toggleDayExpansion,
@@ -165,7 +165,7 @@ export const SidebarHistory = memo(function SidebarHistory({
   useEffect(() => {
     console.log('[SidebarHistory] Current sidebar state:', {
       hasChats: !hasEmptyChatHistory,
-      isLoading: isChatLoading,
+      isLoading: isLoadingChatHistory,
       chatGroups: chatGroups
         ? {
             today: chatGroups.today?.length || 0,
@@ -176,10 +176,10 @@ export const SidebarHistory = memo(function SidebarHistory({
           }
         : null,
     });
-  }, [hasEmptyChatHistory, isChatLoading, chatGroups]);
+  }, [hasEmptyChatHistory, isLoadingChatHistory, chatGroups]);
 
   // Handle loading state
-  if (isChatLoading) {
+  if (isLoadingChatHistory) {
     return (
       <div className="p-8 text-center">
         <RotateCw className="h-4 w-4 animate-spin mx-auto" />
@@ -209,7 +209,7 @@ export const SidebarHistory = memo(function SidebarHistory({
               title="Refresh chat history"
             >
               <RotateCw
-                className={`h-3 w-3 ${isChatLoading ? 'animate-spin' : ''}`}
+                className={`h-3 w-3 ${isLoadingChatHistory ? 'animate-spin' : ''}`}
               />
             </button>
           </div>

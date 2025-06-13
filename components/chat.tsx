@@ -34,6 +34,12 @@ interface ChatProps
   currentActiveSpecialistId?: string;
   setCurrentActiveSpecialistId: (id: string) => void;
   isCurrentChatCommitted: boolean;
+  onFileProcessed?: (fileMeta: {
+    filename: string;
+    contentType: string;
+    url: string;
+    extractedText: string;
+  }) => void;
 }
 
 export function Chat({
@@ -56,6 +62,7 @@ export function Chat({
   status,
   handleSubmit,
   append,
+  onFileProcessed,
 }: ChatProps) {
   return (
     <>
@@ -102,6 +109,7 @@ export function Chat({
                     handleSubmit();
                   }
                 }}
+                onFileProcessed={onFileProcessed}
               />
             )}
           </div>

@@ -216,6 +216,7 @@ export function ChatWrapper({
       status={status}
       handleSubmit={handleSubmit}
       append={append}
+      onFileProcessed={handleFileProcessed}
     />
   );
 }
