@@ -5,6 +5,80 @@ All notable changes to the Echo Tango RAG System will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] - 2025-06-13
+
+### 🎯 **Intelligent Document Content Retrieval**
+
+This release delivers a major enhancement to document content requests, making the system significantly smarter about handling specific file content queries while eliminating redundant file listings.
+
+### ✅ **Added**
+
+#### **Smart Document Content Detection**
+- **Enhanced Query Classification** - Added intelligent detection for explicit document content requests (e.g., "complete contents," "full content," "entire file")
+- **Priority-Based Tool Forcing** - Document content requests now intelligently prioritize `listDocuments` → `getDocumentContents` workflow
+- **Fuzzy Document Matching** - System automatically matches user requests to available documents (e.g., "core values" → "Echo_Tango_Core_Values_Draft.txt")
+- **Content-First Response Logic** - When substantial document content is found (>500 chars), system presents only the content without metadata
+
+#### **Improved Specialist Guidance**
+- **Enhanced Echo Tango Specialist Prompt** - Added specific guidelines for handling document content requests intelligently
+- **Workflow Documentation** - Clear step-by-step instructions for optimal tool sequencing
+- **Content Presentation Rules** - Explicit guidance to present only document content for content requests
+
+### 🔄 **Changed**
+
+#### **Query Classification Logic**
+- **Document Content Intent Priority** - Modified tool forcing to check for document content intent before company info patterns
+- **Smart Discovery Approach** - Document content requests now use `listDocuments` first for intelligent matching instead of direct `getDocumentContents`
+- **Confidence Thresholds** - Adjusted confidence scoring for document content detection (>0.6 threshold)
+
+#### **Response Formatting**
+- **Content-Only Presentation** - Simple response node now detects substantial document content and presents only the content
+- **Eliminated Double Responses** - Fixed issue where system generated both correct content response and redundant file listing
+- **Clean Content Display** - Removed metadata headers and file listings from document content responses
+
+### 🔧 **Fixed**
+
+#### **Document Retrieval Issues**
+- **CRITICAL: File Listing Instead of Content** - Fixed issue where document content requests returned file listings with previews instead of complete content
+- **Double Response Problem** - Eliminated redundant second response that showed file listings after correct content response
+- **Fuzzy Matching Failures** - Enhanced document matching to handle variations in file naming and user requests
+- **Content Truncation** - Fixed 500-character preview limitation, now shows complete document content
+
+#### **Tool Orchestration**
+- **Inefficient Tool Sequencing** - Optimized workflow to use `listDocuments` for discovery before `getDocumentContents` for better matching
+- **Query Pattern Recognition** - Improved detection of explicit content requests vs. general document queries
+- **Response Prioritization** - Fixed logic to prioritize document content over file metadata when both are available
+
+### 📊 **Performance Improvements**
+
+- **Reduced API Calls** - Eliminated unnecessary second LLM calls for document content formatting
+- **Smarter Tool Selection** - More efficient tool orchestration based on query intent
+- **Faster Content Delivery** - Direct content presentation without redundant processing
+
+### 🎯 **Enhanced User Experience**
+
+#### **Document Content Requests**
+- **Natural Language Processing** - System understands various ways users request document content
+- **Intelligent File Discovery** - Automatically finds correct documents even with fuzzy naming
+- **Clean Content Presentation** - Shows only the requested content without distracting metadata
+- **Consistent Behavior** - Reliable content delivery for all document types
+
+#### **Example Improvements**
+- **Before**: "Give me Echo Tango's core values" → File listing with 500-char preview
+- **After**: "Give me Echo Tango's core values" → Complete core values document content only
+
+### 🚀 **Technical Enhancements**
+
+#### **Query Classifier Improvements**
+- **Enhanced Pattern Detection** - Better recognition of document content intent patterns
+- **Priority Logic** - Smart prioritization of content requests over general company info queries
+- **Confidence Scoring** - Improved accuracy in intent classification
+
+#### **LangGraph Response Logic**
+- **Content Detection** - Automatic identification of substantial document content in tool results
+- **Response Routing** - Intelligent routing between content presentation and file listing modes
+- **Clean Formatting** - Streamlined content presentation without unnecessary formatting
+
 ## [1.2.0] - 2025-06-12
 
 ### 🛠️ **Architectural Stability & Streaming Integrity**

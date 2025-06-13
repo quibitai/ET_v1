@@ -318,9 +318,13 @@ export class PerformanceMonitor {
 
   getMetrics(): PerformanceMetrics {
     const duration = this.getDuration();
+    const streamCheckpoint =
+      this.checkpoints.streamEnd - this.checkpoints.streamStart;
+    const streamingDuration = streamCheckpoint > 0 ? streamCheckpoint : 0;
+
     return {
       requestDuration: duration,
-      streamingDuration: this.checkpoints.streaming,
+      streamingDuration: streamingDuration,
       toolExecutionTime: this.checkpoints.toolExecution,
       memoryUsage: process.memoryUsage().heapUsed / 1024 / 1024, // MB
     };
@@ -411,3 +415,29 @@ export const ANALYTICS_EVENTS = {
   PERFORMANCE_METRIC: 'PERFORMANCE_METRIC',
   USER_ACTION: 'USER_ACTION',
 } as const;
+
+/**
+ * Get system stats
+ */
+export function getSystemStats(): {
+  memory: { total: number; used: number; free: number; percentage: number };
+  uptime: number;
+} {
+  const memoryUsage = process.memoryUsage();
+  const totalMemory = memoryUsage.heapTotal;
+  const usedMemory = memoryUsage.heapUsed;
+  const freeMemory = totalMemory - usedMemory;
+
+  // Calculate memory percentage
+  const memoryPercentage = (usedMemory / totalMemory) * 100;
+
+  return {
+    memory: {
+      total: Math.round(totalMemory / 1024 / 1024), // MB
+      used: Math.round(usedMemory / 1024 / 1024), // MB
+      free: Math.round(freeMemory / 1024 / 1024), // MB
+      percentage: Math.round(memoryPercentage),
+    },
+    uptime: Math.round(process.uptime()),
+  };
+}

@@ -278,6 +278,7 @@ export class ContextWindowManager {
     const summarizationLLM = new ChatOpenAI({
       modelName: 'gpt-4.1-mini', // Use a fast and cheap model for this
       temperature: 0.2,
+      streaming: true,
     });
 
     for (const message of messages) {

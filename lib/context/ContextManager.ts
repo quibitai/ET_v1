@@ -298,6 +298,7 @@ export class ContextManager {
         temperature: 0.3, // Lower temperature for consistent summaries
         maxTokens: 500,
         openAIApiKey: process.env.OPENAI_API_KEY,
+        streaming: true,
       });
 
       // Format messages for summarization

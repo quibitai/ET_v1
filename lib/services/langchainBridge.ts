@@ -7,22 +7,17 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
-import { type AgentExecutor, createOpenAIToolsAgent } from 'langchain/agents';
-import {
-  type ChatPromptTemplate,
-  MessagesPlaceholder,
-} from '@langchain/core/prompts';
 import {
   AIMessage,
   HumanMessage,
   SystemMessage,
+  type BaseMessage,
 } from '@langchain/core/messages';
 import { modelMapping } from '@/lib/ai/models';
 import { createLangChainToolService } from './langchainToolService';
-import { createLangChainStreamingService } from './langchainStreamingService';
 
 // Import LangGraph support with UI capabilities
-import { createLangGraphWrapper, shouldUseLangGraph } from '@/lib/ai/graphs';
+import { createLangGraphWrapper } from '@/lib/ai/graphs';
 import type { SimpleLangGraphWrapper } from '@/lib/ai/graphs/simpleLangGraphWrapper';
 
 // Import message saving dependencies
@@ -49,79 +44,235 @@ export interface LangChainBridgeConfig {
   maxTools?: number;
   maxIterations?: number;
   verbose?: boolean;
-  // New LangGraph options
-  enableLangGraph?: boolean;
-  langGraphPatterns?: string[];
-  // NEW: Tool forcing directive from QueryClassifier
   forceToolCall?: { name: string } | 'required' | null;
 }
 
 /**
  * LangChain agent and executor wrapper
- * Now supports both AgentExecutor and LangGraph
  */
 export interface LangChainAgent {
-  agentExecutor?: AgentExecutor;
-  langGraphWrapper?: SimpleLangGraphWrapper;
+  langGraphWrapper: SimpleLangGraphWrapper;
   tools: any[];
   llm: ChatOpenAI;
-  prompt?: ChatPromptTemplate;
-  executionType: 'agent' | 'langgraph';
+  executionType: 'langgraph';
 }
 
 /**
- * Initialize LangChain LLM with model mapping
+ * Create LangChain agent with tools and prompt
+ * Now supports only the LangGraph execution path.
  */
-function initializeLLM(
+export async function createLangChainAgent(
+  systemPrompt: string,
   config: LangChainBridgeConfig,
   logger: RequestLogger,
-): ChatOpenAI {
+): Promise<LangChainAgent> {
   const startTime = performance.now();
+  logger.info('Creating LangChain agent with config', { ...config });
 
-  // Use the model mapping to determine the correct model based on contextId
+  // Determine the correct model
   let selectedModel: string;
-
   if (config.contextId && modelMapping[config.contextId]) {
     selectedModel = modelMapping[config.contextId];
-  } else if (config.selectedChatModel) {
-    selectedModel = config.selectedChatModel;
+  } else if (
+    config.selectedChatModel &&
+    modelMapping[config.selectedChatModel]
+  ) {
+    selectedModel = modelMapping[config.selectedChatModel];
   } else {
-    selectedModel = process.env.DEFAULT_MODEL_NAME || modelMapping.default;
+    selectedModel = modelMapping.default;
   }
 
-  // Check for required environment variables
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error('Missing OPENAI_API_KEY environment variable');
-  }
-
-  logger.info('Initializing LLM with model', {
-    selectedModel,
-    contextId: config.contextId,
-    requestedModel: config.selectedChatModel,
-  });
-
-  // Initialize OpenAI Chat model
   const llm = new ChatOpenAI({
     modelName: selectedModel,
     temperature: 0.7,
-    apiKey: process.env.OPENAI_API_KEY,
+    maxRetries: 2,
+    verbose: config.verbose || false,
     streaming: true,
-    callbacks: [],
   });
+
+  // Select tools
+  const tools =
+    config.enableToolExecution !== false ? selectTools(config, logger) : [];
+
+  // Always use LangGraph
+  const langGraphConfig: LangGraphWrapperConfig = {
+    systemPrompt,
+    llm,
+    tools,
+    logger,
+    forceToolCall: config.forceToolCall,
+  };
+  const langGraphWrapper = createLangGraphWrapper(langGraphConfig);
 
   const duration = performance.now() - startTime;
-  logger.info('LLM initialized successfully', {
+  logger.info('LangChain agent created successfully', {
+    duration: `${duration.toFixed(2)}ms`,
+    executionType: 'langgraph',
+    toolCount: tools.length,
     model: selectedModel,
-    initTime: `${duration.toFixed(2)}ms`,
   });
 
-  return llm;
+  return {
+    langGraphWrapper,
+    tools,
+    llm,
+    executionType: 'langgraph',
+  };
 }
 
 /**
- * Select and filter tools based on context and configuration
- * Now uses LangChainToolService for better organization
+ * Simplified stream function for the new architecture.
+ * It sets up the conversation and returns the raw stream from the LangGraph wrapper.
+ * The responsibility of creating a Response object is now delegated to the API route.
  */
+export async function streamLangChainAgent(
+  agent: LangChainAgent,
+  input: string,
+  chatHistory: any[],
+  logger: RequestLogger,
+  brainRequest?: BrainRequest,
+  queryClassification?: any,
+): Promise<AsyncGenerator<Uint8Array>> {
+  // DEBUGGING: Add console.log to ensure this is being called
+  console.log('🔍 [DEBUG] streamLangChainAgent called with input:', {
+    input: input,
+    inputLength: input.length,
+    queryClassification: queryClassification ? 'provided' : 'not provided',
+  });
+
+  logger.info(
+    '[LangGraph] LangGraph raw streaming path selected in streamLangChainAgent',
+    { input: input.substring(0, 100) },
+  );
+
+  const messages = chatHistory.map((msg) => {
+    if (msg.role === 'user') return new HumanMessage(msg.content);
+    if (msg.role === 'assistant') return new AIMessage(msg.content);
+    return new SystemMessage(msg.content);
+  });
+
+  const wrapperConfig = agent.langGraphWrapper.getConfig();
+  const fullConversation: BaseMessage[] = [
+    new SystemMessage(wrapperConfig.systemPrompt),
+    ...messages,
+    new HumanMessage(input),
+  ];
+
+  // Determine if synthesis is needed based on query classification
+  const needsSynthesis = determineIfSynthesisNeeded(
+    input,
+    queryClassification,
+    logger,
+  );
+
+  // Directly return the raw stream from the graph with synthesis preference
+  const stream = agent.langGraphWrapper.stream(
+    fullConversation,
+    undefined,
+    needsSynthesis,
+  );
+
+  // Note: We are no longer saving the message here.
+  // This responsibility will be moved to a separate mechanism,
+  // potentially triggered after the stream completes on the client side
+  // or via a webhook/callback system. This decouples saving from streaming.
+
+  return stream;
+}
+
+/**
+ * Determine if a query needs synthesis based on patterns and complexity
+ */
+function determineIfSynthesisNeeded(
+  input: string,
+  queryClassification?: any,
+  logger?: RequestLogger,
+): boolean {
+  // DEBUGGING: Add console.log to trace pattern matching
+  console.log('🔍 [DEBUG] determineIfSynthesisNeeded called:', {
+    input: input,
+    cleanInput: input.trim().toLowerCase(),
+  });
+
+  logger?.info('[Query Classification] Analyzing query for synthesis need', {
+    input: input.substring(0, 200),
+    inputLength: input.length,
+    queryClassification: queryClassification
+      ? {
+          shouldUseLangChain: queryClassification.shouldUseLangChain,
+          complexityScore: queryClassification.complexityScore,
+          detectedPatterns: queryClassification.detectedPatterns,
+        }
+      : 'not provided',
+  });
+
+  // Clean the input for pattern matching
+  const cleanInput = input.trim().toLowerCase();
+
+  // ONLY synthesize when explicitly asked for these types of outputs
+  const synthesisRequiredPatterns = [
+    /\breport\b/i,
+    /\bresearch\b/i,
+    /\banalyz[ei]/i,
+    /\bcompare\b/i,
+    /\bsummar[yi]/i,
+    /\boverview\b/i,
+    /\balignment\b/i,
+    /\bhow\s+does.*relate/i,
+    /\bwhat\s+is\s+the\s+relationship/i,
+    /\bwrite\s+a\s+report/i,
+    /\bcreate\s+a\s+report/i,
+    /\bgenerate\s+a\s+report/i,
+    /\bgive\s+me\s+a\s+report/i,
+    /\bprovide\s+a\s+report/i,
+    /\bbrief\b/i,
+    /\bcreative\s+brief/i,
+    /\bproposal\b/i,
+    /\bdevelop\s+a/i,
+    /\bcreate\s+a/i,
+    /\bwrite\s+a/i,
+    /\bgenerate\s+a/i,
+    /\bprepare\s+a/i,
+    /\bdraft\s+a/i,
+  ];
+
+  // DEBUGGING: Test synthesis patterns
+  console.log('🔍 [DEBUG] Testing synthesis-required patterns:');
+  synthesisRequiredPatterns.forEach((pattern, index) => {
+    const matches = pattern.test(cleanInput);
+    console.log(
+      `  Synthesis Pattern ${index}: ${pattern.toString()} -> ${matches}`,
+    );
+  });
+
+  // Check if synthesis is explicitly requested
+  const needsSynthesis = synthesisRequiredPatterns.some((pattern) =>
+    pattern.test(cleanInput),
+  );
+
+  if (needsSynthesis) {
+    console.log('🔍 [DEBUG] SYNTHESIS EXPLICITLY REQUESTED');
+    logger?.info('[Query Classification] Synthesis explicitly requested', {
+      input: input.substring(0, 100),
+      decision: 'SYNTHESIS_NEEDED',
+    });
+    return true;
+  }
+
+  // For everything else, NO synthesis - just return tool results directly
+  console.log(
+    '🔍 [DEBUG] NO SYNTHESIS NEEDED - returning tool results directly',
+  );
+  logger?.info(
+    '[Query Classification] No synthesis needed, returning tool results directly',
+    {
+      input: input.substring(0, 100),
+      decision: 'NO_SYNTHESIS',
+    },
+  );
+  return false;
+}
+
 function selectTools(
   config: LangChainBridgeConfig,
   logger: RequestLogger,
@@ -135,755 +286,5 @@ function selectTools(
   };
 
   const toolService = createLangChainToolService(logger, toolConfig);
-  const result = toolService.selectTools();
-
-  return result.tools;
-}
-
-/**
- * Create LangChain agent with tools and prompt
- * Now supports optional LangGraph integration
- */
-export async function createLangChainAgent(
-  systemPrompt: string,
-  config: LangChainBridgeConfig,
-  logger: RequestLogger,
-): Promise<LangChainAgent> {
-  const startTime = performance.now();
-  logger.info('Creating LangChain agent with config', { ...config });
-
-  // Initialize LLM
-  const llmStartTime = performance.now();
-  // Define llm as 'const' as it is not reassigned
-  const llm = new ChatOpenAI({
-    modelName: modelMapping[config.selectedChatModel || 'default'],
-    temperature: 0.7,
-    maxRetries: 2,
-    verbose: config.verbose || false,
-  });
-  const llmDuration = performance.now() - llmStartTime;
-
-  // Select tools using the new LangChainToolService
-  const toolStartTime = performance.now();
-  const tools =
-    config.enableToolExecution !== false ? selectTools(config, logger) : [];
-  const toolDuration = performance.now() - toolStartTime;
-
-  // --- ARCHITECTURAL FIX: Force LangGraph for all agentic workflows ---
-  // The AgentExecutor's .stream() method does not properly handle multi-step
-  // tool use and gets stuck in loops. LangGraph is designed for this.
-  logger.info(
-    '[Architectural Override] Forcing LangGraph execution path for robustness.',
-  );
-
-  const langGraphConfig: LangGraphWrapperConfig = {
-    systemPrompt,
-    llm,
-    tools,
-    logger,
-    forceToolCall: config.forceToolCall,
-  };
-
-  const langGraphWrapper = createLangGraphWrapper(langGraphConfig);
-
-  const totalDuration = performance.now() - startTime;
-  logger.info('LangGraph wrapper created successfully', {
-    setupTime: `${totalDuration.toFixed(2)}ms`,
-    toolCount: tools.length,
-    forceToolCall: config.forceToolCall,
-  });
-
-  return {
-    langGraphWrapper,
-    tools,
-    llm,
-    executionType: 'langgraph',
-  };
-}
-
-/**
- * Execute LangChain agent with proper error handling
- * Now supports both AgentExecutor and LangGraph
- */
-export async function executeLangChainAgent(
-  agent: LangChainAgent,
-  input: string,
-  chatHistory: any[],
-  config: LangChainBridgeConfig,
-  logger: RequestLogger,
-): Promise<any> {
-  const startTime = performance.now();
-
-  logger.info('Executing LangChain agent', {
-    inputLength: input.length,
-    historyLength: chatHistory.length,
-    executionType: agent.executionType,
-  });
-
-  try {
-    let result: any;
-
-    if (agent.executionType === 'langgraph' && agent.langGraphWrapper) {
-      // Execute with LangGraph wrapper - convert to BaseMessage[]
-      const messages = chatHistory.map((msg) => {
-        if (msg.type === 'human' || msg.role === 'user') {
-          return new HumanMessage(msg.content);
-        } else if (msg.type === 'ai' || msg.role === 'assistant') {
-          return new AIMessage(msg.content);
-        } else {
-          return new SystemMessage(msg.content);
-        }
-      });
-
-      // Add system prompt and user input
-      const wrapperConfig = agent.langGraphWrapper.getConfig();
-      const fullConversation = [
-        new SystemMessage(wrapperConfig.systemPrompt),
-        ...messages,
-        new HumanMessage(input),
-      ];
-
-      result = await agent.langGraphWrapper.invoke(fullConversation);
-    } else if (agent.executionType === 'agent' && agent.agentExecutor) {
-      // Execute with traditional AgentExecutor
-      result = await agent.agentExecutor.invoke({
-        input,
-        chat_history: chatHistory,
-        activeBitContextId: config.contextId,
-      });
-    } else {
-      throw new Error(`Invalid agent configuration: ${agent.executionType}`);
-    }
-
-    const duration = performance.now() - startTime;
-    logger.info('LangChain agent execution completed', {
-      executionTime: `${duration.toFixed(2)}ms`,
-      outputLength: result?.output?.length || 0,
-      executionType: agent.executionType,
-    });
-
-    return result;
-  } catch (error) {
-    const duration = performance.now() - startTime;
-    logger.error('LangChain agent execution failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      executionTime: `${duration.toFixed(2)}ms`,
-      executionType: agent.executionType,
-    });
-    throw error;
-  }
-}
-
-/**
- * Stream LangChain agent execution
- * Uses proper LangChain streaming methods with LangChainAdapter or createDataStreamResponse
- */
-export async function streamLangChainAgent(
-  agent: LangChainAgent,
-  input: string,
-  chatHistory: any[],
-  config: LangChainBridgeConfig,
-  logger: RequestLogger,
-  artifactContext: any,
-  brainRequest?: BrainRequest,
-): Promise<Response> {
-  logger.info('Streaming LangChain agent', {
-    executionType: agent.executionType,
-    toolCount: agent.tools.length,
-  });
-
-  if (agent.executionType === 'agent' && agent.agentExecutor) {
-    logger.info('Using AgentExecutor execution path for streaming');
-
-    const executorStream = await agent.agentExecutor.stream({
-      input,
-      chat_history: chatHistory,
-    });
-
-    const transformStream = new ReadableStream({
-      async start(controller) {
-        let finalResponse = '';
-        let iterationCount = 0;
-        const maxIterations = 15; // Set a hard limit to prevent infinite loops
-
-        logger.info('[AgentExecutor] Starting to process stream...');
-        for await (const chunk of executorStream) {
-          iterationCount++;
-          if (iterationCount > maxIterations) {
-            logger.warn(
-              '[AgentExecutor] Max iterations reached. Breaking loop.',
-              { maxIterations },
-            );
-            const errorMessage =
-              'I seem to be stuck in a loop. I will stop for now. Please try rephrasing your request.';
-            finalResponse = errorMessage;
-            controller.enqueue(`0:${JSON.stringify(errorMessage)}\n`);
-            break;
-          }
-
-          const chunkKeys = Object.keys(chunk);
-          logger.info('[AgentExecutor] Received stream chunk', {
-            keys: chunkKeys,
-            iteration: iterationCount,
-          });
-
-          // Log intermediate steps for debugging the loop
-          if (chunk.intermediate_steps) {
-            logger.info('[AgentExecutor] Intermediate step:', {
-              steps: JSON.stringify(chunk.intermediate_steps, null, 2),
-            });
-          }
-
-          // Check for final messages from the agent
-          if (chunk.messages) {
-            logger.info('[AgentExecutor] Received messages chunk', {
-              messageCount: chunk.messages.length,
-            });
-            const lastMessage = chunk.messages[chunk.messages.length - 1];
-            if (lastMessage.content) {
-              const content =
-                typeof lastMessage.content === 'string'
-                  ? lastMessage.content
-                  : JSON.stringify(lastMessage.content);
-              finalResponse += content;
-              controller.enqueue(`0:${JSON.stringify(content)}\n`);
-              logger.info('[AgentExecutor] Enqueued final message content', {
-                contentLength: content.length,
-              });
-            }
-          }
-        }
-        logger.info('[AgentExecutor] Stream processing finished.', {
-          finalResponseLength: finalResponse.length,
-          totalIterations: iterationCount,
-        });
-
-        // Save assistant message to database
-        if (brainRequest?.id && finalResponse) {
-          try {
-            const session = await auth();
-            if (session?.user?.id) {
-              const assistantMessage: DBMessage = {
-                id: randomUUID(),
-                chatId: brainRequest.id,
-                role: 'assistant',
-                parts: [{ type: 'text', text: finalResponse }],
-                attachments: [],
-                createdAt: new Date(),
-                clientId: session.user.clientId || 'default',
-              };
-
-              await saveMessages({ messages: [assistantMessage] });
-              logger.info('Assistant message saved successfully', {
-                messageId: assistantMessage.id,
-                chatId: assistantMessage.chatId,
-                responseLength: finalResponse.length,
-              });
-            }
-          } catch (error) {
-            logger.error('Failed to save assistant message', {
-              chatId: brainRequest.id,
-              error: error instanceof Error ? error.message : 'Unknown error',
-            });
-          }
-        }
-
-        controller.close();
-      },
-    });
-
-    return new Response(transformStream, {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'X-Execution-Path': 'langchain-agent-executor-manual-stream',
-      },
-    });
-  }
-
-  if (agent.executionType === 'langgraph' && agent.langGraphWrapper) {
-    logger.info(
-      '[LangGraph] LangGraph streaming path selected in streamLangChainAgent',
-    );
-
-    // Convert chat history to BaseMessage format
-    const messages = chatHistory.map((msg) => {
-      if (msg.type === 'human' || msg.role === 'user') {
-        return new HumanMessage(msg.content);
-      } else if (msg.type === 'ai' || msg.role === 'assistant') {
-        return new AIMessage(msg.content);
-      } else {
-        return new SystemMessage(msg.content);
-      }
-    });
-
-    // Add system prompt and user input
-    const wrapperConfig = agent.langGraphWrapper.getConfig();
-    const fullConversation = [
-      new SystemMessage(wrapperConfig.systemPrompt),
-      ...messages,
-      new HumanMessage(input),
-    ];
-
-    // Create a ReadableStream that processes LangGraph streaming events
-    const transformStream = new ReadableStream({
-      async start(controller) {
-        try {
-          logger.info('[LangGraph] Starting streaming execution');
-
-          let finalResponse = '';
-          let hasStartedStreaming = false;
-
-          // Stream from the LangGraph wrapper
-          if (!agent.langGraphWrapper) {
-            throw new Error('LangGraph wrapper is not available');
-          }
-
-          for await (const event of agent.langGraphWrapper.stream(
-            fullConversation,
-          )) {
-            try {
-              // Enhanced logging for all events
-              logger.info('[LangGraph] Processing streaming event', {
-                eventType: event.event,
-                eventName: event.name,
-                hasData: !!event.data,
-                hasChunk: !!event.data?.chunk,
-                chunkContent: event.data?.chunk?.content
-                  ? typeof event.data.chunk.content === 'string'
-                    ? event.data.chunk.content.substring(0, 100)
-                    : 'Non-string content'
-                  : 'No chunk content',
-                hasOutput: !!event.data?.output,
-                outputType: event.data?.output
-                  ? typeof event.data.output
-                  : 'none',
-              });
-
-              // Process different types of streaming events
-              if (event.event === 'on_chat_model_stream' && event.data?.chunk) {
-                // Handle AI model streaming chunks
-                const chunk = event.data.chunk;
-                if (chunk.content && typeof chunk.content === 'string') {
-                  if (!hasStartedStreaming) {
-                    hasStartedStreaming = true;
-                    logger.info('[LangGraph] Started streaming AI response');
-                  }
-                  finalResponse += chunk.content;
-
-                  // Format for Vercel AI SDK streaming (match AgentExecutor format)
-                  try {
-                    // Ensure content is a string and properly escaped
-                    const safeContent =
-                      typeof chunk.content === 'string'
-                        ? chunk.content
-                        : String(chunk.content);
-                    const formattedChunk = `0:${JSON.stringify(safeContent)}\n`;
-                    controller.enqueue(
-                      new TextEncoder().encode(formattedChunk),
-                    );
-                  } catch (jsonError) {
-                    logger.error('[LangGraph] JSON stringify error for chunk', {
-                      error:
-                        jsonError instanceof Error
-                          ? jsonError.message
-                          : 'Unknown error',
-                      chunkContent: typeof chunk.content,
-                      chunkPreview: String(chunk.content).substring(0, 100),
-                    });
-                    // Send safe fallback with proper encoding
-                    const safeContent = String(chunk.content)
-                      .replace(/\r\n/g, '\n')
-                      .replace(/\r/g, '\n');
-                    const safeChunk = `0:${JSON.stringify(safeContent)}\n`;
-                    controller.enqueue(new TextEncoder().encode(safeChunk));
-                  }
-
-                  logger.info('[LangGraph] Streamed chunk', {
-                    chunkLength: chunk.content.length,
-                    totalResponseLength: finalResponse.length,
-                  });
-                }
-              } else if (
-                event.event === 'on_chain_end' &&
-                event.name === 'LangGraph'
-              ) {
-                // Handle final state from LangGraph completion
-                logger.info('[LangGraph] LangGraph chain ended', {
-                  hasOutput: !!event.data?.output,
-                  outputMessageCount: event.data?.output?.messages?.length || 0,
-                });
-
-                const finalState = event.data?.output;
-                if (finalState?.messages?.length > 0) {
-                  const lastMessage =
-                    finalState.messages[finalState.messages.length - 1];
-                  logger.info('[LangGraph] Final state last message', {
-                    messageType: lastMessage._getType?.() || 'unknown',
-                    hasContent: !!lastMessage.content,
-                    contentLength:
-                      typeof lastMessage.content === 'string'
-                        ? lastMessage.content.length
-                        : 0,
-                    contentPreview:
-                      typeof lastMessage.content === 'string'
-                        ? lastMessage.content.substring(0, 200)
-                        : 'Non-string content',
-                  });
-
-                  if (lastMessage.content && !hasStartedStreaming) {
-                    // If we haven't streamed anything yet, send the final content
-                    finalResponse = lastMessage.content;
-                    try {
-                      const formattedChunk = `0:${JSON.stringify(lastMessage.content)}\n`;
-                      controller.enqueue(
-                        new TextEncoder().encode(formattedChunk),
-                      );
-                    } catch (jsonError) {
-                      logger.error(
-                        '[LangGraph] JSON stringify error for final state',
-                        {
-                          error:
-                            jsonError instanceof Error
-                              ? jsonError.message
-                              : 'Unknown error',
-                          contentType: typeof lastMessage.content,
-                        },
-                      );
-                      const safeChunk = `0:${JSON.stringify(String(lastMessage.content))}\n`;
-                      controller.enqueue(new TextEncoder().encode(safeChunk));
-                    }
-                    hasStartedStreaming = true;
-                    logger.info(
-                      '[LangGraph] Sent final state content as fallback',
-                    );
-                  }
-                }
-              } else if (
-                event.event === 'on_chain_end' &&
-                event.name === 'agent'
-              ) {
-                // Handle AI agent responses that may not have streaming chunks
-                logger.info('[LangGraph] Agent node ended', {
-                  hasOutput: !!event.data?.output,
-                  outputType: event.data?.output
-                    ? typeof event.data.output
-                    : 'none',
-                });
-
-                const output = event.data?.output;
-                if (output?.content) {
-                  // Always capture agent responses, whether streaming started or not
-                  if (!hasStartedStreaming) {
-                    finalResponse = output.content;
-                    try {
-                      const formattedChunk = `0:${JSON.stringify(output.content)}\n`;
-                      controller.enqueue(formattedChunk);
-                    } catch (jsonError) {
-                      logger.error(
-                        '[LangGraph] JSON stringify error for agent response',
-                        {
-                          error:
-                            jsonError instanceof Error
-                              ? jsonError.message
-                              : 'Unknown error',
-                          contentType: typeof output.content,
-                        },
-                      );
-                      const safeChunk = `0:${JSON.stringify(String(output.content))}\n`;
-                      controller.enqueue(safeChunk);
-                    }
-                    hasStartedStreaming = true;
-                    logger.info('[LangGraph] Sent non-streaming AI response', {
-                      contentLength: output.content.length,
-                    });
-                  } else {
-                    // If we were already streaming, this might be a follow-up response after tools
-                    finalResponse += output.content;
-                    try {
-                      const formattedChunk = `0:${JSON.stringify(output.content)}\n`;
-                      controller.enqueue(formattedChunk);
-                    } catch (jsonError) {
-                      logger.error(
-                        '[LangGraph] JSON stringify error for follow-up response',
-                        {
-                          error:
-                            jsonError instanceof Error
-                              ? jsonError.message
-                              : 'Unknown error',
-                          contentType: typeof output.content,
-                        },
-                      );
-                      const safeChunk = `0:${JSON.stringify(String(output.content))}\n`;
-                      controller.enqueue(safeChunk);
-                    }
-                    logger.info(
-                      '[LangGraph] Sent follow-up AI response after tools',
-                      {
-                        contentLength: output.content.length,
-                        totalResponseLength: finalResponse.length,
-                      },
-                    );
-                  }
-                }
-              } else if (event.event === 'on_tool_start') {
-                // Handle tool execution start
-                logger.info('[LangGraph] Tool execution started', {
-                  toolName: event.name,
-                });
-              } else if (event.event === 'on_tool_end') {
-                // Handle tool execution completion
-                logger.info('[LangGraph] Tool execution completed', {
-                  toolName: event.name,
-                });
-              }
-
-              // Handle UI events (artifacts, etc.)
-              if (
-                event.data?.ui &&
-                Array.isArray(event.data.ui) &&
-                event.data.ui.length > 0
-              ) {
-                for (const uiEvent of event.data.ui) {
-                  if (uiEvent && typeof uiEvent === 'object') {
-                    try {
-                      // Send UI events in the proper format for the frontend
-                      const uiChunk = `2:${JSON.stringify(uiEvent)}\n`;
-                      controller.enqueue(uiChunk);
-                    } catch (jsonError) {
-                      logger.error(
-                        '[LangGraph] JSON stringify error for UI event',
-                        {
-                          error:
-                            jsonError instanceof Error
-                              ? jsonError.message
-                              : 'Unknown error',
-                          eventType: typeof uiEvent,
-                        },
-                      );
-                      // Skip malformed UI events rather than crash
-                    }
-                  }
-                }
-              }
-            } catch (eventError) {
-              logger.warn('[LangGraph] Error processing streaming event', {
-                error:
-                  eventError instanceof Error
-                    ? eventError.message
-                    : 'Unknown error',
-                eventType: event.event,
-              });
-            }
-          }
-
-          // Ensure we have some response - if streaming didn't capture the final response,
-          // invoke the LangGraph directly to get the result
-          if (!hasStartedStreaming && !finalResponse) {
-            logger.info(
-              '[LangGraph] No streaming response captured, invoking directly',
-            );
-            try {
-              const directResult =
-                await agent.langGraphWrapper.invoke(fullConversation);
-              if (directResult?.messages?.length > 0) {
-                const lastMessage =
-                  directResult.messages[directResult.messages.length - 1];
-                if (lastMessage.content) {
-                  finalResponse =
-                    typeof lastMessage.content === 'string'
-                      ? lastMessage.content
-                      : JSON.stringify(lastMessage.content); // Ensure we capture this for message saving
-                  try {
-                    const formattedChunk = `0:${JSON.stringify(lastMessage.content)}\n`;
-                    controller.enqueue(formattedChunk);
-                  } catch (jsonError) {
-                    logger.error(
-                      '[LangGraph] JSON stringify error for direct invocation',
-                      {
-                        error:
-                          jsonError instanceof Error
-                            ? jsonError.message
-                            : 'Unknown error',
-                        contentType: typeof lastMessage.content,
-                      },
-                    );
-                    const safeChunk = `0:${JSON.stringify(String(lastMessage.content))}\n`;
-                    controller.enqueue(safeChunk);
-                  }
-                  hasStartedStreaming = true;
-                  logger.info(
-                    '[LangGraph] Successfully sent direct invocation result',
-                    {
-                      contentLength: lastMessage.content.length,
-                    },
-                  );
-                }
-              }
-            } catch (directError) {
-              logger.error('[LangGraph] Direct invocation also failed', {
-                error:
-                  directError instanceof Error
-                    ? directError.message
-                    : 'Unknown error',
-              });
-            }
-          }
-
-          // Final fallback if nothing worked
-          if (!hasStartedStreaming) {
-            const fallbackMessage =
-              'I apologize, but I was unable to process your request properly.';
-            try {
-              const formattedChunk = `0:${JSON.stringify(fallbackMessage)}\n`;
-              controller.enqueue(formattedChunk);
-            } catch (jsonError) {
-              logger.error(
-                '[LangGraph] JSON stringify error for fallback message',
-                {
-                  error:
-                    jsonError instanceof Error
-                      ? jsonError.message
-                      : 'Unknown error',
-                },
-              );
-              // Send minimal safe response
-              controller.enqueue('0:"Error processing request"\n');
-            }
-          }
-
-          logger.info('[LangGraph] Streaming completed successfully', {
-            hasStartedStreaming,
-            finalResponseLength: finalResponse.length,
-            finalResponsePreview: finalResponse.substring(0, 200),
-          });
-
-          // Save assistant message to database
-          if (brainRequest?.id && finalResponse) {
-            logger.info('[LangGraph] Attempting to save assistant message', {
-              chatId: brainRequest.id,
-              responseLength: finalResponse.length,
-            });
-            try {
-              const session = await auth();
-              if (session?.user?.id) {
-                const assistantMessage: DBMessage = {
-                  id: randomUUID(),
-                  chatId: brainRequest.id,
-                  role: 'assistant',
-                  parts: [{ type: 'text', text: finalResponse }],
-                  attachments: [],
-                  createdAt: new Date(),
-                  clientId: session.user.clientId || 'default',
-                };
-
-                await saveMessages({ messages: [assistantMessage] });
-                logger.info('Assistant message saved successfully', {
-                  messageId: assistantMessage.id,
-                  chatId: assistantMessage.chatId,
-                  responseLength: finalResponse.length,
-                });
-              }
-            } catch (error) {
-              logger.error('Failed to save assistant message', {
-                chatId: brainRequest.id,
-                error: error instanceof Error ? error.message : 'Unknown error',
-              });
-            }
-          }
-
-          // Ensure proper stream termination (only close once)
-          try {
-            controller.close();
-          } catch (closeError) {
-            logger.warn('[LangGraph] Error closing stream controller', {
-              error:
-                closeError instanceof Error
-                  ? closeError.message
-                  : 'Unknown error',
-            });
-          }
-        } catch (error) {
-          logger.error('[LangGraph] Error in streaming execution', {
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
-
-          // Send error message to user
-          const errorMessage =
-            'I encountered an error while processing your request. Please try again.';
-          const errorChunk = `0:${JSON.stringify(errorMessage)}\n`;
-          controller.enqueue(errorChunk);
-          controller.close();
-        }
-      },
-    });
-
-    return new Response(transformStream, {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'X-Execution-Path': 'langchain-langgraph-streaming',
-      },
-    });
-  }
-
-  // Fallback for invalid configuration
-  logger.error('Invalid agent configuration for streaming');
-  throw new Error('Invalid agent configuration or missing components');
-}
-
-/**
- * Clean up LangChain agent resources
- * Disposes of callbacks, clears any internal state, and performs cleanup operations
- */
-export function cleanupLangChainAgent(
-  agent: LangChainAgent,
-  logger: RequestLogger,
-): void {
-  try {
-    logger.info('Cleaning up LangChain agent resources', {
-      executionType: agent.executionType,
-      toolCount: agent.tools.length,
-    });
-
-    // Clean up LLM callbacks if they exist
-    if (agent.llm?.callbacks) {
-      agent.llm.callbacks = [];
-      logger.info('Cleared LLM callbacks');
-    }
-
-    // Clean up agent executor callbacks if present
-    if (agent.executionType === 'agent' && agent.agentExecutor) {
-      // AgentExecutor cleanup - we know agentExecutor exists here
-      agent.agentExecutor.verbose = false;
-      logger.info('Cleaned up AgentExecutor resources');
-    }
-
-    // Clean up LangGraph wrapper if present
-    if (agent.executionType === 'langgraph' && agent.langGraphWrapper) {
-      // LangGraph wrapper cleanup - no specific cleanup needed as it's stateless
-      logger.info('LangGraph wrapper cleanup completed (stateless)');
-    }
-
-    // Clean up tools if they have cleanup methods
-    agent.tools.forEach((tool, index) => {
-      try {
-        // Some tools might have cleanup methods
-        if (tool && typeof tool.cleanup === 'function') {
-          tool.cleanup();
-          logger.info(`Cleaned up tool ${index}: ${tool.name || 'unnamed'}`);
-        }
-      } catch (toolError) {
-        logger.warn(`Failed to cleanup tool ${index}`, {
-          error:
-            toolError instanceof Error ? toolError.message : 'Unknown error',
-        });
-      }
-    });
-
-    logger.info('LangChain agent cleanup completed successfully');
-  } catch (error) {
-    logger.error('Error during LangChain agent cleanup', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-    // Don't throw - cleanup failures shouldn't break the main flow
-  }
+  return toolService.selectTools().tools;
 }

@@ -125,6 +125,37 @@ const ASANA_PATTERNS = [
   /(?:set|change|update)\s+(?:the\s+)?(?:due date|deadline|priority)/i,
 ];
 
+// NEW: Company-specific information patterns that should trigger knowledge base search
+const COMPANY_INFO_PATTERNS = [
+  // Financial information
+  /(?:profit\s+and\s+loss|P&L|income\s+statement|financial\s+statement|revenue|expenses|earnings)/i,
+  /(?:balance\s+sheet|cash\s+flow|financial\s+report|budget|financial\s+data)/i,
+  /(?:costs?|pricing|rates?|fees?|charges?)\s+(?:card|sheet|structure|breakdown)/i,
+
+  // Company documents and policies
+  /(?:core\s+values|company\s+values|mission\s+statement|vision\s+statement)/i,
+  /(?:policies|procedures|guidelines|handbook|manual)/i,
+  /(?:organizational\s+chart|company\s+structure|team\s+structure)/i,
+
+  // Client and business information
+  /(?:ideal\s+client|client\s+profile|target\s+audience|customer\s+profile)/i,
+  /(?:client\s+research|market\s+research|competitive\s+analysis)/i,
+  /(?:brand\s+overview|company\s+overview|business\s+overview)/i,
+
+  // Project and operational documents
+  /(?:producer\s+checklist|project\s+checklist|workflow|process)/i,
+  /(?:scripts?|storyboards?|creative\s+brief|proposal)/i,
+  /(?:estimates?|quotes?|contracts?|agreements?)/i,
+
+  // Echo Tango specific patterns
+  /(?:echo\s+tango|ET)(?:'s)?\s+(?:profit|loss|revenue|expenses|values|mission|clients?|projects?|rates?|pricing)/i,
+  /(?:our|company|organization)(?:'s)?\s+(?:profit|loss|revenue|expenses|values|mission|clients?|projects?|rates?|pricing)/i,
+
+  // General company information requests
+  /(?:company|organization|business)(?:'s)?\s+(?:information|data|details|overview|profile)/i,
+  /(?:internal|company|organizational)\s+(?:documents|files|information|data)/i,
+];
+
 // NEW: Knowledge base intent patterns
 const KNOWLEDGE_BASE_PATTERNS = [
   // Internal knowledge access
@@ -152,6 +183,12 @@ const DOCUMENT_LISTING_PATTERNS = [
   /(?:list|show|display)\s+(?:all\s+)?(?:files|documents)\s+(?:in\s+)?(?:the\s+)?(?:knowledge\s+base)/i,
   /(?:what\s+(?:files|documents)\s+(?:are\s+)?(?:in\s+)?(?:the\s+)?(?:knowledge\s+base))/i,
   /(?:browse|explore)\s+(?:the\s+)?(?:knowledge\s+base|documents|files)/i,
+
+  // Sample/template-based requests - NEW
+  /(?:based on|using|from)\s+(?:samples?|templates?|examples?)\s+(?:in\s+)?(?:the\s+)?(?:knowledge\s+base|documents|files)/i,
+  /(?:show\s+me\s+(?:the\s+)?(?:samples?|templates?|examples?))/i,
+  /(?:what\s+(?:samples?|templates?|examples?)\s+(?:are\s+)?(?:available|exist|do\s+(?:we|you)\s+have))/i,
+  /(?:list|display)\s+(?:all\s+)?(?:the\s+)?(?:samples?|templates?|examples?)/i,
 ];
 
 // NEW: Document content retrieval intent patterns
@@ -250,6 +287,7 @@ export class QueryClassifier {
       const knowledgeBaseIntent = this.detectKnowledgeBaseIntent(userInput);
       const documentListingIntent = this.detectDocumentListingIntent(userInput);
       const documentContentIntent = this.detectDocumentContentIntent(userInput);
+      const companyInfoIntent = this.detectCompanyInfoIntent(userInput);
 
       // 4. Analyze conversation context
       const contextComplexity =
@@ -269,7 +307,8 @@ export class QueryClassifier {
         asanaIntent.hasIntent ||
         knowledgeBaseIntent.hasIntent ||
         documentListingIntent.hasIntent ||
-        documentContentIntent.hasIntent
+        documentContentIntent.hasIntent ||
+        companyInfoIntent.hasIntent
       ) {
         shouldUseLangChain = true;
         this.logger.info(
@@ -280,8 +319,22 @@ export class QueryClassifier {
             knowledgeBaseIntent: knowledgeBaseIntent.hasIntent,
             documentListingIntent: documentListingIntent.hasIntent,
             documentContentIntent: documentContentIntent.hasIntent,
+            companyInfoIntent: companyInfoIntent.hasIntent,
           },
         );
+      }
+
+      // TEMPORARY OVERRIDE: Always use LangChain since it's our only implemented path
+      // TODO: Implement Vercel AI SDK path for simple conversational queries
+      if (!shouldUseLangChain) {
+        this.logger.info(
+          'Overriding routing decision: forcing LangChain as it is the only implemented path',
+          {
+            originalDecision: 'Vercel AI SDK',
+            reason: 'No Vercel AI SDK implementation available',
+          },
+        );
+        shouldUseLangChain = true;
       }
 
       // 6. Calculate confidence
@@ -298,51 +351,107 @@ export class QueryClassifier {
         contextComplexity,
       );
 
-      // 8. NEW: Comprehensive tool forcing strategy
+      // 8. NEW: Enhanced tool forcing strategy with sequence awareness
       let forceToolCall: any = null;
 
-      // Prioritize tool forcing by confidence level
-      const toolIntents = [
-        { name: 'tavilySearch', intent: webSearchIntent },
-        { name: 'asana_list_tasks', intent: asanaIntent }, // Use most common Asana tool
-        { name: 'getDocumentContents', intent: documentContentIntent }, // Highest priority for specific content
-        { name: 'listDocuments', intent: documentListingIntent }, // Prioritize listing over searching
-        { name: 'searchInternalKnowledgeBase', intent: knowledgeBaseIntent },
-      ];
+      // Special case: "based on samples/templates in knowledge base" pattern
+      const basedOnSamplesPattern =
+        /(?:based on|using|from)\s+(?:samples?|templates?|examples?)\s+(?:in\s+)?(?:the\s+)?(?:knowledge\s+base|documents|files)/i;
+      const createWithSamplesPattern =
+        /(?:create|generate|write|make)\s+.+\s+(?:based on|using|from)\s+(?:samples?|templates?|examples?)/i;
 
-      // Sort by confidence descending
-      toolIntents.sort((a, b) => b.intent.confidence - a.intent.confidence);
-
-      // Identify all intents with sufficient confidence
-      const confidentIntents = toolIntents.filter(
-        (intent) => intent.intent.confidence > 0.3,
-      );
-
-      this.logger.info('[QueryClassifier] Confident tool intents detected', {
-        count: confidentIntents.length,
-        intents: confidentIntents.map((i) => ({
-          name: i.name,
-          confidence: i.intent.confidence,
-        })),
-      });
-
-      if (confidentIntents.length > 1) {
-        // Multi-tool scenario: let the agent decide the order
+      if (
+        basedOnSamplesPattern.test(userInput) ||
+        createWithSamplesPattern.test(userInput)
+      ) {
         this.logger.info(
-          '[QueryClassifier] Multiple tools detected, letting agent orchestrate.',
+          '[QueryClassifier] Detected "based on samples" pattern - prioritizing document listing',
         );
-        forceToolCall = 'required'; // LangGraph will force a tool call from available tools
-      } else if (confidentIntents.length === 1) {
-        // Single-tool scenario: force the specific tool
-        const toolToForce = confidentIntents[0].name;
+
+        // For "based on samples" queries, always start with listing documents
+        // This helps the agent see what templates/samples are available
+        forceToolCall = { name: 'listDocuments' };
+
         this.logger.info(
-          `[QueryClassifier] Single high-confidence tool detected: ${toolToForce}`,
+          '[QueryClassifier] Forcing listDocuments first for sample-based creation',
         );
-        forceToolCall = { name: toolToForce };
+      } else if (
+        documentContentIntent.hasIntent &&
+        documentContentIntent.confidence > 0.6
+      ) {
+        this.logger.info(
+          '[QueryClassifier] Detected explicit document content request - using smart discovery approach',
+        );
+
+        // For explicit content requests like "complete contents of [file]",
+        // first list documents to find the right match, then get contents
+        // This ensures we find the correct document even with fuzzy naming
+        forceToolCall = { name: 'listDocuments' };
+
+        this.logger.info(
+          '[QueryClassifier] Forcing listDocuments first for smart document discovery',
+        );
+      } else if (
+        companyInfoIntent.hasIntent &&
+        companyInfoIntent.confidence > 0.5
+      ) {
+        this.logger.info(
+          '[QueryClassifier] Detected company information request - prioritizing document listing',
+        );
+
+        // For company info queries, start with listing documents to find relevant files
+        // This helps the agent discover documents like "Echo_Tango__LLC_-_Income_Statement__Profit_and_Loss_.xlsx"
+        forceToolCall = { name: 'listDocuments' };
+
+        this.logger.info(
+          '[QueryClassifier] Forcing listDocuments first for company information request',
+        );
       } else {
-        this.logger.info(
-          '[QueryClassifier] No high-confidence tool intents detected, no forcing applied.',
+        // Original tool forcing logic for other cases
+        // Prioritize tool forcing by confidence level
+        const toolIntents = [
+          { name: 'tavilySearch', intent: webSearchIntent },
+          { name: 'asana_list_tasks', intent: asanaIntent }, // Use most common Asana tool
+          { name: 'getDocumentContents', intent: documentContentIntent }, // Highest priority for specific content
+          { name: 'listDocuments', intent: documentListingIntent }, // Prioritize listing over searching
+          { name: 'listDocuments', intent: companyInfoIntent }, // Company info should also list documents first
+          { name: 'searchInternalKnowledgeBase', intent: knowledgeBaseIntent },
+        ];
+
+        // Sort by confidence descending
+        toolIntents.sort((a, b) => b.intent.confidence - a.intent.confidence);
+
+        // Identify all intents with sufficient confidence
+        const confidentIntents = toolIntents.filter(
+          (intent) => intent.intent.confidence > 0.3,
         );
+
+        this.logger.info('[QueryClassifier] Confident tool intents detected', {
+          count: confidentIntents.length,
+          intents: confidentIntents.map((i) => ({
+            name: i.name,
+            confidence: i.intent.confidence,
+          })),
+        });
+
+        if (confidentIntents.length > 1) {
+          // Multi-tool scenario: let the agent decide the order
+          this.logger.info(
+            '[QueryClassifier] Multiple tools detected, letting agent orchestrate.',
+          );
+          forceToolCall = 'required'; // LangGraph will force a tool call from available tools
+        } else if (confidentIntents.length === 1) {
+          // Single-tool scenario: force the specific tool
+          const toolToForce = confidentIntents[0].name;
+          this.logger.info(
+            `[QueryClassifier] Single high-confidence tool detected: ${toolToForce}`,
+          );
+          forceToolCall = { name: toolToForce };
+        } else {
+          this.logger.info(
+            '[QueryClassifier] No high-confidence tool intents detected, no forcing applied.',
+          );
+        }
       }
 
       const result: QueryClassificationResult = {
@@ -930,6 +1039,47 @@ export class QueryClassifier {
       confidenceThreshold: this.config.confidenceThreshold || 0.7,
       enableOverrides: this.config.enableOverrides || false,
     };
+  }
+
+  /**
+   * Detect company information intent that should trigger knowledge base search
+   */
+  private detectCompanyInfoIntent(userInput: string): {
+    hasIntent: boolean;
+    confidence: number;
+  } {
+    const matches = COMPANY_INFO_PATTERNS.filter((pattern) =>
+      pattern.test(userInput),
+    );
+
+    if (matches.length === 0) {
+      return { hasIntent: false, confidence: 0 };
+    }
+
+    // Higher confidence for multiple matches or specific Echo Tango mentions
+    let confidence = Math.min(0.3 + matches.length * 0.2, 0.9);
+
+    // Boost confidence for Echo Tango specific mentions
+    if (/(?:echo\s+tango|ET)(?:'s)?/i.test(userInput)) {
+      confidence = Math.min(confidence + 0.2, 0.95);
+    }
+
+    // Boost confidence for financial terms
+    if (
+      /(?:profit\s+and\s+loss|P&L|income\s+statement|financial)/i.test(
+        userInput,
+      )
+    ) {
+      confidence = Math.min(confidence + 0.15, 0.95);
+    }
+
+    this.logger.info('[QueryClassifier] Company info intent detected', {
+      matches: matches.length,
+      confidence,
+      patterns: matches.map((m) => m.toString()),
+    });
+
+    return { hasIntent: true, confidence };
   }
 }
 

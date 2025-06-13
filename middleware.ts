@@ -37,6 +37,6 @@ export const config = {
      * - public files (images, etc.)
      * - api routes that need to bypass auth
      */
-    '/((?!api/auth|_next|favicon.ico|api/brain|api/chat-actions|api/ping|api/test-artifact-fix|api/test-artifact-streaming|api/test-tool-binding|api/test-direct-openai|api/test-minimal-tool-forcing|api/debug-history).*)',
+    '/((?!api/auth|_next|favicon.ico|api/brain|api/chat-actions|api/ping|api/test-artifact-fix|api/test-artifact-streaming|api/test-tool-binding|api/test-direct-openai|api/test-minimal-tool-forcing|api/debug-history|api/test-synthesis).*)',
   ],
 };
