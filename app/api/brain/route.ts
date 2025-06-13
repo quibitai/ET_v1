@@ -9,184 +9,132 @@
  * Target: ~180 lines as per roadmap specifications.
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/app/(auth)/auth';
-import { getClientConfig } from '@/lib/db/queries';
-
-// Import our hybrid service architecture
-import {
-  validateRequest,
-  validateRequestSize,
-  validateContentType,
-} from '@/lib/services/validationService';
-import { getRequestLogger } from '@/lib/services/observabilityService';
+import type { NextRequest } from 'next/server';
 import { BrainOrchestrator } from '@/lib/services/brainOrchestrator';
+import { getRequestLogger } from '@/lib/services/observabilityService';
+import { getClientConfig } from '@/lib/db/queries';
+import { brainRequestSchema } from '@/lib/validation/brainValidation';
+import { auth } from '@/app/(auth)/auth';
+import { MessageService } from '@/lib/services/messageService';
+
+// Removed Edge Runtime - using Node.js runtime for database compatibility
+export const dynamic = 'force-dynamic';
 
 /**
- * Main POST handler - Clean hybrid implementation
+ * Main POST handler - Clean hybrid implementation with assistant message saving
  */
 export async function POST(req: NextRequest) {
-  const startTime = performance.now();
-
-  // Initialize request logger
   const logger = getRequestLogger(req);
 
   try {
-    logger.info('Brain API request received', {
-      method: req.method,
-      url: req.url,
-      userAgent: req.headers.get('user-agent')?.substring(0, 100),
-    });
+    logger.info('Brain API request received');
+    const json = await req.json();
 
-    // Step 1: Validate request format and size
-    const contentTypeResult = validateContentType(req);
-    if (!contentTypeResult.success) {
-      logger.warn('Invalid content type', { errors: contentTypeResult.errors });
-      return NextResponse.json(
-        {
-          error: 'Invalid content type',
-          message: 'Expected application/json',
-          errors: contentTypeResult.errors,
-        },
-        { status: 400 },
-      );
-    }
-
-    const sizeResult = validateRequestSize(req);
-    if (!sizeResult.success) {
-      logger.warn('Request size validation failed', {
-        errors: sizeResult.errors,
-      });
-      return NextResponse.json(
-        {
-          error: 'Request too large',
-          message: 'Request size exceeds maximum allowed',
-          errors: sizeResult.errors,
-        },
-        { status: 413 },
-      );
-    }
-
-    // Step 2: Validate request schema
-    const validationResult = await validateRequest(req);
+    const validationResult = brainRequestSchema.safeParse(json);
     if (!validationResult.success) {
-      logger.warn('Request validation failed', {
-        errors: validationResult.errors,
-        errorCount: validationResult.errors?.length || 0,
+      logger.warn('Invalid request body', {
+        error: validationResult.error.flatten(),
       });
-      return NextResponse.json(
+      return new Response(
+        JSON.stringify({ errors: validationResult.error.flatten() }),
         {
-          error: 'Validation failed',
-          message: 'Request does not match expected schema',
-          errors: validationResult.errors,
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
         },
-        { status: 400 },
       );
     }
 
-    // Type-safe access to validated data
-    const brainRequest = validationResult.data;
-    if (!brainRequest) {
-      logger.error('Validation succeeded but no data returned');
-      return NextResponse.json(
-        {
-          error: 'Internal error',
-          message: 'Failed to process validated request',
-        },
-        { status: 500 },
-      );
-    }
+    const request = validationResult.data;
 
-    logger.info('Request validation successful', {
-      messageCount: brainRequest.messages?.length || 0,
-      selectedModel: brainRequest.selectedChatModel,
-      contextId: brainRequest.activeBitContextId,
-    });
-
-    // Step 3: Get authentication and client configuration
     const session = await auth();
-    if (!session?.user) {
-      logger.warn('Unauthenticated request');
-      return NextResponse.json(
-        {
-          error: 'Authentication required',
-          message: 'Please log in to use the brain API',
-        },
-        { status: 401 },
-      );
-    }
-
-    const clientConfig = session.user.clientId
-      ? await getClientConfig(session.user.clientId)
-      : null;
-
-    logger.info('Client configuration loaded', {
-      clientId: session.user.clientId,
-      hasConfig: !!clientConfig,
-      userId: session.user.id,
-    });
-
-    // Step 4: Initialize brain orchestrator
-    const orchestrator = new BrainOrchestrator(logger);
-
-    logger.info('Brain orchestrator initialized with LangGraph support', {
-      hybridRouting: true,
-      classification: true,
-      fallbackEnabled: true,
-      langGraphEnabled: true,
-      langGraphForComplex: true,
-    });
-
-    // Step 5: Call the new stream() method to get the stream and start the background work
-    const readableStream = orchestrator.stream(
-      brainRequest,
-      clientConfig, // Pass the clientConfig object here
-      req.headers,
+    const clientConfig = await getClientConfig(
+      session?.user?.clientId || 'default',
     );
+    const orchestrator = new BrainOrchestrator(logger);
+    const messageService = new MessageService(logger);
 
-    const processingTime = performance.now() - startTime;
+    // Get the raw stream from our refactored orchestrator
+    const rawStreamPromise = orchestrator.stream(request, clientConfig);
 
-    // Log stream initiation
-    logger.info('Brain request stream initiated', {
-      processingTime: `${processingTime.toFixed(2)}ms`,
-      streamInitiated: true,
-      backgroundProcessing: true,
+    // Create proper data stream format manually for Vercel AI SDK compatibility
+    // AND capture assistant response content for saving to database
+    const responseStream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        let assistantContent = ''; // Capture the full assistant response
+
+        try {
+          const rawStream = await rawStreamPromise;
+          for await (const chunk of rawStream) {
+            // Convert Uint8Array chunks to text
+            const text =
+              chunk instanceof Uint8Array
+                ? decoder.decode(chunk)
+                : String(chunk);
+
+            // Accumulate the assistant response content
+            assistantContent += text;
+
+            // Format as data stream part and encode
+            const dataStreamPart = `0:"${text.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"\n`;
+            controller.enqueue(encoder.encode(dataStreamPart));
+          }
+
+          // After streaming completes, save the assistant message to database
+          if (
+            assistantContent.trim() &&
+            request.chatId &&
+            session?.user?.clientId
+          ) {
+            try {
+              await messageService.saveAssistantMessage(
+                assistantContent.trim(),
+                request.chatId,
+                session.user.clientId || 'default',
+              );
+              logger.info(
+                'Assistant message saved successfully after streaming',
+                {
+                  chatId: request.chatId,
+                  contentLength: assistantContent.length,
+                },
+              );
+            } catch (error) {
+              logger.error('Failed to save assistant message after streaming', {
+                chatId: request.chatId,
+                error: error instanceof Error ? error.message : 'Unknown error',
+              });
+              // Don't throw - we don't want to break the response after successful streaming
+            }
+          }
+        } catch (error) {
+          logger.error('Error during stream piping', { error });
+          controller.error(error);
+        } finally {
+          controller.close();
+        }
+      },
     });
 
-    // Step 6: Return the response immediately with the stream
-    return new Response(readableStream, {
+    return new Response(responseStream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        'X-Vercel-AI-Data-Stream': 'v1',
-        'X-Request-ID': logger.correlationId,
-        'X-Processing-Time': `${processingTime.toFixed(2)}ms`,
-        'X-Implementation': 'hybrid-v2.8.0',
+        'X-Content-Type-Options': 'nosniff',
       },
     });
   } catch (error) {
-    const processingTime = performance.now() - startTime;
-
-    logger.error('Brain API processing failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
+    const errorMessage =
+      error instanceof Error ? error.message : 'An unknown error occurred';
+    logger.error('Unhandled error in Brain API', {
+      error: errorMessage,
       stack: error instanceof Error ? error.stack : undefined,
-      processingTime: `${processingTime.toFixed(2)}ms`,
     });
-
-    // Return structured error response
-    return NextResponse.json(
-      {
-        error: 'Internal server error',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Brain API processing failed',
-        correlationId: logger.correlationId,
-        processingTime: `${processingTime.toFixed(2)}ms`,
-      },
-      { status: 500 },
-    );
+    // Return a structured error response
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 }
 

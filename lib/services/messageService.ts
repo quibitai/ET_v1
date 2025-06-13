@@ -14,6 +14,12 @@ import type { RequestLogger } from './observabilityService';
 import type { Attachment } from 'ai';
 import { saveMessages } from '@/lib/db/queries';
 import type { DBMessage } from '@/lib/db/schema';
+import {
+  AIMessage,
+  HumanMessage,
+  SystemMessage,
+} from '@langchain/core/messages';
+import type { BaseMessage } from '@langchain/core/messages';
 import { randomUUID } from 'node:crypto';
 
 /**
@@ -293,31 +299,93 @@ export class MessageService {
    * Save user messages to the database
    */
   public async saveUserMessages(
-    userMessages: (UIMessage | MessageData)[],
+    messages: UIMessage[] | MessageData[],
     chatId: string,
     clientId: string,
   ): Promise<void> {
-    if (!userMessages || userMessages.length === 0) {
+    if (!messages || messages.length === 0) {
       return;
     }
 
-    const dbMessages: DBMessage[] = userMessages.map((message) => ({
-      id: randomUUID(),
-      chatId: chatId,
-      role: 'user',
+    const dbMessages: DBMessage[] = messages.map((message) => ({
+      id: message.id || randomUUID(),
+      chatId,
+      role: message.role,
       parts: [{ type: 'text', text: this.sanitizeContent(message.content) }],
       attachments:
         message.attachments || message.experimental_attachments || [],
-      createdAt: new Date(),
-      clientId: clientId,
+      createdAt: message.createdAt || new Date(),
+      clientId,
     }));
 
     this.logger.info('Saving user messages to database', {
       messageCount: dbMessages.length,
-      chatId: chatId,
+      chatId,
     });
 
-    await saveMessages({ messages: dbMessages });
+    try {
+      await saveMessages({ messages: dbMessages });
+      this.logger.info(
+        `Successfully saved ${dbMessages.length} user messages to chat ${chatId}`,
+      );
+    } catch (error) {
+      this.logger.error('Failed to save user messages', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        chatId,
+      });
+      // Optionally re-throw or handle as needed
+    }
+  }
+
+  /**
+   * Save assistant message to the database
+   */
+  public async saveAssistantMessage(
+    content: string,
+    chatId: string,
+    clientId: string,
+    messageId?: string,
+  ): Promise<void> {
+    if (!content || !chatId) {
+      this.logger.warn(
+        'Cannot save assistant message: missing content or chatId',
+      );
+      return;
+    }
+
+    const assistantMessage: DBMessage = {
+      id: messageId || randomUUID(),
+      chatId,
+      role: 'assistant',
+      parts: [{ type: 'text', text: this.sanitizeContent(content) }],
+      attachments: [],
+      createdAt: new Date(),
+      clientId,
+    };
+
+    this.logger.info('Saving assistant message to database', {
+      messageId: assistantMessage.id,
+      chatId,
+      contentLength: content.length,
+    });
+
+    try {
+      await saveMessages({ messages: [assistantMessage] });
+      this.logger.info(
+        `Successfully saved assistant message to chat ${chatId}`,
+        {
+          messageId: assistantMessage.id,
+          responseLength: content.length,
+        },
+      );
+    } catch (error) {
+      this.logger.error('Failed to save assistant message', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        chatId,
+        messageId: assistantMessage.id,
+      });
+      // Don't re-throw to avoid breaking the response flow
+    }
   }
 
   /**

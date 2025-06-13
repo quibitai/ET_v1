@@ -8,16 +8,21 @@
 import type { ChatOpenAI } from '@langchain/openai';
 import {
   type AIMessage,
-  type ToolMessage,
   type BaseMessage,
-  ToolMessage as ToolMessageClass,
   HumanMessage,
+  SystemMessage,
 } from '@langchain/core/messages';
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { RequestLogger } from '../../services/observabilityService';
 import { ContextWindowManager } from '../core/contextWindowManager';
-import { v4 as uuidv4 } from 'uuid';
+
+import {
+  RunnableSequence,
+  RunnableLambda,
+  type Runnable,
+} from '@langchain/core/runnables';
+import { ToolNode } from '@langchain/langgraph/prebuilt';
 
 // UI message type with proper metadata
 interface UIMessage {
@@ -35,18 +40,22 @@ interface UIMessage {
  * Graph State Annotation - properly defined for LangGraph
  */
 const GraphStateAnnotation = Annotation.Root({
+  // The list of messages
   messages: Annotation<BaseMessage[]>({
     reducer: (x: BaseMessage[] = [], y: BaseMessage[] = []) => x.concat(y),
     default: () => [],
   }),
+  // The user's input
   input: Annotation<string>({
     reducer: (x?: string, y?: string) => y ?? x ?? '',
     default: () => '',
   }),
+  // The final outcome of the agent is stored here
   agent_outcome: Annotation<AIMessage | undefined>({
     reducer: (x?: AIMessage, y?: AIMessage) => y ?? x,
     default: () => undefined,
   }),
+  // UI messages to be streamed to the client
   ui: Annotation<UIMessage[]>({
     reducer: (x: UIMessage[] = [], y: UIMessage[] = []) => {
       const existingIds = new Set(x.map((ui) => ui.id));
@@ -66,6 +75,10 @@ const GraphStateAnnotation = Annotation.Root({
   iterationCount: Annotation<number>({
     reducer: (x = 0, y = 0) => Math.max(x, y),
     default: () => 0,
+  }),
+  needsSynthesis: Annotation<boolean>({
+    reducer: (x = true, y = true) => y, // Always use the latest value
+    default: () => true,
   }),
 });
 
@@ -127,7 +140,12 @@ export class SimpleLangGraphWrapper {
       // Add nodes with consistent string identifiers
       workflow.addNode('agent', this.callModelNode.bind(this));
       workflow.addNode('tools', this.executeToolsNode.bind(this));
+      workflow.addNode('simple_response', this.simpleResponseNode.bind(this));
       workflow.addNode('synthesis', this.synthesisNode.bind(this)); // ADD NEW NODE
+      workflow.addNode(
+        'conversational_response',
+        this.conversationalResponseNode.bind(this),
+      );
 
       // Set the entrypoint
       (workflow as any).addEdge(START, 'agent');
@@ -138,6 +156,8 @@ export class SimpleLangGraphWrapper {
         this.routeNextStep.bind(this), // USE THE NEW ROUTER
         {
           use_tools: 'tools',
+          simple_response: 'simple_response',
+          conversational_response: 'conversational_response',
           synthesis: 'synthesis', // ADD SYNTHESIS PATH
           finish: END,
         },
@@ -146,23 +166,42 @@ export class SimpleLangGraphWrapper {
       // Add edge from tools back to agent
       (workflow as any).addEdge('tools', 'agent');
 
+      // Add edge from simple_response to the end
+      (workflow as any).addEdge('simple_response', END);
+
+      // Add edge from conversational_response to the end
+      (workflow as any).addEdge('conversational_response', END);
+
       // Add edge from synthesis to the end
       (workflow as any).addEdge('synthesis', END); // SYNTHESIS IS A TERMINAL NODE
 
       // Compile the graph
       const compiledGraph = workflow.compile();
 
-      this.logger.info('LangGraph compiled successfully with synthesis node', {
-        nodes: ['agent', 'tools', 'synthesis'],
-        edges: [
-          'START->agent',
-          'agent->tools (conditional)',
-          'agent->synthesis (conditional)',
-          'agent->END (conditional)',
-          'tools->agent',
-          'synthesis->END',
-        ],
-      });
+      this.logger.info(
+        'LangGraph compiled successfully with synthesis, simple response, and conversational response nodes',
+        {
+          nodes: [
+            'agent',
+            'tools',
+            'simple_response',
+            'conversational_response',
+            'synthesis',
+          ],
+          edges: [
+            'START->agent',
+            'agent->tools (conditional)',
+            'agent->simple_response (conditional)',
+            'agent->conversational_response (conditional)',
+            'agent->synthesis (conditional)',
+            'agent->END (conditional)',
+            'tools->agent',
+            'simple_response->END',
+            'conversational_response->END',
+            'synthesis->END',
+          ],
+        },
+      );
 
       return compiledGraph;
     } catch (error) {
@@ -503,28 +542,23 @@ export class SimpleLangGraphWrapper {
             : 'Non-string content',
       });
 
-      // *** THE FINAL FIX: START ***
-      // If we are in the tool-forcing phase and the LLM fails to produce tool_calls
-      // and instead returns conversational text, we must erase that text to prevent
-      // it from polluting the state for the final synthesis node.
-      const wasForced = !!this.config.forceToolCall && shouldForceTools;
-      const hasNoToolCalls =
-        !response.tool_calls || response.tool_calls.length === 0;
-
-      if (
-        wasForced &&
-        hasNoToolCalls &&
-        typeof response.content === 'string' &&
-        response.content.length > 0
-      ) {
-        this.logger.warn(
-          '[LangGraph Agent] LLM returned conversational text when a tool call was required. Erasing content to prevent state pollution.',
-          { content: response.content },
-        );
-        // Set content to an empty string to neutralize the "ghost message".
-        response.content = '';
+      // *** DEFINITIVE FIX V4: Enforce pure tool-calling messages ***
+      // If the AI message contains tool calls, unconditionally erase any conversational content.
+      // This prevents the initial "How can I assist..." message from polluting the state.
+      if (response.tool_calls && response.tool_calls.length > 0) {
+        if (
+          response.content &&
+          typeof response.content === 'string' &&
+          response.content.length > 0
+        ) {
+          this.logger.warn(
+            '[LangGraph Agent] 🧼 Cleaning conversational content from a tool-calling message.',
+            { originalContent: response.content },
+          );
+          response.content = '';
+        }
       }
-      // *** THE FINAL FIX: END ***
+      // *** END OF FIX V4 ***
 
       // Enhanced tool call logging
       if (response.tool_calls && response.tool_calls.length > 0) {
@@ -609,50 +643,434 @@ export class SimpleLangGraphWrapper {
   }
 
   /**
-   * Synthesis Node
-   * This node's only job is to generate the final report using the full context.
-   * It ALWAYS uses the primary, high-capability LLM and NEVER calls tools.
+   * Conversational Response Node
+   * Handles AI responses that don't need tools or synthesis
    */
-  private async synthesisNode(state: GraphState): Promise<Partial<GraphState>> {
-    this.logger.info('[LangGraph Synthesis] 🎬 Starting final synthesis node.');
-
-    // Use the definitive role-play prompt to force a direct answer
-    const synthesisInstruction = new HumanMessage({
-      content: `All necessary research has been completed. The user is waiting for the final report.
-Analyze the tool results provided in the previous turns and generate the comprehensive research report document directly.
-Begin the report immediately without any introductory phrases like "Here is the report" or "I will now synthesize".
-
-**Report Start:**
-`,
-    });
-
-    const finalMessages = [...state.messages, synthesisInstruction];
-
-    try {
-      // ALWAYS use the primary, most-capable LLM for this critical step
-      const llmForSynthesis = this.llm.bindTools(this.tools);
-
+  private conversationalResponseNode(): Runnable<
+    GraphState,
+    Partial<GraphState>
+  > {
+    return RunnableLambda.from((state: GraphState): Partial<GraphState> => {
       this.logger.info(
-        '[LangGraph Synthesis] Invoking primary LLM and forcing non-tool response.',
+        '[LangGraph Conversational] Processing existing conversational response',
       );
 
-      const response = await llmForSynthesis.invoke(finalMessages, {
-        tool_choice: 'none', // Absolutely ensure no more tool calls
-      });
+      // The AI response is already in the state from the agent node
+      // Just pass it through - no need to call LLM again
+      return {};
+    }).withConfig({ tags: ['final_node', 'conversational'] }) as Runnable<
+      GraphState,
+      Partial<GraphState>
+    >;
+  }
 
-      this.logger.info('[LangGraph Synthesis] ✅ Synthesis complete.');
+  /**
+   * Simple Response Node
+   * Formats tool results for direct output without synthesis
+   */
+  private simpleResponseNode(): Runnable<GraphState, Partial<GraphState>> {
+    const simpleResponseChain = RunnableSequence.from([
+      RunnableLambda.from((state: GraphState): BaseMessage[] => {
+        this.logger.info(
+          '[LangGraph Simple Response] Formatting tool results for direct output',
+        );
 
-      return { messages: [response] };
-    } catch (error) {
-      this.logger.error('Error in synthesis node', { error });
-      throw error;
-    }
+        // Find tool messages
+        const toolMessages = state.messages.filter(
+          (msg) => msg._getType() === 'tool',
+        );
+
+        if (toolMessages.length === 0) {
+          // No tool results, provide a simple acknowledgment
+          return [
+            new SystemMessage({
+              content:
+                'Provide a brief acknowledgment that the request was processed.',
+            }),
+          ];
+        }
+
+        // Check if we have document content results - prioritize these for content requests
+        let hasDocumentContent = false;
+        let documentContentResult = null;
+
+        for (const toolMsg of toolMessages) {
+          const content =
+            typeof toolMsg.content === 'string'
+              ? toolMsg.content
+              : JSON.stringify(toolMsg.content) || 'No content';
+
+          try {
+            const parsed = JSON.parse(content);
+            if (
+              parsed.success &&
+              parsed.document &&
+              parsed.content &&
+              String(parsed.content).length > 500
+            ) {
+              hasDocumentContent = true;
+              documentContentResult = parsed;
+              break;
+            }
+          } catch {
+            // Not JSON, continue
+          }
+        }
+
+        // If we have substantial document content, show only that (for content requests)
+        if (hasDocumentContent && documentContentResult) {
+          return [
+            new SystemMessage({
+              content: `Present the following document content clearly to the user. This is the complete content they requested:\n\n${documentContentResult.content}`,
+            }),
+            new HumanMessage({
+              content:
+                'Please present this document content in a clean, readable format.',
+            }),
+          ];
+        }
+
+        // Otherwise, format tool results into a clean response
+        let formattedContent = '📋 **Results:**\n\n';
+
+        for (const toolMsg of toolMessages) {
+          const content =
+            typeof toolMsg.content === 'string'
+              ? toolMsg.content
+              : JSON.stringify(toolMsg.content) || 'No content';
+
+          try {
+            // Try to parse and format JSON content
+            const parsed = JSON.parse(content);
+
+            // Handle different response structures
+            if (
+              parsed.success &&
+              parsed.available_documents &&
+              Array.isArray(parsed.available_documents)
+            ) {
+              // This is a document list response
+              const cleanContent = parsed.available_documents
+                .map((item: any, index: number) => {
+                  if (
+                    item &&
+                    typeof item === 'object' &&
+                    item.title &&
+                    item.url
+                  ) {
+                    const title = String(item.title).replace(
+                      /[^\w\s\-\.]/g,
+                      '',
+                    );
+                    const createdAt = item.created_at
+                      ? new Date(item.created_at).toLocaleDateString()
+                      : 'Unknown';
+                    const url = String(item.url);
+                    return `${index + 1}. **${title}**\n   - Created: ${createdAt}\n   - URL: ${url}`;
+                  }
+                  return `${index + 1}. ${String(item).substring(0, 200)}...`;
+                })
+                .join('\n');
+              formattedContent += `${cleanContent}\n\n`;
+            } else if (parsed.success && parsed.document && parsed.content) {
+              // This is a document content response - show ONLY the content for content requests
+              // Check if this appears to be a content request by looking at the full content length
+              const fullContent = String(parsed.content);
+
+              // If we have substantial content (>500 chars), this is likely a full content request
+              // Show only the content without metadata
+              if (fullContent.length > 500) {
+                formattedContent = fullContent; // Replace the entire formatted content with just the document content
+              } else {
+                // Short content - treat as preview
+                const doc = parsed.document;
+                const title = String(doc.title || 'Untitled').replace(
+                  /[^\w\s\-\.]/g,
+                  '',
+                );
+                const createdAt = doc.created_at
+                  ? new Date(doc.created_at).toLocaleDateString()
+                  : 'Unknown';
+                const url = String(doc.url || '');
+                formattedContent += `**${title}**\n- Created: ${createdAt}\n- URL: ${url}\n\n`;
+                formattedContent += `**Content Preview:**\n${fullContent}\n\n`;
+              }
+            } else if (Array.isArray(parsed) && parsed.length > 0) {
+              // Handle direct array responses
+              const cleanContent = parsed
+                .map((item: any, index: number) => {
+                  if (
+                    item &&
+                    typeof item === 'object' &&
+                    item.title &&
+                    item.url
+                  ) {
+                    const title = String(item.title).replace(
+                      /[^\w\s\-\.]/g,
+                      '',
+                    );
+                    const createdAt = item.created_at
+                      ? new Date(item.created_at).toLocaleDateString()
+                      : 'Unknown';
+                    const url = String(item.url);
+                    return `${index + 1}. **${title}**\n   - Created: ${createdAt}\n   - URL: ${url}`;
+                  }
+                  return `${index + 1}. ${String(item).substring(0, 200)}...`;
+                })
+                .join('\n');
+              formattedContent += `${cleanContent}\n\n`;
+            } else {
+              // Generic object or other structure
+              formattedContent += `${String(content).substring(0, 1000)}\n\n`;
+            }
+          } catch {
+            // Not JSON, use as-is
+            formattedContent += `${String(content).substring(0, 1000)}\n\n`;
+          }
+        }
+
+        return [
+          new SystemMessage({
+            content: `You are a helpful assistant. Please format and present the following information in a clean, readable way for the user. Do not include any JSON or raw data - just present the information clearly:\n\n${formattedContent.trim()}`,
+          }),
+          new HumanMessage({
+            content:
+              'Please present this information in a clean, user-friendly format.',
+          }),
+        ];
+      }),
+      this.llm,
+      RunnableLambda.from((aiMessage: AIMessage): Partial<GraphState> => {
+        this.logger.info(
+          '[LangGraph Simple Response] Simple response completed',
+        );
+        return { messages: [aiMessage] };
+      }),
+    ]);
+
+    return simpleResponseChain.withConfig({ tags: ['final_node'] }) as Runnable<
+      GraphState,
+      Partial<GraphState>
+    >;
+  }
+
+  /**
+   * Synthesis Node
+   * This node is responsible for taking the accumulated tool results and synthesizing
+   * a final, clean response based on what the user actually requested.
+   */
+  private synthesisNode(): Runnable<GraphState, Partial<GraphState>> {
+    const synthesisChain = RunnableSequence.from([
+      RunnableLambda.from((state: GraphState): BaseMessage[] => {
+        this.logger.info(
+          '[LangGraph Synthesis] 🎬 Starting final synthesis node.',
+        );
+
+        const toolResults = state.messages
+          .filter((msg) => msg._getType() === 'tool')
+          .map((msg) => `Tool: ${(msg as any)?.name}\nResult: ${msg.content}`)
+          .join('\n\n');
+
+        // Extract knowledge base document references from tool results
+        const knowledgeBaseRefs: Array<{ name: string; url?: string }> = [];
+        const documentUrls = new Map<string, string>(); // Map document names to URLs
+
+        state.messages
+          .filter((msg) => msg._getType() === 'tool')
+          .forEach((msg) => {
+            const toolName = (msg as any)?.name;
+            const content = msg.content;
+
+            // First pass: collect all document URLs from listDocuments
+            if (toolName === 'listDocuments' && typeof content === 'string') {
+              try {
+                const parsed = JSON.parse(content);
+                if (Array.isArray(parsed)) {
+                  parsed.forEach((doc: any) => {
+                    if (doc?.title && doc?.url) {
+                      // Store the URL mapping for later use
+                      documentUrls.set(doc.title.toLowerCase(), doc.url);
+                      documentUrls.set(doc.title, doc.url); // Also store exact case
+                    }
+                  });
+                }
+              } catch (e) {
+                // Not JSON, skip
+              }
+            }
+          });
+
+        // Second pass: identify documents that were actually used
+        state.messages
+          .filter((msg) => msg._getType() === 'tool')
+          .forEach((msg) => {
+            const toolName = (msg as any)?.name;
+            const content = msg.content;
+
+            // Check for getDocumentContents results - these are documents that were actually used
+            if (
+              toolName === 'getDocumentContents' &&
+              typeof content === 'string'
+            ) {
+              // Extract document name from the content
+              const docNameMatch =
+                content.match(/Document:\s*([^\n]+)/i) ||
+                content.match(/File:\s*([^\n]+)/i) ||
+                content.match(/Title:\s*([^\n]+)/i) ||
+                content.match(/^([^:\n]+):/m); // Fallback: first line with colon
+
+              if (docNameMatch?.[1]) {
+                const docName = docNameMatch[1].trim();
+
+                // Try to find the URL from our collected URLs
+                let docUrl =
+                  documentUrls.get(docName) ||
+                  documentUrls.get(docName.toLowerCase());
+
+                // If no exact match, try partial matching
+                if (!docUrl) {
+                  for (const [
+                    storedName,
+                    storedUrl,
+                  ] of documentUrls.entries()) {
+                    if (
+                      storedName
+                        .toLowerCase()
+                        .includes(docName.toLowerCase()) ||
+                      docName.toLowerCase().includes(storedName.toLowerCase())
+                    ) {
+                      docUrl = storedUrl;
+                      break;
+                    }
+                  }
+                }
+
+                // Add to references if not already present
+                if (!knowledgeBaseRefs.some((ref) => ref.name === docName)) {
+                  knowledgeBaseRefs.push({
+                    name: docName,
+                    url: docUrl,
+                  });
+                }
+              }
+            }
+          });
+
+        const userQuery = state.messages
+          .filter((msg) => msg._getType() === 'human')
+          .map((msg) => msg.content)
+          .join(' ');
+
+        // Determine the appropriate response type based on user query
+        let responseType = 'comprehensive response';
+        let responseInstructions =
+          'Create a well-structured, professional response';
+
+        const queryLower = userQuery.toLowerCase();
+
+        if (queryLower.includes('report')) {
+          responseType = 'research report';
+          responseInstructions =
+            'Create a comprehensive research report with clear sections, analysis, and findings';
+        } else if (
+          queryLower.includes('brief') ||
+          queryLower.includes('creative brief')
+        ) {
+          responseType = 'creative brief';
+          responseInstructions =
+            'Create a professional creative brief with project overview, objectives, target audience, key messages, and creative direction';
+        } else if (queryLower.includes('proposal')) {
+          responseType = 'proposal';
+          responseInstructions =
+            'Create a professional proposal with clear recommendations, scope, and next steps';
+        } else if (queryLower.includes('summary')) {
+          responseType = 'summary';
+          responseInstructions =
+            'Create a concise summary highlighting the key points and findings';
+        } else if (
+          queryLower.includes('analysis') ||
+          queryLower.includes('analyze')
+        ) {
+          responseType = 'analysis';
+          responseInstructions =
+            'Create a detailed analysis with insights, patterns, and strategic recommendations';
+        }
+
+        // Prepare knowledge base references for inclusion
+        let kbReferencesText = '';
+        if (knowledgeBaseRefs.length > 0) {
+          kbReferencesText = `
+
+Knowledge Base Documents Referenced:
+${knowledgeBaseRefs
+  .map((ref) => (ref.url ? `- [${ref.name}](${ref.url})` : `- ${ref.name}`))
+  .join('\n')}`;
+        }
+
+        const synthesisSystemMessage = new SystemMessage({
+          content: `You are a professional content specialist. Your task is to create a ${responseType} based on the provided tool results and user request.
+
+CRITICAL RULES:
+- Your response MUST start immediately with an appropriate title using markdown heading 1 (e.g., "# Creative Brief: ..." or "# Analysis: ..." or "# Proposal: ...").
+- You MUST NOT include any conversational phrases, greetings, introductions, or any text like "Here is the..." or "How can I assist...".
+- Your entire response must be the requested content itself.
+- Use ONLY the tool results provided. Do not add outside information.
+- Format with clear markdown headings, lists, and tables for readability.
+- ${responseInstructions}
+- IMPORTANT: Include a "## References" section at the end that lists both web sources AND knowledge base documents that were used.
+- DO NOT include "End of Report", "End of Document", or any closing statements after the References section.
+- Format Knowledge Base documents as clickable links when URLs are provided: [Document Name](URL)
+
+Current date: ${new Date().toISOString()}`,
+        });
+
+        const synthesisInstruction = new HumanMessage({
+          content: `User Request: "${userQuery}"
+
+Tool Results Available:
+---
+${toolResults}
+---${kbReferencesText}
+
+Create the ${responseType} now. Make sure to include both web sources and knowledge base documents in your References section.`,
+        });
+
+        this.logger.info('[LangGraph Synthesis] Invoking LLM for synthesis.', {
+          toolResultsLength: toolResults.length,
+          userQueryLength: userQuery.length,
+          responseType,
+          knowledgeBaseRefsCount: knowledgeBaseRefs.length,
+        });
+
+        return [synthesisSystemMessage, synthesisInstruction];
+      }),
+      this.llm,
+      RunnableLambda.from((aiMessage: AIMessage): Partial<GraphState> => {
+        this.logger.info(
+          '[LangGraph Synthesis] Synthesis completed, returning AI message in state.',
+          {
+            contentLength:
+              typeof aiMessage.content === 'string'
+                ? aiMessage.content.length
+                : 0,
+          },
+        );
+
+        // Return the AI message as part of the state so the stream method can find it
+        return {
+          messages: [aiMessage],
+        };
+      }),
+    ]);
+
+    return synthesisChain.withConfig({
+      tags: ['final_node', 'synthesis'],
+    }) as Runnable<GraphState, Partial<GraphState>>;
   }
 
   /**
    * Tool Execution Node
-   * Handles execution of tools called by the LLM and captures artifact events
-   * Now properly parses structured tool outputs and extracts artifact data
+   * Handles execution of tools called by the LLM and captures artifact events.
    */
   private async executeToolsNode(
     state: GraphState,
@@ -670,6 +1088,7 @@ Begin the report immediately without any introductory phrases like "Here is the 
       this.logger.warn(
         '[LangGraph Tools] No tool calls found in the last message.',
       );
+      // If no tools are called, we might need to route to synthesis or finish
       return {};
     }
 
@@ -681,142 +1100,24 @@ Begin the report immediately without any introductory phrases like "Here is the 
       })),
     });
 
-    // --- Prepare tools and tool results array ---
-    const toolsByName: Record<string, any> = Object.fromEntries(
-      this.tools.map((tool) => [tool.name, tool]),
-    );
-    const toolExecutionResults: ToolMessage[] = [];
-    const uiMessagesForStream: UIMessage[] = [];
+    try {
+      const toolNode = new ToolNode(this.tools);
+      // ToolNode.invoke expects the messages array directly
+      const toolMessages = await toolNode.invoke(state.messages, config);
 
-    // --- Execute tool calls in parallel ---
-    const toolPromises = lastMessage.tool_calls.map(async (toolCall) => {
-      const { name: toolName, args: toolArgs, id: toolCallId } = toolCall;
-      const targetTool = toolsByName[toolName];
-
-      if (!targetTool) {
-        this.logger.error(`[LangGraph Tools] Tool '${toolName}' not found!`);
-        return new ToolMessageClass({
-          content: `Error: Tool '${toolName}' not found.`,
-          tool_call_id: toolCallId ?? uuidv4(),
-          name: toolName,
-        });
-      }
-
-      this.logger.info(`[LangGraph Tools] Executing tool: ${toolName}`, {
-        toolCallId,
-        args: toolArgs,
-        hasConfig: !!config,
-        contextKeys: config?.configurable
-          ? Object.keys(config.configurable)
-          : [],
-        configDetails:
-          toolName === 'createDocument'
-            ? {
-                hasDataStream: !!config?.configurable?.dataStream,
-                hasSession: !!config?.configurable?.session,
-                dataStreamType: typeof config?.configurable?.dataStream,
-                sessionType: typeof config?.configurable?.session,
-                runId: config?.runId,
-              }
-            : 'not createDocument tool',
+      this.logger.info('[LangGraph Tools] Tool execution completed', {
+        toolMessageCount: Array.isArray(toolMessages) ? toolMessages.length : 1,
       });
 
-      try {
-        // *** THE CORE FIX: Pass config to tool invocation ***
-        // This allows tools to access context via getContextVariable
-        const rawToolResultString = await targetTool.invoke(toolArgs, config);
-
-        this.logger.info(`[LangGraph Tools] Raw result from '${toolName}':`, {
-          result: `${rawToolResultString.substring(0, 300)}...`,
-        });
-
-        // --- Handle structured artifact tool results ---
-        let summaryForLLM = rawToolResultString; // Default to the raw string
-        try {
-          const parsedResult = JSON.parse(rawToolResultString);
-
-          if (parsedResult._isQubitArtifactToolResult) {
-            this.logger.info(
-              `[LangGraph Tools] Tool '${toolName}' is a Qubit Artifact tool. Processing events.`,
-            );
-            summaryForLLM =
-              parsedResult.summaryForLLM ||
-              `Tool ${toolName} executed successfully.`;
-
-            // *** THE FIX IS HERE ***
-            // The tool already created the correctly formatted UIMessage events.
-            // We just need to extract them and add them to our stream queue.
-            if (
-              Array.isArray(parsedResult.quibitArtifactEvents) &&
-              parsedResult.quibitArtifactEvents.length > 0
-            ) {
-              this.logger.info(
-                '[LangGraph Tools] Found valid quibitArtifactEvents array.',
-                { count: parsedResult.quibitArtifactEvents.length },
-              );
-
-              // Verify the first chunk to ensure contentChunk is present
-              const firstChunk = parsedResult.quibitArtifactEvents.find(
-                (e: any) => e.props?.eventType === 'artifact-chunk',
-              );
-              if (firstChunk) {
-                this.logger.info(
-                  '[LangGraph Tools] First artifact-chunk event has contentChunk:',
-                  {
-                    content: `${firstChunk.props.contentChunk.substring(0, 50)}...`,
-                  },
-                );
-              }
-
-              // Add the events from the tool directly to our stream queue
-              uiMessagesForStream.push(...parsedResult.quibitArtifactEvents);
-            } else {
-              this.logger.warn(
-                '[LangGraph Tools] Qubit Artifact tool did not return any quibitArtifactEvents.',
-              );
-            }
-          }
-        } catch (e) {
-          // Not a JSON result, or not a Qubit Artifact tool.
-          // This is expected for simple tools, so we just log it at a debug level.
-          this.logger.info(
-            `[LangGraph Tools] Tool '${toolName}' did not return structured JSON. Using raw output for LLM summary.`,
-          );
-        }
-
-        // --- Create the ToolMessage for the LLM ---
-        return new ToolMessageClass({
-          content: summaryForLLM,
-          tool_call_id: toolCallId ?? uuidv4(),
-          name: toolName,
-        });
-      } catch (error: any) {
-        this.logger.error(
-          `[LangGraph Tools] Error executing tool '${toolName}':`,
-          { error },
-        );
-        return new ToolMessageClass({
-          content: `Error executing tool ${toolName}: ${error.message}`,
-          tool_call_id: toolCallId ?? uuidv4(),
-          name: toolName,
-        });
-      }
-    });
-
-    // --- Wait for all tool executions to complete ---
-    const results = await Promise.all(toolPromises);
-    toolExecutionResults.push(...results);
-
-    this.logger.info('[LangGraph Tools] Finished all tool executions.', {
-      toolExecutionResultCount: toolExecutionResults.length,
-      uiMessagesForStreamCount: uiMessagesForStream.length,
-    });
-
-    // --- Return the results to be added to the graph state ---
-    return {
-      messages: toolExecutionResults,
-      ui: uiMessagesForStream, // This will be streamed to the client
-    };
+      // Return the tool messages to be added to the state
+      return {
+        messages: Array.isArray(toolMessages) ? toolMessages : [toolMessages],
+      };
+    } catch (error) {
+      this.logger.error('[LangGraph Tools] Error executing tools', { error });
+      // Return empty state on error to prevent graph failure
+      return {};
+    }
   }
 
   /**
@@ -825,39 +1126,98 @@ Begin the report immediately without any introductory phrases like "Here is the 
    */
   private routeNextStep(
     state: GraphState,
-  ): 'use_tools' | 'synthesis' | 'finish' {
+  ):
+    | 'use_tools'
+    | 'synthesis'
+    | 'simple_response'
+    | 'conversational_response'
+    | '__end__' {
+    this.logger.info('[LangGraph Router] Evaluating next step...', {
+      messageCount: state.messages.length,
+      needsSynthesis: state.needsSynthesis,
+      toolForcingCount: state.toolForcingCount,
+      iterationCount: state.iterationCount,
+    });
+
     const lastMessage = state.messages[state.messages.length - 1];
 
     // 1. If the last AI message has tool calls, route to the tool executor
     if (
-      lastMessage?._getType() === 'ai' &&
-      (lastMessage as any).tool_calls?.length > 0
+      lastMessage &&
+      'tool_calls' in lastMessage &&
+      Array.isArray(lastMessage.tool_calls) &&
+      lastMessage.tool_calls.length > 0
     ) {
-      this.logger.info('[LangGraph Router] Routing to tools node.');
+      this.logger.info('[LangGraph Router] Decision: Route to tools node.');
       return 'use_tools';
     }
 
-    // 2. Check for synthesis conditions (circuit breaker + has results)
+    // 2. Check if we have tool results
     const hasToolResults = state.messages.some((m) => m._getType() === 'tool');
-    const currentToolForcingCount = state.toolForcingCount || 0;
-    const MAX_TOOL_FORCING = 2; // Ensure this is consistent
+    const toolForcingCount = state.toolForcingCount || 0;
+    const MAX_TOOL_FORCING = 2;
 
-    if (
-      this.config.forceToolCall === 'required' &&
-      currentToolForcingCount >= MAX_TOOL_FORCING &&
-      hasToolResults
-    ) {
+    this.logger.info(
+      '[LangGraph Router] Analyzing tool results and synthesis need',
+      {
+        hasToolResults,
+        toolForcingCount,
+        MAX_TOOL_FORCING,
+        needsSynthesis: state.needsSynthesis,
+      },
+    );
+
+    if (hasToolResults) {
+      const needsSynthesis = state.needsSynthesis ?? true; // Default to true for backward compatibility
+
       this.logger.info(
-        '[LangGraph Router] Circuit breaker hit with results. Routing to synthesis node.',
+        '[LangGraph Router] Tool results exist, checking synthesis requirement',
+        {
+          needsSynthesis,
+          defaultedToTrue: state.needsSynthesis === undefined,
+          circuitBreakerHit: toolForcingCount >= MAX_TOOL_FORCING,
+        },
       );
-      return 'synthesis';
+
+      // RESPECT needsSynthesis flag regardless of circuit breaker
+      if (needsSynthesis) {
+        this.logger.info(
+          '[LangGraph Router] Decision: Tool results exist and synthesis needed. Routing to synthesis.',
+        );
+        return 'synthesis';
+      } else {
+        this.logger.info(
+          '[LangGraph Router] Decision: Tool results exist but synthesis not needed. Routing to simple response.',
+        );
+        return 'simple_response';
+      }
     }
 
-    // 3. Otherwise, finish the graph
+    // 3. If there are no tool calls and no results, check if this is a simple conversational query
+    if (!hasToolResults) {
+      // Check if the last message is an AI response without tool calls (conversational response)
+      if (
+        lastMessage &&
+        lastMessage._getType() === 'ai' &&
+        lastMessage.content
+      ) {
+        this.logger.info(
+          '[LangGraph Router] Decision: AI provided conversational response. Finishing graph.',
+        );
+        return 'conversational_response';
+      }
+
+      this.logger.warn(
+        '[LangGraph Router] Decision: No tool calls and no results. Finishing graph to prevent loops.',
+      );
+      return '__end__';
+    }
+
+    // 4. Default to ending the graph if no other condition is met.
     this.logger.info(
-      '[LangGraph Router] No more tools or synthesis needed. Routing to END.',
+      '[LangGraph Router] Decision: No more actions needed. Finishing graph.',
     );
-    return 'finish';
+    return '__end__';
   }
 
   /**
@@ -866,101 +1226,310 @@ Begin the report immediately without any introductory phrases like "Here is the 
   async invoke(
     inputMessages: BaseMessage[],
     config?: RunnableConfig,
-  ): Promise<GraphState> {
-    try {
-      this.logger.info('Invoking LangGraph', {
-        inputMessageCount: inputMessages.length,
-      });
-
-      // Create initial state with all required fields from GraphStateAnnotation
-      const initialState: GraphState = {
-        messages: inputMessages,
-        input:
-          inputMessages[inputMessages.length - 1]?.content?.toString() || '',
-        agent_outcome: undefined, // Explicitly provide, matches annotation default
-        ui: [], // Explicitly provide, matches annotation default
-        _lastToolExecutionResults: [], // Explicitly provide, matches annotation default
-        toolForcingCount: 0,
-        iterationCount: 0,
-      };
-
-      // Invoke the compiled graph
-      const finalState = await this.graph.invoke(initialState, config);
-
-      this.logger.info('LangGraph invocation completed', {
-        finalMessageCount: finalState.messages?.length || 0,
-      });
-
-      return finalState;
-    } catch (error) {
-      this.logger.error('Error invoking LangGraph', { error });
-      throw error;
-    }
+  ): Promise<any> {
+    this.logger.info('Invoking LangGraph for a complete response.', {
+      inputMessageCount: inputMessages.length,
+    });
+    const finalState = await this.graph.invoke(
+      { messages: inputMessages },
+      config,
+    );
+    return finalState.messages[finalState.messages.length - 1];
   }
 
   /**
-   * Stream the graph execution (for streaming use cases)
-   * Returns AsyncIterable<StreamEvent> for LangChainAdapter
+   * Stream the graph execution as raw text chunks.
+   * This provides real-time updates throughout the LangGraph execution.
    */
   async *stream(
     inputMessages: BaseMessage[],
     config?: RunnableConfig,
-  ): AsyncIterable<any> {
+    needsSynthesis = true,
+  ): AsyncGenerator<Uint8Array> {
+    this.logger.info('Streaming LangGraph execution with real-time events.', {
+      inputMessageCount: inputMessages.length,
+      needsSynthesis,
+    });
+
+    const initialState = {
+      messages: inputMessages,
+      iterationCount: 0,
+      toolForcingCount: 0,
+      needsSynthesis,
+    };
+    const encoder = new TextEncoder();
+
+    // Use streamEvents to get real-time updates from the graph
+    const eventStream = this.graph.streamEvents(initialState, {
+      ...config,
+      version: 'v2',
+    });
+
+    let hasStreamedSynthesis = false;
+    let hasStreamedConversational = false;
+    let finalState: any = null;
+    const toolResults: any[] = [];
+
     try {
-      this.logger.info('Streaming LangGraph execution', {
-        inputMessageCount: inputMessages.length,
-      });
+      yield encoder.encode('🔍 Analyzing your request...\n\n');
 
-      // Create initial state with all required fields from GraphStateAnnotation
-      const initialState: GraphState = {
-        messages: inputMessages,
-        input:
-          inputMessages[inputMessages.length - 1]?.content?.toString() || '',
-        agent_outcome: undefined, // Explicitly provide, matches annotation default
-        ui: [], // Explicitly provide, matches annotation default
-        _lastToolExecutionResults: [], // Explicitly provide, matches annotation default
-        toolForcingCount: 0,
-        iterationCount: 0,
-      };
+      for await (const event of eventStream) {
+        if (event.event === 'on_chain_start') {
+          // A node is starting to run
+          const nodeName = event.name;
+          if (nodeName === 'execute_tools') {
+            yield encoder.encode('🛠️ Gathering information...\n');
+          } else if (nodeName === 'simple_response') {
+            yield encoder.encode('\n📋 Formatting results...\n\n');
+          } else if (nodeName === 'conversational_response') {
+            yield encoder.encode('\n💬 Preparing response...\n\n');
+          } else if (nodeName === 'synthesis') {
+            yield encoder.encode('\n📝 Generating your research report...\n\n');
+          }
+        }
 
-      // Stream events from the compiled graph
-      const streamEvents = this.graph.streamEvents(initialState, {
-        ...config,
-        version: 'v2',
-      });
+        if (event.event === 'on_tool_start') {
+          // A specific tool is starting
+          const toolName = event.data.input.tool;
+          const query = event.data.input.tool_input?.query;
+          if (toolName === 'tavilySearch') {
+            yield encoder.encode(`🌐 Searching the web for "${query}"...\n`);
+          } else if (toolName === 'searchInternalKnowledgeBase') {
+            yield encoder.encode(
+              `📚 Searching knowledge base for "${query}"...\n`,
+            );
+          }
+        }
 
-      // Yield each event for LangChainAdapter to process
-      for await (const event of streamEvents) {
-        yield event;
+        if (event.event === 'on_tool_end') {
+          // Capture tool results for non-synthesis cases
+          const toolName = event.name;
+          const toolOutput = event.data.output;
+          if (toolOutput) {
+            toolResults.push({
+              name: toolName,
+              content: toolOutput.content || toolOutput,
+            });
+          }
+        }
+
+        if (
+          event.event === 'on_chat_model_stream' &&
+          event.tags?.includes('final_node')
+        ) {
+          // This is a token from a final node's LLM (synthesis or conversational)
+          const content = event.data?.chunk?.content;
+          if (typeof content === 'string') {
+            // Check if this is from synthesis or conversational response
+            if (event.tags?.includes('synthesis')) {
+              hasStreamedSynthesis = true;
+            } else if (event.tags?.includes('conversational')) {
+              hasStreamedConversational = true;
+            }
+            yield encoder.encode(content);
+          }
+        }
+
+        // Capture the final state for simple queries
+        if (event.event === 'on_chain_end' && event.name === 'LangGraph') {
+          finalState = event.data.output;
+        }
       }
 
-      this.logger.info('LangGraph streaming completed');
+      // If no synthesis or conversational response was streamed, handle accordingly
+      if (
+        !hasStreamedSynthesis &&
+        !hasStreamedConversational &&
+        !needsSynthesis
+      ) {
+        this.logger.info(
+          '[LangGraph Stream] No synthesis or conversational response streamed, outputting results directly',
+        );
+
+        // Use captured tool results or fall back to final state
+        const toolMessages =
+          toolResults.length > 0
+            ? toolResults
+            : finalState?.messages?.filter(
+                (msg: any) => msg._getType() === 'tool',
+              ) || [];
+
+        if (toolMessages.length > 0) {
+          yield encoder.encode('\n📋 **Results:**\n\n');
+
+          for (const toolMsg of toolMessages) {
+            const toolName = toolMsg.name || 'Tool';
+            const content = toolMsg.content || 'No content';
+
+            // Safely handle content formatting
+            let cleanContent = '';
+            try {
+              // First, ensure content is a string
+              const contentStr =
+                typeof content === 'string' ? content : JSON.stringify(content);
+
+              // Try to parse as JSON
+              const parsed = JSON.parse(contentStr);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                cleanContent = parsed
+                  .map((item, index) => {
+                    if (
+                      item &&
+                      typeof item === 'object' &&
+                      item.title &&
+                      item.url
+                    ) {
+                      const title = String(item.title).replace(
+                        /[^\w\s\-\.]/g,
+                        '',
+                      ); // Clean title
+                      const createdAt = item.created_at || 'Unknown';
+                      const url = String(item.url);
+                      return `${index + 1}. **${title}**\n   - Created: ${createdAt}\n   - URL: ${url}\n`;
+                    }
+                    return `${index + 1}. ${String(item).substring(0, 200)}...\n`;
+                  })
+                  .join('\n');
+              } else if (parsed && typeof parsed === 'object') {
+                cleanContent = JSON.stringify(parsed, null, 2).substring(
+                  0,
+                  1000,
+                );
+              } else {
+                cleanContent = String(parsed).substring(0, 1000);
+              }
+            } catch (parseError) {
+              // Not JSON or parsing failed, use content as-is but safely
+              cleanContent = String(content).substring(0, 1000);
+            }
+
+            // Ensure clean content is safe for streaming
+            cleanContent = cleanContent.trim();
+
+            // Don't show tool name if it's obvious from context
+            if (
+              toolName.toLowerCase().includes('search') ||
+              toolName.toLowerCase().includes('list')
+            ) {
+              yield encoder.encode(`${cleanContent}\n\n`);
+            } else {
+              yield encoder.encode(`**${toolName}:**\n${cleanContent}\n\n`);
+            }
+          }
+        } else {
+          // No tool results - check if there's a conversational AI response
+          const aiMessages =
+            finalState?.messages?.filter(
+              (msg: any) => msg._getType() === 'ai',
+            ) || [];
+
+          if (aiMessages.length > 0) {
+            const lastAiMessage = aiMessages[aiMessages.length - 1];
+            const aiContent = lastAiMessage.content;
+
+            if (aiContent && typeof aiContent === 'string') {
+              this.logger.info(
+                '[LangGraph Stream] Streaming conversational AI response from final state',
+              );
+              // Stream the content token by token to simulate real-time streaming
+              const words = aiContent.split(' ');
+              for (let i = 0; i < words.length; i++) {
+                const word = words[i];
+                const isLastWord = i === words.length - 1;
+                yield encoder.encode(word + (isLastWord ? '' : ' '));
+                // Small delay to simulate streaming
+                await new Promise((resolve) => setTimeout(resolve, 50));
+              }
+              yield encoder.encode('\n');
+            } else {
+              yield encoder.encode(
+                '\n✅ **Request completed successfully.**\n',
+              );
+            }
+          } else {
+            yield encoder.encode('\n✅ **Request completed successfully.**\n');
+          }
+        }
+      }
+
+      this.logger.info('LangGraph event stream completed.');
     } catch (error) {
-      this.logger.error('Error streaming LangGraph', { error });
+      this.logger.error('Error in LangGraph event streaming', { error });
 
-      // Send error message to client before terminating stream
-      yield {
-        event: 'on_chat_model_stream',
-        data: {
-          chunk: {
-            content:
-              'I encountered an error while processing your request. Please try again.',
-            type: 'AIMessageChunk',
-          },
-        },
-      };
+      // If we have tool results but streaming failed, try to output them
+      if (
+        !hasStreamedSynthesis &&
+        !hasStreamedConversational &&
+        !needsSynthesis &&
+        toolResults.length > 0
+      ) {
+        this.logger.info(
+          '[LangGraph Stream] Streaming failed but tool results available, outputting directly',
+        );
+        try {
+          yield encoder.encode('\n📋 **Results:**\n\n');
 
-      // Send stream end event
-      yield {
-        event: 'on_chain_end',
-        data: {
-          output: {
-            content: 'Stream terminated due to error',
-          },
-        },
-      };
+          for (const toolMsg of toolResults) {
+            const content = toolMsg.content || 'No content';
 
-      throw error;
+            // Safely handle content formatting
+            let cleanContent = '';
+            try {
+              // First, ensure content is a string
+              const contentStr =
+                typeof content === 'string' ? content : JSON.stringify(content);
+
+              // Try to parse as JSON
+              const parsed = JSON.parse(contentStr);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                cleanContent = parsed
+                  .map((item, index) => {
+                    if (
+                      item &&
+                      typeof item === 'object' &&
+                      item.title &&
+                      item.url
+                    ) {
+                      const title = String(item.title).replace(
+                        /[^\w\s\-\.]/g,
+                        '',
+                      ); // Clean title
+                      const createdAt = item.created_at || 'Unknown';
+                      const url = String(item.url);
+                      return `${index + 1}. **${title}**\n   - Created: ${createdAt}\n   - URL: ${url}\n`;
+                    }
+                    return `${index + 1}. ${String(item).substring(0, 200)}...\n`;
+                  })
+                  .join('\n');
+              } else if (parsed && typeof parsed === 'object') {
+                cleanContent = JSON.stringify(parsed, null, 2).substring(
+                  0,
+                  1000,
+                );
+              } else {
+                cleanContent = String(parsed).substring(0, 1000);
+              }
+            } catch (parseError) {
+              // Not JSON or parsing failed, use content as-is but safely
+              cleanContent = String(content).substring(0, 1000);
+            }
+
+            // Ensure clean content is safe for streaming
+            cleanContent = cleanContent.trim();
+
+            yield encoder.encode(`${cleanContent}\n\n`);
+          }
+        } catch (fallbackError) {
+          this.logger.error('Error in fallback tool result output', {
+            fallbackError,
+          });
+          yield encoder.encode('\n❌ **Error:** Unable to display results.\n');
+        }
+      } else {
+        yield encoder.encode(
+          '\n❌ **Error:** An unexpected error occurred during processing.\n',
+        );
+      }
     }
   }
 
