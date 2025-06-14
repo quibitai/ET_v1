@@ -9,6 +9,9 @@
 import type { BrainRequest } from '@/lib/validation/brainValidation';
 import type { RequestLogger } from './observabilityService';
 import type { ClientConfig } from '@/lib/db/queries';
+import { retrieveConversationalMemory } from '@/lib/conversationalMemory';
+import { processHistory } from '@/lib/contextUtils';
+import type { ConversationalMemorySnippet } from '@/lib/contextUtils';
 
 /**
  * Context processing configuration
@@ -33,6 +36,7 @@ export interface ProcessedContext {
   referencedChatId?: string | null;
   clientConfig?: ClientConfig | null;
   memoryContext?: any[];
+  conversationalMemory?: ConversationalMemorySnippet[];
   fileContext?: {
     filename: string;
     contentType: string;
@@ -79,7 +83,9 @@ export class ContextService {
   /**
    * Process and enrich context from brain request
    */
-  public processContext(brainRequest: BrainRequest): ProcessedContext {
+  public async processContext(
+    brainRequest: BrainRequest,
+  ): Promise<ProcessedContext> {
     this.logger.info('Processing request context', {
       activeBitContextId: brainRequest.activeBitContextId,
       currentActiveSpecialistId: brainRequest.currentActiveSpecialistId,
@@ -87,6 +93,7 @@ export class ContextService {
       selectedChatModel: brainRequest.selectedChatModel,
       hasFileContext: !!brainRequest.fileContext,
       fileContextFilename: brainRequest.fileContext?.filename,
+      chatId: brainRequest.chatId,
     });
 
     const processedContext: ProcessedContext = {
@@ -105,6 +112,16 @@ export class ContextService {
     // Add memory context if enabled
     if (this.config.enableMemory) {
       processedContext.memoryContext = this.extractMemoryContext(brainRequest);
+
+      // Add conversational memory retrieval
+      if (brainRequest.chatId && brainRequest.messages.length > 0) {
+        const userInput = this.extractUserInput(brainRequest);
+        processedContext.conversationalMemory =
+          await this.retrieveConversationalMemory(
+            brainRequest.chatId,
+            userInput,
+          );
+      }
     }
 
     return processedContext;
@@ -181,6 +198,56 @@ export class ContextService {
   }
 
   /**
+   * Extract user input from brain request
+   */
+  private extractUserInput(brainRequest: BrainRequest): string {
+    if (!brainRequest.messages || brainRequest.messages.length === 0) {
+      return '';
+    }
+
+    // Get the last user message
+    const lastUserMessage = brainRequest.messages
+      .filter((msg) => msg.role === 'user')
+      .pop();
+
+    return lastUserMessage?.content || '';
+  }
+
+  /**
+   * Retrieve conversational memory for enhanced context
+   */
+  private async retrieveConversationalMemory(
+    chatId: string,
+    userQuery: string,
+  ): Promise<ConversationalMemorySnippet[]> {
+    try {
+      this.logger.info('Retrieving conversational memory', {
+        chatId: chatId.substring(0, 8),
+        queryLength: userQuery.length,
+      });
+
+      const memorySnippets = await retrieveConversationalMemory(
+        chatId,
+        userQuery,
+        3, // maxResults
+      );
+
+      this.logger.info('Retrieved conversational memory', {
+        chatId: chatId.substring(0, 8),
+        snippetCount: memorySnippets.length,
+      });
+
+      return memorySnippets;
+    } catch (error) {
+      this.logger.error('Error retrieving conversational memory', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        chatId: chatId.substring(0, 8),
+      });
+      return [];
+    }
+  }
+
+  /**
    * Get default model based on client configuration
    */
   private getDefaultModel(): string {
@@ -235,6 +302,46 @@ export class ContextService {
       additions.push(fileInfo);
     }
 
+    // Add conversational memory context
+    let memoryContextSection = '';
+    if (
+      context.conversationalMemory &&
+      context.conversationalMemory.length > 0
+    ) {
+      this.logger.info('Adding conversational memory to prompt', {
+        memorySnippetCount: context.conversationalMemory.length,
+      });
+
+      const memorySnippets = context.conversationalMemory
+        .map((snippet, index) => {
+          let timestamp = 'Unknown';
+          if (snippet.created_at) {
+            try {
+              if (snippet.created_at instanceof Date) {
+                timestamp = snippet.created_at.toISOString();
+              } else if (typeof snippet.created_at === 'string') {
+                timestamp = new Date(snippet.created_at).toISOString();
+              } else {
+                // Handle DateTime objects or other formats
+                timestamp = String(snippet.created_at);
+              }
+            } catch {
+              timestamp = String(snippet.created_at);
+            }
+          }
+          return `Memory ${index + 1} (${timestamp}): ${snippet.content}`;
+        })
+        .join('\n\n');
+
+      memoryContextSection = `\n\n=== CONVERSATIONAL MEMORY ===
+The following are relevant conversation excerpts from your past interactions with this user:
+
+${memorySnippets}
+
+Use this context to provide more personalized and contextually aware responses. Refer to previous discussions when relevant.
+=== END MEMORY ===`;
+    }
+
     // Handle file context separately for better formatting
     let fileContextSection = '';
     if (context.fileContext?.extractedText) {
@@ -251,7 +358,7 @@ ${context.fileContext.extractedText}
 
     const contextSection =
       additions.length > 0 ? `\n\nContext: ${additions.join(', ')}` : '';
-    return contextSection + fileContextSection;
+    return contextSection + memoryContextSection + fileContextSection;
   }
 }
 
@@ -273,11 +380,11 @@ export function createContextService(
 /**
  * Quick context processing utility
  */
-export function processRequestContext(
+export async function processRequestContext(
   brainRequest: BrainRequest,
   logger: RequestLogger,
   clientConfig?: ClientConfig | null,
-): ProcessedContext {
+): Promise<ProcessedContext> {
   const service = createContextService(logger, clientConfig);
-  return service.processContext(brainRequest);
+  return await service.processContext(brainRequest);
 }
