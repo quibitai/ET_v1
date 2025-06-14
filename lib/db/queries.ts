@@ -34,6 +34,9 @@ import {
   CHAT_BIT_CONTEXT_ID,
 } from '@/lib/constants';
 
+// Import conversational memory utilities
+import { storeConversationalMemory } from '@/lib/conversationalMemory';
+
 // Optionally, if not using email/pass login, you can
 // use the Drizzle adapter for Auth.js / NextAuth
 // https://authjs.dev/reference/adapter/drizzle
@@ -426,6 +429,140 @@ export async function saveMessages({
       console.error(`[saveMessages] DB Error Message: ${error.message}`);
     }
     throw error;
+  }
+}
+
+/**
+ * Enhanced version of saveMessages that includes conversational memory storage
+ * This function maintains all existing behavior while adding memory capabilities
+ */
+export async function saveMessagesWithMemory({
+  messages,
+  enableMemoryStorage = true,
+}: {
+  messages: Array<DBMessage>;
+  enableMemoryStorage?: boolean;
+}) {
+  console.log(
+    '[saveMessagesWithMemory] Function called with memory storage:',
+    enableMemoryStorage ? 'ENABLED' : 'DISABLED',
+  );
+
+  try {
+    // First, save messages using the existing function
+    const result = await saveMessages({ messages });
+    console.log(
+      '[saveMessagesWithMemory] Messages saved successfully to database',
+    );
+
+    // If memory storage is enabled, process conversation turns
+    if (enableMemoryStorage && messages.length > 0) {
+      await processConversationalMemory(messages);
+    }
+
+    return result;
+  } catch (error) {
+    console.error('[saveMessagesWithMemory] Error in enhanced save:', error);
+    throw error;
+  }
+}
+
+/**
+ * Process messages for conversational memory storage
+ * Extracts user-assistant conversation turns and stores them with embeddings
+ */
+async function processConversationalMemory(messages: Array<DBMessage>) {
+  console.log('[ConversationalMemory] Processing messages for memory storage');
+
+  try {
+    // Group messages by chatId for processing
+    const messagesByChat = messages.reduce(
+      (acc, msg) => {
+        if (!acc[msg.chatId]) {
+          acc[msg.chatId] = [];
+        }
+        acc[msg.chatId].push(msg);
+        return acc;
+      },
+      {} as Record<string, DBMessage[]>,
+    );
+
+    // Process each chat's messages
+    for (const [chatId, chatMessages] of Object.entries(messagesByChat)) {
+      // Sort messages by creation time to ensure proper order
+      const sortedMessages = chatMessages.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeA - timeB;
+      });
+
+      // Look for user-assistant conversation pairs
+      let userMessage: DBMessage | null = null;
+
+      for (const message of sortedMessages) {
+        if (message.role === 'user') {
+          userMessage = message;
+        } else if (message.role === 'assistant' && userMessage) {
+          // We have a complete conversation turn
+          const userText = extractTextFromMessage(userMessage);
+          const assistantText = extractTextFromMessage(message);
+
+          if (userText && assistantText) {
+            console.log(
+              `[ConversationalMemory] Storing conversation turn for chat ${chatId}`,
+            );
+
+            // Store the conversation turn with embeddings
+            const stored = await storeConversationalMemory(
+              chatId,
+              userText,
+              assistantText,
+              'turn',
+            );
+
+            if (stored) {
+              console.log(
+                `[ConversationalMemory] Successfully stored turn for chat ${chatId}`,
+              );
+            } else {
+              console.warn(
+                `[ConversationalMemory] Failed to store turn for chat ${chatId}`,
+              );
+            }
+          }
+
+          // Reset for next potential turn
+          userMessage = null;
+        }
+      }
+    }
+  } catch (error) {
+    console.error(
+      '[ConversationalMemory] Error processing conversational memory:',
+      error,
+    );
+    // Don't throw here - memory storage failure shouldn't break message saving
+  }
+}
+
+/**
+ * Extract text content from a message's parts array
+ */
+function extractTextFromMessage(message: DBMessage): string | null {
+  try {
+    if (!message.parts || !Array.isArray(message.parts)) {
+      return null;
+    }
+
+    // Find the first text part
+    const textPart = message.parts.find((part) => part.type === 'text');
+    return textPart?.text || null;
+  } catch (error) {
+    console.error(
+      '[ConversationalMemory] Error extracting text from message:',
+      error,
+    );
+    return null;
   }
 }
 

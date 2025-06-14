@@ -12,7 +12,7 @@ import type {
 } from '@/lib/validation/brainValidation';
 import type { RequestLogger } from './observabilityService';
 import type { Attachment } from 'ai';
-import { saveMessages } from '@/lib/db/queries';
+import { saveMessages, saveMessagesWithMemory } from '@/lib/db/queries';
 import type { DBMessage } from '@/lib/db/schema';
 import {
   AIMessage,
@@ -324,9 +324,13 @@ export class MessageService {
     });
 
     try {
-      await saveMessages({ messages: dbMessages });
+      // Use enhanced memory storage for better contextual awareness
+      await saveMessagesWithMemory({
+        messages: dbMessages,
+        enableMemoryStorage: true,
+      });
       this.logger.info(
-        `Successfully saved ${dbMessages.length} user messages to chat ${chatId}`,
+        `Successfully saved ${dbMessages.length} user messages to chat ${chatId} with memory storage`,
       );
     } catch (error) {
       this.logger.error('Failed to save user messages', {
@@ -370,9 +374,13 @@ export class MessageService {
     });
 
     try {
-      await saveMessages({ messages: [assistantMessage] });
+      // Use enhanced memory storage for better contextual awareness
+      await saveMessagesWithMemory({
+        messages: [assistantMessage],
+        enableMemoryStorage: true,
+      });
       this.logger.info(
-        `Successfully saved assistant message to chat ${chatId}`,
+        `Successfully saved assistant message to chat ${chatId} with memory storage`,
         {
           messageId: assistantMessage.id,
           responseLength: content.length,

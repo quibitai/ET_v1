@@ -14,7 +14,7 @@ import type { RequestLogger } from './observabilityService';
 import type { ClientConfig } from '@/lib/db/queries';
 import { randomUUID } from 'node:crypto';
 import { auth } from '@/app/(auth)/auth';
-import { saveMessages } from '@/lib/db/queries';
+import { saveMessages, saveMessagesWithMemory } from '@/lib/db/queries';
 import type { DBMessage } from '@/lib/db/schema';
 
 // Import modern tool service for proper tool selection
@@ -498,12 +498,19 @@ export class VercelAIService {
                   clientId: 'default',
                 };
 
-                await saveMessages({ messages: [assistantMessage] });
-                this.logger.info('Assistant message saved successfully', {
-                  messageId: assistantMessage.id,
-                  chatId: assistantMessage.chatId,
-                  responseLength: event.text.length,
+                // Use enhanced memory storage for better contextual awareness
+                await saveMessagesWithMemory({
+                  messages: [assistantMessage],
+                  enableMemoryStorage: true,
                 });
+                this.logger.info(
+                  'Assistant message saved successfully with memory storage',
+                  {
+                    messageId: assistantMessage.id,
+                    chatId: assistantMessage.chatId,
+                    responseLength: event.text.length,
+                  },
+                );
               }
             } catch (error) {
               this.logger.error('Failed to save assistant message', {
