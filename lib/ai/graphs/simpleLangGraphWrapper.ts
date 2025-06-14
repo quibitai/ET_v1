@@ -1086,11 +1086,15 @@ CRITICAL RULES:
 - Use ONLY the tool results provided. Do not add outside information.
 - Format with clear markdown headings, lists, and tables for readability.
 - ${responseInstructions}
+- AVOID REPEATING CONTENT: If similar information appears multiple times in the tool results, consolidate it into a single, well-organized section.
+- ENSURE CLEAN FORMATTING: Use proper line breaks and avoid incomplete sentences or truncated text.
+- MAINTAIN READABILITY: Each section should flow naturally without awkward breaks or duplicated paragraphs.
 - IMPORTANT: Include a "## References" section at the end that lists both web sources AND knowledge base documents that were used.
 - DO NOT include "End of Report", "End of Document", or any closing statements after the References section.
 - ALWAYS format ALL titles as clickable links when URLs are provided: [Title](URL). Never show titles as plain text with separate URLs below them.
 - For web sources: Format as numbered list with clickable titles: "1. [Article Title](URL)"
 - For knowledge base documents: Format as numbered list with clickable titles: "1. [Document Name](URL)"
+- DO NOT REPEAT THE SAME CONTENT MULTIPLE TIMES: If you notice duplicate information in the tool results, present it only once in the most appropriate section.
 
 Current date: ${new Date().toISOString()}`,
         });
@@ -1612,6 +1616,37 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
         );
       }
     }
+  }
+
+  /**
+   * Truncate content at sentence boundaries to avoid mid-sentence cuts
+   */
+  private truncateAtSentence(content: string, maxLength: number): string {
+    if (content.length <= maxLength) {
+      return content;
+    }
+
+    const truncated = content.substring(0, maxLength);
+
+    // Try to find the last sentence ending
+    const lastSentenceEnd = Math.max(
+      truncated.lastIndexOf('.'),
+      truncated.lastIndexOf('!'),
+      truncated.lastIndexOf('?'),
+    );
+
+    if (lastSentenceEnd > maxLength * 0.75) {
+      return truncated.substring(0, lastSentenceEnd + 1);
+    }
+
+    // If no sentence ending found, try to break at word boundary
+    const lastSpaceIndex = truncated.lastIndexOf(' ');
+    if (lastSpaceIndex > maxLength * 0.75) {
+      return truncated.substring(0, lastSpaceIndex);
+    }
+
+    // Fallback to hard truncation
+    return truncated;
   }
 
   /**
