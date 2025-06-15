@@ -335,8 +335,7 @@ export class QueryClassifier {
         );
       }
 
-      // TEMPORARY OVERRIDE: Always use LangChain since it's our only implemented path
-      // TODO: Implement Vercel AI SDK path for simple conversational queries
+      // Use LangChain for all queries as it provides the most comprehensive functionality
       if (!shouldUseLangChain) {
         this.logger.info(
           'Overriding routing decision: forcing LangChain as it is the only implemented path',

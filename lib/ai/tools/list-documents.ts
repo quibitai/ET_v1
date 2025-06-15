@@ -145,14 +145,24 @@ export const listDocumentsTool = new DynamicStructuredTool({
         });
       }
 
-      // Format document list
+      // Format document list with clickable links
       const documentList = data.map((doc) => ({
         id: doc.id,
         title: doc.title,
         url: doc.url,
         created_at: doc.created_at,
         schema: doc.schema,
+        // Add clickable link format for LLM to use
+        clickable_link: `[${doc.title}](/api/documents/${doc.id})`,
       }));
+
+      // Create formatted list for immediate display
+      const formattedList = documentList
+        .map(
+          (doc, index) =>
+            `${index + 1}. [${doc.title}](/api/documents/${doc.id})`,
+        )
+        .join('\n');
 
       // Track successful completion
       await trackEvent({
@@ -170,8 +180,9 @@ export const listDocumentsTool = new DynamicStructuredTool({
         success: true,
         available_documents: documentList,
         total_count: documentList.length,
+        formatted_list: formattedList,
         usage_instructions:
-          "To retrieve a document's full content, use the getDocumentContents tool with the document's id.",
+          "To retrieve a document's full content, use the getDocumentContents tool with the document's id. When displaying the list to users, use the formatted_list with clickable links.",
       });
     } catch (err: any) {
       const duration = performance.now() - startTime;

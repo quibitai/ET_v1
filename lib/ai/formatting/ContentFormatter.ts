@@ -145,7 +145,12 @@ export namespace ContentFormatter {
           parsed.available_documents &&
           Array.isArray(parsed.available_documents)
         ) {
-          formattedContent = formatDocumentList(parsed.available_documents);
+          // Use the pre-formatted list with clickable links if available
+          if (parsed.formatted_list) {
+            formattedContent = `📋 **Available Documents:**\n\n${parsed.formatted_list}`;
+          } else {
+            formattedContent = formatDocumentList(parsed.available_documents);
+          }
         }
         // Handle single document responses
         else if (parsed.success && parsed.document && parsed.content) {

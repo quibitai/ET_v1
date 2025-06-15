@@ -702,11 +702,7 @@ export async function ensureChatExists({
   userId: string;
 }) {
   try {
-    console.log('[DB DEBUG] ========== Chat Existence Check ==========');
-    console.log('[DB DEBUG] Checking chat existence for:', { chatId, userId });
-
     // First try to find the chat
-    console.log('[DB DEBUG] Executing SELECT query...');
     const existingChat = await db
       .select({
         id: chat.id,
@@ -717,53 +713,30 @@ export async function ensureChatExists({
       .where(eq(chat.id, chatId))
       .limit(1);
 
-    console.log('[DB DEBUG] SELECT query result:', existingChat);
-
     if (existingChat.length === 0) {
-      console.log('[DB DEBUG] Chat not found, initiating creation process');
       try {
-        console.log('[DB DEBUG] Executing INSERT query...');
-        const insertResult = await db.insert(chat).values({
+        await db.insert(chat).values({
           id: chatId,
           createdAt: new Date(),
           userId: userId,
           title: 'New Chat', // Default title, can be updated later
           clientId: 'default',
         });
-        console.log('[DB DEBUG] INSERT query result:', insertResult);
-        console.log('[DB DEBUG] Successfully created chat');
         return true;
       } catch (insertError: any) {
         // Handle potential race condition where chat was created by another request
         if (insertError.code === '23505') {
-          // Unique constraint violation
-          console.log(
-            '[DB DEBUG] Chat creation failed due to unique constraint - chat likely exists from concurrent request',
-          );
+          // Unique constraint violation - chat exists from concurrent request
           return true;
         }
-        console.error(
-          '[DB DEBUG] Chat creation failed with unexpected error:',
-          insertError,
-        );
         throw insertError;
       }
     } else {
-      console.log('[DB DEBUG] Chat found in database:', {
-        id: existingChat[0].id,
-        userId: existingChat[0].userId,
-        createdAt: existingChat[0].createdAt,
-      });
       return true;
     }
   } catch (error) {
-    console.error(
-      '[DB DEBUG] Unexpected error during chat existence check:',
-      error,
-    );
+    console.error('Error during chat existence check:', error);
     throw error;
-  } finally {
-    console.log('[DB DEBUG] ========== End Chat Existence Check ==========');
   }
 }
 

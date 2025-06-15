@@ -133,13 +133,6 @@ export async function streamLangChainAgent(
   brainRequest?: BrainRequest,
   queryClassification?: any,
 ): Promise<AsyncGenerator<Uint8Array>> {
-  // DEBUGGING: Add console.log to ensure this is being called
-  console.log('🔍 [DEBUG] streamLangChainAgent called with input:', {
-    input: input,
-    inputLength: input.length,
-    queryClassification: queryClassification ? 'provided' : 'not provided',
-  });
-
   logger.info(
     '[LangGraph] LangGraph raw streaming path selected in streamLangChainAgent',
     { input: input.substring(0, 100) },
@@ -165,10 +158,18 @@ export async function streamLangChainAgent(
     logger,
   );
 
+  // Create RunnableConfig with fileContext in metadata
+  const runnableConfig: any = {
+    metadata: {
+      fileContext: brainRequest?.fileContext,
+      brainRequest: brainRequest,
+    },
+  };
+
   // Directly return the raw stream from the graph with synthesis preference
   const stream = agent.langGraphWrapper.stream(
     fullConversation,
-    undefined,
+    runnableConfig, // ← Pass the config containing fileContext
     needsSynthesis,
   );
 
@@ -188,12 +189,6 @@ function determineIfSynthesisNeeded(
   queryClassification?: any,
   logger?: RequestLogger,
 ): boolean {
-  // DEBUGGING: Add console.log to trace pattern matching
-  console.log('🔍 [DEBUG] determineIfSynthesisNeeded called:', {
-    input: input,
-    cleanInput: input.trim().toLowerCase(),
-  });
-
   logger?.info('[Query Classification] Analyzing query for synthesis need', {
     input: input.substring(0, 200),
     inputLength: input.length,
@@ -244,22 +239,12 @@ function determineIfSynthesisNeeded(
     /\bhow\s+.*\s+align/i,
   ];
 
-  // DEBUGGING: Test synthesis patterns
-  console.log('🔍 [DEBUG] Testing synthesis-required patterns:');
-  synthesisRequiredPatterns.forEach((pattern, index) => {
-    const matches = pattern.test(cleanInput);
-    console.log(
-      `  Synthesis Pattern ${index}: ${pattern.toString()} -> ${matches}`,
-    );
-  });
-
   // Check if synthesis is explicitly requested
   const needsSynthesis = synthesisRequiredPatterns.some((pattern) =>
     pattern.test(cleanInput),
   );
 
   if (needsSynthesis) {
-    console.log('🔍 [DEBUG] SYNTHESIS EXPLICITLY REQUESTED');
     logger?.info('[Query Classification] Synthesis explicitly requested', {
       input: input.substring(0, 100),
       decision: 'SYNTHESIS_NEEDED',
@@ -268,9 +253,6 @@ function determineIfSynthesisNeeded(
   }
 
   // For everything else, NO synthesis - just return tool results directly
-  console.log(
-    '🔍 [DEBUG] NO SYNTHESIS NEEDED - returning tool results directly',
-  );
   logger?.info(
     '[Query Classification] No synthesis needed, returning tool results directly',
     {

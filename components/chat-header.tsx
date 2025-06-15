@@ -15,9 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { getAvailableSpecialists } from '@/lib/ai/prompts/specialists';
-import {
-  CHAT_BIT_GENERAL_CONTEXT_ID,
-} from '@/lib/constants';
+import { CHAT_BIT_GENERAL_CONTEXT_ID } from '@/lib/constants';
 
 // Default option for general chat
 // const GENERAL_CHAT_OPTION = {
@@ -228,48 +226,27 @@ function PureChatHeader({
   useEffect(() => {
     const loadSpecialists = async () => {
       try {
-        // Get specialists from the registry
+        // Get specialists from the registry (now has robust fallback built-in)
         const registeredSpecialists = await getAvailableSpecialists();
         console.log('[ChatHeader] Loaded specialists:', registeredSpecialists);
-
-        // If we get an empty array (e.g., client-side fallback), provide basic defaults
-        if (registeredSpecialists.length === 0) {
-          console.warn(
-            '[ChatHeader] No specialists loaded, using fallback defaults',
-          );
-          const fallbackSpecialists = [
-            {
-              id: 'chat-model',
-              name: 'General Chat',
-              description: 'General conversational assistant',
-            },
-            {
-              id: 'echo-tango-specialist',
-              name: 'Echo Tango',
-              description: 'Creative agency brand voice specialist',
-            },
-          ];
-          setSpecialists(fallbackSpecialists);
-        } else {
-          setSpecialists(registeredSpecialists);
-        }
+        setSpecialists(registeredSpecialists);
       } catch (error) {
         console.error('[ChatHeader] Error loading specialists:', error);
-        // Provide fallback specialists on error
-        const fallbackSpecialists = [
-          {
-            id: 'chat-model',
-            name: 'General Chat',
-            description: 'General conversational assistant',
-          },
+        // Final fallback if everything fails
+        const emergencyFallback = [
           {
             id: 'echo-tango-specialist',
             name: 'Echo Tango',
             description: 'Creative agency brand voice specialist',
           },
+          {
+            id: 'chat-model',
+            name: 'General Chat',
+            description: 'General conversational assistant',
+          },
         ];
-        setSpecialists(fallbackSpecialists);
-        console.warn('[ChatHeader] Using fallback specialists due to error');
+        setSpecialists(emergencyFallback);
+        console.warn('[ChatHeader] Using emergency fallback specialists');
       }
     };
 

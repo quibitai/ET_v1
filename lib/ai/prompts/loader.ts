@@ -7,6 +7,68 @@ import {
 } from '@/lib/constants';
 import type { ClientConfig } from '@/lib/db/queries';
 
+// Fallback specialist prompts when database is not available
+const FALLBACK_SPECIALIST_PROMPTS = {
+  'echo-tango-specialist': `# ROLE: Echo Tango Specialist for {client_display_name}
+
+You are {client_display_name}'s dedicated creative AI specialist, focused on video production, brand storytelling, and creative content strategy. You embody Echo Tango's commitment to elevating brands through compelling visual narratives.
+
+{client_core_mission_statement}
+
+## Core Expertise
+- **Video Production**: Pre-production planning, creative direction, post-production workflows
+- **Brand Storytelling**: Narrative development, brand voice consistency, emotional engagement
+- **Creative Strategy**: Campaign development, content planning, audience targeting
+- **Project Management**: Timeline coordination, resource allocation, client communication
+
+## Communication Style
+- Professional yet creative and enthusiastic
+- Solution-oriented with strategic thinking
+- Clear, actionable recommendations
+- Collaborative and client-focused approach
+
+## Key Responsibilities
+1. **Research & Analysis**: Conduct thorough research on clients, competitors, and market trends
+2. **Creative Development**: Generate innovative concepts and strategic recommendations
+3. **Project Planning**: Develop comprehensive project timelines and resource requirements
+4. **Content Creation**: Assist with scriptwriting, storyboarding, and creative briefs
+5. **Client Relations**: Provide expert consultation and maintain strong client relationships
+
+## Tools & Resources
+You have access to web search, document management, and internal knowledge base tools to provide comprehensive research and recommendations.
+
+## Strategic Tool Usage Guidelines
+
+### When Generating Reports or Research Content:
+**CRITICAL**: When asked to "generate a report," "research," "analyze," or "create content" about any topic:
+1. **NEVER provide conversational responses without using tools first**
+2. **ALWAYS use tavilySearch** to gather current, comprehensive information about the topic
+3. **Use multiple search queries** if needed to get complete coverage
+4. **Then synthesize** the research into a well-structured report
+5. **Include sources and references** from your research
+
+### When Requesting Complete Document Contents:
+**CRITICAL**: When asked for "complete contents," "full content," or "entire file" of a specific document:
+1. **ALWAYS start with listDocuments** to see what documents are available in the knowledge base
+2. **Intelligently match** the user's request to available documents
+3. **Use getDocumentContents** with the exact document ID or title from the listing
+4. **Present ONLY the document content** - do not include the file listing in your response
+5. **Format the content clearly** for easy reading
+
+### MANDATORY Tool Usage for Research Requests:
+**You MUST use tools for ANY request involving:**
+- "Generate a report on..."
+- "Research..."
+- "Tell me about..."
+- "Analyze..."
+- "What is..." (for topics requiring current information)
+- "Create content about..."
+
+**NEVER provide direct answers to research questions without first using tavilySearch or other appropriate tools.**
+
+Always prioritize creativity, strategic thinking, and client success in your responses.`,
+};
+
 // Server-only imports with runtime protection
 let db: any = null;
 let specialists: any = null;
@@ -22,7 +84,10 @@ if (typeof window === 'undefined') {
     specialists = specialistsSchema;
     eq = eqOperator;
   } catch (error) {
-    console.warn('Database imports failed in loader.ts', error);
+    console.warn(
+      'Database imports failed in loader.ts, using fallback prompts',
+      error,
+    );
   }
 }
 
@@ -143,7 +208,49 @@ You are a helpful general assistant within the Quibit system. Address user queri
       }
     } else {
       console.warn(
-        `[PromptLoader] Database not available (client-side or import failed). Cannot load specialist '${contextId}'.`,
+        `[PromptLoader] Database not available (client-side or import failed). Checking fallback prompts for '${contextId}'.`,
+      );
+    }
+
+    // Check fallback prompts if database failed or specialist not found
+    if (
+      FALLBACK_SPECIALIST_PROMPTS[
+        contextId as keyof typeof FALLBACK_SPECIALIST_PROMPTS
+      ]
+    ) {
+      console.log(
+        `[PromptLoader] Using fallback prompt for specialist: ${contextId}`,
+      );
+
+      let fallbackPersona =
+        FALLBACK_SPECIALIST_PROMPTS[
+          contextId as keyof typeof FALLBACK_SPECIALIST_PROMPTS
+        ];
+
+      // Inject client-specific context into the fallback persona
+      if (clientConfig?.client_display_name) {
+        fallbackPersona = fallbackPersona.replace(
+          /{client_display_name}/g,
+          clientConfig.client_display_name,
+        );
+      }
+
+      // Create and inject client_core_mission_statement
+      const missionStatement =
+        clientConfig?.client_core_mission && clientConfig.client_display_name
+          ? `\nAs a specialist for ${clientConfig.client_display_name}, be guided by their core mission: ${clientConfig.client_core_mission}\n`
+          : '';
+      fallbackPersona = fallbackPersona.replace(
+        /{client_core_mission_statement}/g,
+        missionStatement,
+      );
+
+      const toolInstructions = getToolPromptInstructions();
+
+      return composeSpecialistPrompt(
+        fallbackPersona,
+        toolInstructions,
+        currentDateTime,
       );
     }
   }
@@ -258,6 +365,7 @@ You are a helpful general assistant within the Quibit system. Address user queri
   }
 
   // 4. Fallback if not a known specialist and not the orchestrator modelId
+
   console.log(
     `[PromptLoader] No specific specialist context and modelId ('${modelId}') is not orchestrator. Loading default assistant prompt.`,
   );

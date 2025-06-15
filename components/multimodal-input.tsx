@@ -119,12 +119,25 @@ function PureMultimodalInput({
 
             // Notify parent with basic metadata
             if (onFileProcessed) {
-              onFileProcessed({
+              const fallbackData = {
                 filename: file.name,
                 contentType: file.type,
                 url: uploadResult.url,
                 extractedText: `File uploaded: ${file.name} (${file.type})`,
-              });
+              };
+
+              console.log(
+                '🔍 [DEBUG] MultimodalInput calling onFileProcessed (FALLBACK) with:',
+                {
+                  filename: fallbackData.filename,
+                  contentType: fallbackData.contentType,
+                  url: fallbackData.url,
+                  extractedText: fallbackData.extractedText,
+                  reason: 'Extraction failed, using basic metadata',
+                },
+              );
+
+              onFileProcessed(fallbackData);
             }
           } else {
             const extractResult = await extractResponse.json();
@@ -139,7 +152,7 @@ function PureMultimodalInput({
 
             // Notify parent with extracted content
             if (onFileProcessed) {
-              onFileProcessed({
+              const fileData = {
                 filename: file.name,
                 contentType: file.type,
                 url: uploadResult.url,
@@ -147,7 +160,22 @@ function PureMultimodalInput({
                   extractResult.extractedContent ||
                   extractResult.extractedText ||
                   '',
-              });
+              };
+
+              console.log(
+                '🔍 [DEBUG] MultimodalInput calling onFileProcessed with:',
+                {
+                  filename: fileData.filename,
+                  contentType: fileData.contentType,
+                  url: fileData.url,
+                  hasExtractedText: !!fileData.extractedText,
+                  extractedTextLength: fileData.extractedText?.length || 0,
+                  extractedTextPreview:
+                    fileData.extractedText?.substring(0, 200) || 'No text',
+                },
+              );
+
+              onFileProcessed(fileData);
             }
           }
         }

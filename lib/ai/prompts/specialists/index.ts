@@ -1,5 +1,20 @@
 import type { SpecialistConfig } from './template';
 
+// Fallback specialists that are always available
+const FALLBACK_SPECIALISTS = [
+  {
+    id: 'echo-tango-specialist',
+    name: 'Echo Tango',
+    description:
+      'Creative agency specialist for video production and brand storytelling',
+  },
+  {
+    id: 'chat-model',
+    name: 'General Chat',
+    description: 'General conversational assistant',
+  },
+];
+
 // Server-only imports with runtime protection
 let db: any = null;
 let specialists: any = null;
@@ -15,7 +30,10 @@ if (typeof window === 'undefined') {
     specialists = specialistsSchema;
     eq = eqOperator;
   } catch (error) {
-    console.warn('Database imports failed in specialists/index.ts', error);
+    console.warn(
+      'Database imports failed in specialists/index.ts, using fallbacks',
+      error,
+    );
   }
 }
 
@@ -76,7 +94,7 @@ export async function getSpecialistPromptById(
 }
 
 /**
- * Retrieves a list of available specialists from the database.
+ * Retrieves a list of available specialists from the database with robust fallback.
  * @returns Promise resolving to an array of specialist info objects.
  */
 export async function getAvailableSpecialists(): Promise<
@@ -86,33 +104,39 @@ export async function getAvailableSpecialists(): Promise<
     description: string;
   }>
 > {
-  // Check if we're on server-side and have database access
-  if (!db || !specialists) {
-    console.warn(
-      '[SpecialistRegistry] Database not available (client-side or import failed). Cannot retrieve specialists.',
-    );
-    return [];
+  // Always try database first if available
+  if (db && specialists) {
+    try {
+      const result = await db
+        .select({
+          id: specialists.id,
+          name: specialists.name,
+          description: specialists.description,
+        })
+        .from(specialists);
+
+      if (result && result.length > 0) {
+        console.log(
+          '[SpecialistRegistry] Successfully loaded specialists from database:',
+          result.length,
+        );
+        return result.map((config: any) => ({
+          id: config.id,
+          name: config.name,
+          description: config.description || '',
+        }));
+      }
+    } catch (error) {
+      console.error(
+        '[SpecialistRegistry] Database error retrieving specialists, using fallbacks',
+        error,
+      );
+    }
   }
 
-  try {
-    const result = await db
-      .select({
-        id: specialists.id,
-        name: specialists.name,
-        description: specialists.description,
-      })
-      .from(specialists);
-
-    return result.map((config: any) => ({
-      id: config.id,
-      name: config.name,
-      description: config.description || '',
-    }));
-  } catch (error) {
-    console.error(
-      '[SpecialistRegistry] Database error retrieving specialists',
-      error,
-    );
-    return [];
-  }
+  // Fallback to hardcoded specialists
+  console.warn(
+    '[SpecialistRegistry] Database not available or empty, using fallback specialists',
+  );
+  return FALLBACK_SPECIALISTS;
 }
