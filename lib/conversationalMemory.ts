@@ -29,10 +29,6 @@ export async function retrieveConversationalMemory(
   maxResults = 5,
 ): Promise<ConversationalMemorySnippet[]> {
   try {
-    console.log(
-      `[ConversationalMemory] Retrieving memory for chatId=${chatId}, query="${queryText.substring(0, 100)}..."`,
-    );
-
     if (!process.env.OPENAI_API_KEY) {
       console.warn(
         '[ConversationalMemory] OpenAI API key not configured, skipping memory retrieval',
@@ -57,15 +53,8 @@ export async function retrieveConversationalMemory(
     }
 
     if (!data || data.length === 0) {
-      console.log(
-        `[ConversationalMemory] No memory found for chatId=${chatId}`,
-      );
       return [];
     }
-
-    console.log(
-      `[ConversationalMemory] Retrieved ${data.length} memory snippets for chatId=${chatId}`,
-    );
 
     // Map the database results to ConversationalMemorySnippet format
     return data.map((item: any) => ({
@@ -100,10 +89,6 @@ export async function storeConversationalMemory(
   sourceType: 'turn' | 'summary' = 'turn',
 ): Promise<boolean> {
   try {
-    console.log(
-      `[ConversationalMemory] Storing ${sourceType} for chatId=${chatId}`,
-    );
-
     if (!process.env.OPENAI_API_KEY) {
       console.warn(
         '[ConversationalMemory] OpenAI API key not configured, skipping memory storage',
@@ -132,9 +117,6 @@ export async function storeConversationalMemory(
       return false;
     }
 
-    console.log(
-      `[ConversationalMemory] Successfully stored ${sourceType} for chatId=${chatId}`,
-    );
     return true;
   } catch (error) {
     console.error(

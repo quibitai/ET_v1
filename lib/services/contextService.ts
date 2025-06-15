@@ -12,6 +12,12 @@ import type { ClientConfig } from '@/lib/db/queries';
 import { retrieveConversationalMemory } from '@/lib/conversationalMemory';
 import { processHistory } from '@/lib/contextUtils';
 import type { ConversationalMemorySnippet } from '@/lib/contextUtils';
+import type { BaseMessage } from '@langchain/core/messages';
+import {
+  HumanMessage,
+  AIMessage,
+  SystemMessage,
+} from '@langchain/core/messages';
 
 /**
  * Context processing configuration
@@ -37,6 +43,7 @@ export interface ProcessedContext {
   clientConfig?: ClientConfig | null;
   memoryContext?: any[];
   conversationalMemory?: ConversationalMemorySnippet[];
+  processedHistory?: BaseMessage[];
   fileContext?: {
     filename: string;
     contentType: string;
@@ -109,6 +116,8 @@ export class ContextService {
       fileContext: brainRequest.fileContext,
     };
 
+    let conversationalMemory: ConversationalMemorySnippet[] = [];
+
     // Add memory context if enabled
     if (this.config.enableMemory) {
       processedContext.memoryContext = this.extractMemoryContext(brainRequest);
@@ -116,12 +125,42 @@ export class ContextService {
       // Add conversational memory retrieval
       if (brainRequest.chatId && brainRequest.messages.length > 0) {
         const userInput = this.extractUserInput(brainRequest);
-        processedContext.conversationalMemory =
-          await this.retrieveConversationalMemory(
-            brainRequest.chatId,
-            userInput,
-          );
+        conversationalMemory = await this.retrieveConversationalMemory(
+          brainRequest.chatId,
+          userInput,
+        );
+        processedContext.conversationalMemory = conversationalMemory;
       }
+    }
+
+    // MEMORY INTEGRATION: Process and store the full history with memory
+    if (brainRequest.messages && brainRequest.messages.length > 0) {
+      // Convert messages to LangChain format
+      const rawMessages = brainRequest.messages.map((msg) => {
+        if (msg.role === 'user') {
+          return new HumanMessage(msg.content);
+        } else if (msg.role === 'assistant') {
+          return new AIMessage(msg.content);
+        } else {
+          return new SystemMessage(msg.content);
+        }
+      });
+
+      // Get current user input
+      const currentUserInput = this.extractUserInput(brainRequest);
+
+      // Process history with memory integration
+      processedContext.processedHistory = processHistory(
+        rawMessages,
+        currentUserInput,
+        conversationalMemory,
+      );
+
+      this.logger.info('Processed message history with memory integration', {
+        originalMessageCount: rawMessages.length,
+        processedHistoryCount: processedContext.processedHistory.length,
+        memorySnippetCount: conversationalMemory.length,
+      });
     }
 
     return processedContext;
