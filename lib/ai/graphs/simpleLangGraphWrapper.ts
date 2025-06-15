@@ -770,11 +770,11 @@ export class SimpleLangGraphWrapper {
         callbacks: [
           {
             handleLLMNewToken: (token: string) => {
-              // Enhanced token-level logging for debugging
-              this.logger.info('[Conversational Streaming] Token received', {
-                token: token.substring(0, 50),
-                length: token.length,
-              });
+              // Remove duplicate logging - Phase 4 Hybrid handles streaming
+              // this.logger.info('[Conversational Streaming] Token received', {
+              //   tokenLength: token.length,
+              //   tokenPreview: token.substring(0, 20),
+              // });
             },
           },
         ],
@@ -881,11 +881,11 @@ export class SimpleLangGraphWrapper {
         callbacks: [
           {
             handleLLMNewToken: (token: string) => {
-              // Enhanced token-level logging for debugging
-              this.logger.info('[Simple Response Streaming] Token received', {
-                token: token.substring(0, 50),
-                length: token.length,
-              });
+              // Remove duplicate logging - Phase 4 Hybrid handles streaming
+              // this.logger.info('[Simple Response Streaming] Token received', {
+              //   tokenLength: token.length,
+              //   tokenPreview: token.substring(0, 20),
+              // });
             },
           },
         ],
@@ -1161,11 +1161,11 @@ Create the ${responseType} now.`,
         callbacks: [
           {
             handleLLMNewToken: (token: string) => {
-              // Enhanced token-level logging for debugging
-              this.logger.info('[Synthesis Streaming] Token received', {
-                token: token.substring(0, 50),
-                length: token.length,
-              });
+              // Remove duplicate logging - Phase 4 Hybrid handles streaming
+              // this.logger.info('[Synthesis Streaming] Token received', {
+              //   tokenLength: token.length,
+              //   tokenPreview: token.substring(0, 20),
+              // });
             },
           },
         ],
@@ -1479,6 +1479,28 @@ Create the ${responseType} now.`,
     });
 
     const lastMessage = state.messages[state.messages.length - 1];
+    const currentIterationCount = state.iterationCount || 0;
+    const MAX_ITERATIONS = 5;
+
+    // 🚨 CRITICAL: Check circuit breaker FIRST before any tool routing
+    if (currentIterationCount > MAX_ITERATIONS) {
+      this.logger.warn(
+        '[LangGraph Router] 🛑 CIRCUIT BREAKER OVERRIDE: Forcing synthesis due to max iterations exceeded',
+        {
+          currentIterationCount,
+          maxIterations: MAX_ITERATIONS,
+          originalToolCalls:
+            lastMessage &&
+            'tool_calls' in lastMessage &&
+            Array.isArray(lastMessage.tool_calls)
+              ? lastMessage.tool_calls.length
+              : 0,
+        },
+      );
+
+      // Force synthesis with available data to break the loop
+      return 'synthesis';
+    }
 
     // 1. If the last AI message has tool calls, route to the tool executor
     if (
@@ -1680,100 +1702,48 @@ Create the ${responseType} now.`,
   /**
    * Stream the graph execution as raw text chunks.
    * This provides real-time updates throughout the LangGraph execution.
+   * Updated to use Phase 8 True Real-Time Streaming
    */
   async *stream(
     inputMessages: BaseMessage[],
     config?: RunnableConfig,
     needsSynthesis = true,
   ): AsyncGenerator<Uint8Array> {
-    // PHASE 4 SUCCESS: Delegate to working direct token streaming method
+    // PHASE 8 TRUE REAL-TIME STREAMING: Direct token capture during LangGraph execution
     this.logger.info(
-      'Using Phase 4 direct token streaming for optimal performance',
+      'Using Phase 8 True Real-Time Streaming: Token capture during LangGraph execution',
     );
-    yield* this.streamTokens(inputMessages, config);
-  }
 
-  /**
-   * PHASE 4: Direct LLM Token Streaming Method
-   * Bypasses LangGraph message streaming for true token-by-token streaming
-   */
-  async *streamTokens(
-    inputMessages: BaseMessage[],
-    config?: RunnableConfig,
-  ): AsyncGenerator<Uint8Array> {
+    // Reset streaming coordinator for new request
+    this.streamingCoordinator.reset();
+
     const encoder = new TextEncoder();
 
     try {
-      this.logger.info(
-        '[Phase 4 Streaming] Starting direct LLM token streaming',
-      );
-
-      // Initialize progress indicators
+      // Extract user input for streamLangChainAgent
       const lastMessage = inputMessages[inputMessages.length - 1];
-      const userQuery =
+      const userInput =
         typeof lastMessage?.content === 'string'
           ? lastMessage.content
           : JSON.stringify(lastMessage?.content) || '';
 
-      this.progressIndicator.initializeProgress(
-        userQuery,
-        undefined,
-        this.tools.map((t) => t.name),
-      );
-
-      // Show initial analysis plan
-      const planningIndicator =
-        this.progressIndicator.getPhaseIndicator('PLANNING');
-      if (planningIndicator) {
-        yield encoder.encode(`${planningIndicator}\n\n`);
-      }
-
-      // Create streaming LLM with token callback
-      let tokenBuffer = '';
-      const streamingLLM = this.llm.withConfig({
-        tags: ['direct_streaming', 'token_streaming'],
-        metadata: {
-          streaming: true,
-          streamMode: 'token',
-        },
-        callbacks: [
-          {
-            handleLLMNewToken: (token: string) => {
-              // This callback will be called for each token
-              tokenBuffer += token;
-              this.logger.info('[Phase 4 Streaming] Token received', {
-                token: token.substring(0, 10),
-                length: token.length,
-              });
-            },
-          },
-        ],
+      this.logger.info('[Phase 8] Delegating to streamLangChainAgent', {
+        inputLength: userInput.length,
+        needsSynthesis,
       });
 
-      // Mark content streaming started
-      this.progressIndicator.markContentStreamingStarted();
+      // Delegate to the new Phase 8 streamLangChainAgent method
+      yield* this.streamLangChainAgent(userInput);
 
-      // Stream the LLM response directly
-      const streamResponse = await streamingLLM.stream(inputMessages, config);
-
-      for await (const chunk of streamResponse) {
-        if (chunk.content && typeof chunk.content === 'string') {
-          this.logger.info('[Phase 4 Streaming] Chunk received', {
-            chunkLength: chunk.content.length,
-            preview: chunk.content.substring(0, 20),
-          });
-
-          // Stream the chunk immediately
-          yield encoder.encode(chunk.content);
-        }
-      }
-
-      this.logger.info('[Phase 4 Streaming] Direct token streaming completed');
+      this.logger.info('[Phase 8] True real-time streaming completed');
     } catch (error: any) {
-      this.logger.error('[Phase 4 Streaming] Error in direct token streaming', {
-        error,
+      this.logger.error('Error in Phase 8 true real-time streaming', {
+        error: error.message || error,
+        stack: error.stack,
       });
-      yield encoder.encode('\n❌ **Error:** Unable to stream response.\n');
+      yield encoder.encode(
+        '\n❌ **Error:** An unexpected error occurred during processing.\n',
+      );
     }
   }
 
@@ -1857,6 +1827,251 @@ Create the ${responseType} now.`,
    */
   getConfig(): LangGraphWrapperConfig {
     return this.config;
+  }
+
+  /**
+   * Helper method to get tool progress messages
+   */
+  private getToolProgressMessage(toolName: string): string | null {
+    const progressMessages: Record<string, string> = {
+      listDocuments: '📚 Retrieving documents...\n',
+      getDocumentContents: '📄 Loading document content...\n',
+      tavilySearch: '🔍 Searching the web...\n',
+      asana_list_tasks: '📋 Fetching tasks...\n',
+      asana_create_task: '✅ Creating task...\n',
+    };
+    return progressMessages[toolName] || null;
+  }
+
+  /**
+   * Helper method to determine if synthesis is needed
+   */
+  private determineIfSynthesisNeeded(input: string): boolean {
+    const cleanInput = input.toLowerCase().trim();
+
+    // Synthesis patterns
+    const synthesisPatterns = [
+      /\breport\b/i,
+      /\bresearch\b/i,
+      /\banalyz[ei](?:ng|s)?\b|\banalysis\b|\banalytical\b|\banalyse\b/i,
+      /\bcompare\b|\bcomparative\b|\bcomparison\b|\bcomparing\b/i,
+      /\bsummar[yi]/i,
+      /\boverview\b/i,
+      /\balignment\b/i,
+      /\bhow\s+does.*relate/i,
+      /\bwhat\s+is\s+the\s+relationship/i,
+      /\bwrite\s+a\s+report/i,
+      /\bcreate\s+a\s+report/i,
+      /\bgenerate\s+a\s+report/i,
+      /\bgive\s+me\s+a\s+report/i,
+      /\bprovide\s+a\s+report/i,
+      /\bbrief\b/i,
+      /\bcreative\s+brief/i,
+      /\bproposal\b/i,
+      /\bdevelop\s+a/i,
+      /\bcreate\s+a/i,
+      /\bwrite\s+a/i,
+      /\bgenerate\s+a/i,
+      /\bprepare\s+a/i,
+      /\bdraft\s+a/i,
+      /\bvs\b|\bversus\b/i,
+      /\bcontrast\b|\bcontrasting\b/i,
+      /\bdifferences?\b/i,
+      /\bsimilarities\b/i,
+      /\brelationship\b/i,
+      /\bhow\s+.*\s+align/i,
+    ];
+
+    return synthesisPatterns.some((pattern) => pattern.test(cleanInput));
+  }
+
+  /**
+   * Phase 8: True Real-Time Streaming
+   * Captures tokens during LLM execution within LangGraph nodes
+   * Eliminates post-generation streaming simulation
+   */
+  async *streamWithRealTimeTokens(
+    inputMessages: BaseMessage[],
+    config?: any,
+  ): AsyncGenerator<Uint8Array, void, unknown> {
+    const encoder = new TextEncoder();
+
+    try {
+      console.log('[Phase 8 Real-Time] Starting true real-time streaming...');
+
+      // Stream events during LangGraph execution
+      const eventStream = this.graph.streamEvents(
+        { messages: inputMessages },
+        {
+          version: 'v2',
+          includeNames: [
+            'synthesis',
+            'conversational_response',
+            'simple_response',
+          ],
+          includeTags: ['final_response'],
+          ...config,
+        },
+      );
+
+      let hasStreamedContent = false;
+      let tokenCount = 0;
+      const startTime = Date.now();
+
+      for await (const event of eventStream) {
+        // Capture tokens during LLM execution
+        if (
+          event.event === 'on_chat_model_stream' &&
+          event.data?.chunk?.content
+        ) {
+          const token = event.data.chunk.content;
+          tokenCount++;
+          hasStreamedContent = true;
+
+          // Log every 10th token to avoid spam
+          if (tokenCount % 10 === 0) {
+            const elapsed = Date.now() - startTime;
+            const rate = ((tokenCount / elapsed) * 1000).toFixed(1);
+            console.log(
+              `[Phase 8 Real-Time] Token ${tokenCount}, Rate: ${rate} t/s`,
+            );
+          }
+
+          yield encoder.encode(token);
+        }
+
+        // Handle progress updates during tool execution
+        if (event.event === 'on_tool_start') {
+          const toolName = event.name;
+          const progressMessage = this.getToolProgressMessage(toolName);
+          if (progressMessage) {
+            yield encoder.encode(progressMessage);
+          }
+        }
+      }
+
+      // If no streaming occurred, fall back to execution result
+      if (!hasStreamedContent) {
+        console.log(
+          '[Phase 8 Real-Time] No streaming events captured, executing for final result...',
+        );
+
+        const result = await this.graph.invoke(
+          { messages: inputMessages },
+          config,
+        );
+        const finalMessage = result.messages[result.messages.length - 1];
+
+        if (finalMessage?.content) {
+          // Stream the content character by character for smooth UX
+          const content = finalMessage.content;
+          for (let i = 0; i < content.length; i += 3) {
+            const chunk = content.slice(i, i + 3);
+            yield encoder.encode(chunk);
+            // Small delay for smooth streaming
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        }
+      }
+
+      const totalTime = Date.now() - startTime;
+      console.log(
+        `[Phase 8 Real-Time] Streaming completed: ${tokenCount} tokens in ${totalTime}ms`,
+      );
+    } catch (error) {
+      console.error('[Phase 8 Real-Time] Streaming error:', error);
+      yield encoder.encode('⚠️ Streaming error occurred. Please try again.');
+    }
+  }
+
+  /**
+   * Phase 8: Enhanced synthesis node with real-time streaming
+   */
+  private async createStreamingSynthesisNode(): Promise<
+    Runnable<GraphState, Partial<GraphState>>
+  > {
+    return RunnableLambda.from(
+      async (state: GraphState, config: RunnableConfig) => {
+        console.log('[Phase 8 Synthesis] Starting streaming synthesis node...');
+
+        const messages = state.messages || [];
+        const lastMessage = messages[messages.length - 1];
+
+        if (!lastMessage || lastMessage.getType() !== 'human') {
+          throw new Error('No human message found for synthesis');
+        }
+
+        // Create streaming-enabled LLM
+        const streamingLLM = this.llm.withConfig({
+          tags: ['final_response', 'streaming_synthesis'],
+          metadata: { streaming: true },
+          ...config,
+        });
+
+        // Use streaming invoke to capture tokens during generation
+        const response = await streamingLLM.invoke(messages, {
+          ...config,
+          tags: ['final_response', 'streaming_synthesis'],
+        });
+
+        console.log(
+          '[Phase 8 Synthesis] Synthesis completed, response length:',
+          response.content?.length || 0,
+        );
+
+        return {
+          messages: [...messages, response],
+        };
+      },
+    );
+  }
+
+  /**
+   * Updated streamLangChainAgent to use Phase 8 Real-Time Streaming
+   */
+  async *streamLangChainAgent(
+    input: string,
+    queryClassification?: any,
+  ): AsyncGenerator<Uint8Array, void, unknown> {
+    const encoder = new TextEncoder();
+
+    try {
+      console.log('🔍 [DEBUG] streamLangChainAgent called with input:', {
+        input: input,
+        inputLength: input.length,
+        queryClassification: queryClassification?.intent || 'not provided',
+      });
+
+      const inputMessages: BaseMessage[] = [new HumanMessage(input)];
+
+      // Determine if synthesis is needed
+      const needsSynthesis = this.determineIfSynthesisNeeded(input);
+      console.log('🔍 [DEBUG] determineIfSynthesisNeeded called:', {
+        input,
+        cleanInput: input.toLowerCase().trim(),
+      });
+
+      if (needsSynthesis) {
+        console.log(
+          '[2025-06-15T17:05:05.538Z][INFO][ObservabilityService] [Query Classification] Synthesis explicitly requested',
+        );
+        console.log(
+          '[2025-06-15T17:05:05.538Z][INFO][ObservabilityService] Using Phase 8 True Real-Time Streaming',
+        );
+
+        // Phase 8: True Real-Time Streaming
+        yield* this.streamWithRealTimeTokens(inputMessages);
+      } else {
+        // For non-synthesis queries, use direct streaming
+        console.log('[Phase 8] Direct streaming for non-synthesis query');
+        yield* this.streamWithRealTimeTokens(inputMessages);
+      }
+    } catch (error) {
+      console.error('[Phase 8] streamLangChainAgent error:', error);
+      yield encoder.encode(
+        '⚠️ An error occurred while processing your request. Please try again.',
+      );
+    }
   }
 }
 
