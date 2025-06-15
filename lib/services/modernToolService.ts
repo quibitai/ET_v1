@@ -1,4 +1,3 @@
-
 import { availableTools } from '@/lib/ai/tools';
 import type { RequestLogger } from './observabilityService';
 
@@ -158,6 +157,55 @@ export async function selectRelevantTools(
   maxTools = 26, // Increased to allow access to all available tools
 ): Promise<any[]> {
   const { userQuery, logger } = context;
+
+  // Enhanced document keyword extraction for multi-document scenarios
+  const extractDocumentKeywords = (query: string): string[] => {
+    const keywords: string[] = [];
+
+    // Common document name patterns
+    const documentPatterns = [
+      /\b(?:core\s+values?|values?)\b/gi,
+      /\b(?:ideal\s+client\s+profile?|client\s+profile?|icp)\b/gi,
+      /\b(?:brand\s+overview|brand)\b/gi,
+      /\b(?:producer\s+checklist|checklist)\b/gi,
+      /\b(?:client\s+research|research)\b/gi,
+      /\b(?:cost\s+sheet|costs?|pricing|rates?)\b/gi,
+      /\b(?:profit\s+and\s+loss|p&l|financial)\b/gi,
+    ];
+
+    documentPatterns.forEach((pattern) => {
+      const matches = query.match(pattern);
+      if (matches) {
+        keywords.push(...matches.map((m) => m.toLowerCase().trim()));
+      }
+    });
+
+    return keywords;
+  };
+
+  // Detect multi-document analysis scenarios
+  const isMultiDocumentQuery = (query: string): boolean => {
+    const multiDocPatterns = [
+      /\b(?:comparative?|comparison|compare|vs|versus)\b/i,
+      /\b(?:analysis|analyze|analytical)\b/i,
+      /\b(?:relationship|align|alignment)\b/i,
+      /\b(?:differences?|similarities)\b/i,
+      /\b(?:contrast|contrasting)\b/i,
+      /\b(?:how\s+.*\s+relate)\b/i,
+    ];
+
+    return multiDocPatterns.some((pattern) => pattern.test(query));
+  };
+
+  const isMultiDoc = isMultiDocumentQuery(userQuery);
+  const documentKeywords = extractDocumentKeywords(userQuery);
+
+  logger?.info('[modernToolService] Enhanced document analysis', {
+    isMultiDocumentQuery: isMultiDoc,
+    extractedDocumentKeywords: documentKeywords,
+    inputPreview: userQuery.substring(0, 100),
+  });
+
   const categorizedTools = categorizeTools();
   const keywords = userQuery.toLowerCase();
 

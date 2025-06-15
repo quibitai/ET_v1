@@ -23,6 +23,27 @@ BUDGET CREATION WORKFLOW: When users ask to create budgets or estimates:
 
   getDocumentContents: `DOCUMENT RETRIEVAL TOOL: Use this tool to fetch the full content of a specific document using its ID (preferred) or title. Always try to use document IDs from listDocuments results first for exact matches. For title-based retrieval, use the most specific title terms possible.`,
 
+  getMultipleDocuments: `SMART MULTI-DOCUMENT RETRIEVAL TOOL: Use this tool for comparative analysis, synthesis, or when multiple documents are referenced in a single query. This tool automatically:
+  
+  1. DETECTS multi-document needs (comparative analysis, "vs", "relationship", etc.)
+  2. EXTRACTS all document references from the query automatically
+  3. RETRIEVES multiple documents in parallel for efficiency
+  4. PROVIDES relationship mapping for comparative analysis
+  
+  **WHEN TO USE**: 
+  - "Compare [Document A] and [Document B]"
+  - "How do [Document A] and [Document B] align?"
+  - "What's the relationship between [Document A] and [Document B]?"
+  - Any query mentioning multiple documents or requiring comparative analysis
+  
+  **ADVANTAGES over individual getDocumentContents calls**:
+  - Parallel retrieval (faster)
+  - Automatic document detection
+  - Built-in relationship mapping
+  - Better error handling for missing documents
+  
+  **USAGE**: Simply pass the user's query and the tool will handle document extraction and retrieval automatically.`,
+
   // Web Search Tools
   tavilySearch: `PROACTIVE RESEARCH TOOL: Use immediately for company information, current events, industry research, or any external information needed. Always search when users mention specific companies, organizations, or need current data. Synthesize results into comprehensive responses.`,
 

@@ -16,6 +16,19 @@ import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { RequestLogger } from '../../services/observabilityService';
 import { ContextWindowManager } from '../core/contextWindowManager';
+import {
+  ContentFormatter,
+  type DocumentResult,
+  type ToolResult,
+} from '../formatting/ContentFormatter';
+import { StreamingCoordinator } from '../formatting/StreamingCoordinator';
+import { DocumentOrchestrator } from '../core/DocumentOrchestrator';
+import { SynthesisValidator } from '../core/SynthesisValidator';
+import { ProgressIndicatorManager } from '../core/ProgressIndicatorManager';
+import { ResponseRoutingDisplay } from '../core/ResponseRoutingDisplay';
+import { ContentQualityValidator } from '../core/ContentQualityValidator';
+import type { DocumentRetrievalPlan } from '../core/DocumentOrchestrator';
+import type { ValidationContext } from '../core/SynthesisValidator';
 
 import {
   RunnableSequence,
@@ -105,6 +118,12 @@ export class SimpleLangGraphWrapper {
   private logger: RequestLogger;
   private graph: any; // Use any for the compiled graph to avoid complex type issues
   private contextManager: ContextWindowManager;
+  private streamingCoordinator: StreamingCoordinator;
+  private documentOrchestrator: DocumentOrchestrator;
+  private synthesisValidator: SynthesisValidator;
+  private progressIndicator: ProgressIndicatorManager;
+  private routingDisplay: ResponseRoutingDisplay;
+  private qualityValidator: ContentQualityValidator;
 
   constructor(config: LangGraphWrapperConfig) {
     this.config = config;
@@ -114,6 +133,12 @@ export class SimpleLangGraphWrapper {
     this.contextManager = new ContextWindowManager(config.logger, {
       enableAutoUpgrade: true,
     });
+    this.streamingCoordinator = new StreamingCoordinator();
+    this.documentOrchestrator = new DocumentOrchestrator(config.logger);
+    this.synthesisValidator = new SynthesisValidator(config.logger);
+    this.progressIndicator = new ProgressIndicatorManager();
+    this.routingDisplay = new ResponseRoutingDisplay(config.logger);
+    this.qualityValidator = new ContentQualityValidator(config.logger);
 
     // Fix memory leak warnings by increasing max listeners
     if (typeof process !== 'undefined' && process.setMaxListeners) {
@@ -734,7 +759,11 @@ export class SimpleLangGraphWrapper {
           ];
         }
       }),
-      this.llm,
+      // CRITICAL FIX: Configure LLM with explicit streaming for this node
+      this.llm.withConfig({
+        tags: ['conversational_llm'],
+        metadata: { streaming: true },
+      }),
       RunnableLambda.from((aiMessage: AIMessage): Partial<GraphState> => {
         this.logger.info(
           '[LangGraph Conversational] Conversational response completed',
@@ -743,14 +772,24 @@ export class SimpleLangGraphWrapper {
       }),
     ]);
 
+    // CRITICAL FIX: Ensure proper tags for streaming detection
     return conversationalChain.withConfig({
       tags: ['final_node', 'conversational'],
+      metadata: {
+        streaming: true,
+        node_type: 'conversational',
+      },
     }) as Runnable<GraphState, Partial<GraphState>>;
   }
 
   /**
    * Simple Response Node
    * Formats tool results for direct output without synthesis
+   */
+  /**
+   * Simple Response Node - REFACTORED with centralized formatting
+   * Formats tool results for direct output without synthesis
+   * FIXES: Content duplication bug by using single formatting path
    */
   private simpleResponseNode(): Runnable<GraphState, Partial<GraphState>> {
     const simpleResponseChain = RunnableSequence.from([
@@ -759,7 +798,7 @@ export class SimpleLangGraphWrapper {
           '[LangGraph Simple Response] Formatting tool results for direct output',
         );
 
-        // Find tool messages
+        // Extract tool results using centralized approach
         const toolMessages = state.messages.filter(
           (msg) => msg._getType() === 'tool',
         );
@@ -768,13 +807,12 @@ export class SimpleLangGraphWrapper {
           // No tool results, provide a simple acknowledgment
           return [
             new SystemMessage({
-              content:
-                'Provide a brief acknowledgment that the request was processed.',
+              content: ContentFormatter.getSystemPrompt('generic'),
             }),
           ];
         }
 
-        // Check the original user query to understand intent
+        // Extract user query
         const userMessages = state.messages.filter(
           (msg) => msg._getType() === 'human',
         );
@@ -784,143 +822,60 @@ export class SimpleLangGraphWrapper {
             ? lastUserMessage.content
             : JSON.stringify(lastUserMessage?.content) || '';
 
-        // Detect if this is a document listing request vs content request
-        const isListingRequest =
-          /(?:list|show|display|enumerate)\s+(?:all\s+)?(?:the\s+)?(?:available\s+)?(?:documents|files)/i.test(
-            userQuery,
-          );
-        const isContentRequest =
-          /(?:get|show|display|give\s+me)\s+(?:the\s+)?(?:complete|full|entire|whole)\s+(?:contents?|content|text)/i.test(
-            userQuery,
-          );
-
         this.logger.info('[LangGraph Simple Response] Query intent analysis', {
           userQuery: userQuery.substring(0, 100),
-          isListingRequest,
-          isContentRequest,
         });
 
-        // Process tool results based on intent
-        let formattedContent = '';
+        // Convert tool messages to ToolResult format
+        const toolResults: ToolResult[] = toolMessages.map((msg) => ({
+          name: (msg as any)?.name || 'tool',
+          content: msg.content,
+        }));
 
-        for (const toolMsg of toolMessages) {
-          const content =
-            typeof toolMsg.content === 'string'
-              ? toolMsg.content
-              : JSON.stringify(toolMsg.content) || 'No content';
+        // Use centralized formatter - SINGLE point of formatting (fixes duplication)
+        const formattedContent = ContentFormatter.formatToolResults(
+          toolResults,
+          userQuery,
+        );
 
-          try {
-            const parsed = JSON.parse(content);
-
-            // Handle document listing responses
-            if (
-              parsed.success &&
-              parsed.available_documents &&
-              Array.isArray(parsed.available_documents)
-            ) {
-              if (isListingRequest) {
-                // User asked to list files - show the list
-                const cleanContent = parsed.available_documents
-                  .map((item: any, index: number) => {
-                    if (
-                      item &&
-                      typeof item === 'object' &&
-                      item.title &&
-                      item.url
-                    ) {
-                      const title = String(item.title).replace(
-                        /[^\w\s\-\.]/g,
-                        '',
-                      );
-                      const url = String(item.url);
-                      const description = this.getDocumentDescription(title);
-                      return `${index + 1}. [${title}](${url})\n• ${description}`;
-                    }
-                    return `• ${String(item).substring(0, 200)}...`;
-                  })
-                  .join('\n');
-                formattedContent = `📋 **Available Documents:**\n\n${cleanContent}`;
-              } else {
-                // Not a listing request, but got document list - this might be for content discovery
-                formattedContent = `Found ${parsed.available_documents.length} documents. Please specify which document you'd like to access.`;
-              }
-            }
-            // Handle document content responses
-            else if (parsed.success && parsed.document && parsed.content) {
-              const fullContent = String(parsed.content);
-
-              if (isContentRequest || fullContent.length > 500) {
-                // User asked for content OR we have substantial content - show it
-                formattedContent = fullContent;
-              } else {
-                // Short content - treat as preview
-                const doc = parsed.document;
-                const title = String(doc.title || 'Untitled').replace(
-                  /[^\w\s\-\.]/g,
-                  '',
-                );
-                const url = String(doc.url || '');
-                const description = this.getDocumentDescription(title);
-                formattedContent = `[${title}](${url})\n- ${description}\n\n**Content Preview:**\n${fullContent}`;
-              }
-            }
-            // Handle direct array responses
-            else if (Array.isArray(parsed) && parsed.length > 0) {
-              const cleanContent = parsed
-                .map((item: any, index: number) => {
-                  if (
-                    item &&
-                    typeof item === 'object' &&
-                    item.title &&
-                    item.url
-                  ) {
-                    const title = String(item.title).replace(
-                      /[^\w\s\-\.]/g,
-                      '',
-                    );
-                    const url = String(item.url);
-                    const description = this.getDocumentDescription(title);
-                    return `${index + 1}. [${title}](${url})\n• ${description}`;
-                  }
-                  return `• ${String(item).substring(0, 200)}...`;
-                })
-                .join('\n');
-              formattedContent = `📋 **Results:**\n\n${cleanContent}`;
-            } else {
-              // Generic object or other structure
-              formattedContent = String(content).substring(0, 1000);
-            }
-          } catch {
-            // Not JSON, use as-is
-            formattedContent = String(content).substring(0, 1000);
-          }
-        }
+        // Determine content type for appropriate system prompt
+        const isDocumentListing = formattedContent.includes(
+          '📋 **Available Documents:**',
+        );
+        const contentType = isDocumentListing ? 'document_list' : 'content';
 
         return [
           new SystemMessage({
-            content: `You are a helpful assistant. Present EXACTLY the following formatted information to the user. Do NOT change the formatting, numbering, or bullet points. Do NOT include any raw JSON data, tool results, technical details, or instructions. Copy the content below EXACTLY as it appears:
-
-${formattedContent.trim()}`,
+            content: ContentFormatter.getSystemPrompt(contentType),
           }),
           new HumanMessage({
-            content:
-              'Present this information EXACTLY as formatted above. Do not change bullets to numbers or numbers to bullets. Do not add any additional text or instructions.',
+            content: formattedContent,
           }),
         ];
       }),
-      this.llm,
+      // CRITICAL FIX: Configure LLM with explicit streaming for this node
+      this.llm.withConfig({
+        tags: ['simple_response_llm'],
+        metadata: { streaming: true },
+      }),
       RunnableLambda.from((aiMessage: AIMessage): Partial<GraphState> => {
         this.logger.info(
           '[LangGraph Simple Response] Simple response completed',
         );
+        // Mark that simple response has streamed content to prevent duplication
+        this.streamingCoordinator.markContentStreamed('simple');
         return { messages: [aiMessage] };
       }),
     ]);
 
-    return simpleResponseChain.withConfig({ tags: ['final_node'] }) as Runnable<
-      GraphState,
-      Partial<GraphState>
-    >;
+    // CRITICAL FIX: Ensure proper tags for streaming detection
+    return simpleResponseChain.withConfig({
+      tags: ['final_node', 'simple_response'],
+      metadata: {
+        streaming: true,
+        node_type: 'simple_response',
+      },
+    }) as Runnable<GraphState, Partial<GraphState>>;
   }
 
   /**
@@ -940,8 +895,9 @@ ${formattedContent.trim()}`,
           .map((msg) => `Tool: ${(msg as any)?.name}\nResult: ${msg.content}`)
           .join('\n\n');
 
-        // Extract knowledge base document references from tool results
+        // Extract references from tool results - detect what was actually used
         const knowledgeBaseRefs: Array<{ name: string; url?: string }> = [];
+        const webSources: Array<{ name: string; url?: string }> = [];
         const documentUrls = new Map<string, string>(); // Map document names to URLs
 
         state.messages
@@ -967,59 +923,123 @@ ${formattedContent.trim()}`,
                 // Not JSON, skip
               }
             }
+
+            // Detect web sources from search tools
+            if (
+              (toolName === 'tavilySearch' || toolName === 'tavilyExtract') &&
+              typeof content === 'string'
+            ) {
+              try {
+                const parsed = JSON.parse(content);
+                if (parsed.results && Array.isArray(parsed.results)) {
+                  parsed.results.forEach((result: any) => {
+                    if (result?.title && result?.url) {
+                      // Add to web sources if not already present
+                      if (!webSources.some((ref) => ref.url === result.url)) {
+                        webSources.push({
+                          name: result.title,
+                          url: result.url,
+                        });
+                      }
+                    }
+                  });
+                }
+              } catch (e) {
+                // Not JSON, skip
+              }
+            }
           });
 
-        // Second pass: identify documents that were actually used
+        // Second pass: identify knowledge base documents that were actually used
         state.messages
           .filter((msg) => msg._getType() === 'tool')
           .forEach((msg) => {
             const toolName = (msg as any)?.name;
             const content = msg.content;
 
-            // Check for getDocumentContents results - these are documents that were actually used
+            // Check for getDocumentContents and getMultipleDocuments results
             if (
-              toolName === 'getDocumentContents' &&
+              (toolName === 'getDocumentContents' ||
+                toolName === 'getMultipleDocuments') &&
               typeof content === 'string'
             ) {
-              // Extract document name from the content
-              const docNameMatch =
-                content.match(/Document:\s*([^\n]+)/i) ||
-                content.match(/File:\s*([^\n]+)/i) ||
-                content.match(/Title:\s*([^\n]+)/i) ||
-                content.match(/^([^:\n]+):/m); // Fallback: first line with colon
+              try {
+                const parsed = JSON.parse(content);
 
-              if (docNameMatch?.[1]) {
-                const docName = docNameMatch[1].trim();
-
-                // Try to find the URL from our collected URLs
-                let docUrl =
-                  documentUrls.get(docName) ||
-                  documentUrls.get(docName.toLowerCase());
-
-                // If no exact match, try partial matching
-                if (!docUrl) {
-                  for (const [
-                    storedName,
-                    storedUrl,
-                  ] of documentUrls.entries()) {
+                if (
+                  toolName === 'getMultipleDocuments' &&
+                  parsed.success &&
+                  parsed.documents
+                ) {
+                  // Handle getMultipleDocuments results
+                  parsed.documents.forEach((doc: any) => {
                     if (
-                      storedName
-                        .toLowerCase()
-                        .includes(docName.toLowerCase()) ||
-                      docName.toLowerCase().includes(storedName.toLowerCase())
+                      doc?.title &&
+                      !knowledgeBaseRefs.some((ref) => ref.name === doc.title)
                     ) {
-                      docUrl = storedUrl;
-                      break;
+                      knowledgeBaseRefs.push({
+                        name: doc.title,
+                        url: doc.url,
+                      });
                     }
+                  });
+                } else if (
+                  toolName === 'getDocumentContents' &&
+                  parsed.success &&
+                  parsed.document
+                ) {
+                  // Handle getDocumentContents results
+                  const doc = parsed.document;
+                  if (
+                    doc?.title &&
+                    !knowledgeBaseRefs.some((ref) => ref.name === doc.title)
+                  ) {
+                    knowledgeBaseRefs.push({
+                      name: doc.title,
+                      url: doc.url,
+                    });
                   }
                 }
+              } catch (e) {
+                // Fallback to text parsing for older format
+                const docNameMatch =
+                  content.match(/Document:\s*([^\n]+)/i) ||
+                  content.match(/File:\s*([^\n]+)/i) ||
+                  content.match(/Title:\s*([^\n]+)/i) ||
+                  content.match(/^([^:\n]+):/m);
 
-                // Add to references if not already present
-                if (!knowledgeBaseRefs.some((ref) => ref.name === docName)) {
-                  knowledgeBaseRefs.push({
-                    name: docName,
-                    url: docUrl,
-                  });
+                if (docNameMatch?.[1]) {
+                  const docName = docNameMatch[1].trim();
+
+                  // Try to find the URL from our collected URLs
+                  let docUrl =
+                    documentUrls.get(docName) ||
+                    documentUrls.get(docName.toLowerCase());
+
+                  // If no exact match, try partial matching
+                  if (!docUrl) {
+                    for (const [storedName, storedUrl] of Array.from(
+                      documentUrls.entries(),
+                    )) {
+                      if (
+                        storedName
+                          .toLowerCase()
+                          .includes(docName.toLowerCase()) ||
+                        docName.toLowerCase().includes(storedName.toLowerCase())
+                      ) {
+                        docUrl = storedUrl;
+                        break;
+                      }
+                    }
+                  }
+
+                  // Add to references if not already present
+                  if (!knowledgeBaseRefs.some((ref) => ref.name === docName)) {
+                    knowledgeBaseRefs.push({
+                      name: docName,
+                      url: docUrl,
+                    });
+                  }
                 }
               }
             }
@@ -1065,15 +1085,53 @@ ${formattedContent.trim()}`,
             'Create a detailed analysis with insights, patterns, and strategic recommendations';
         }
 
-        // Prepare knowledge base references for inclusion
-        let kbReferencesText = '';
-        if (knowledgeBaseRefs.length > 0) {
-          kbReferencesText = `
+        // Build references context for the LLM
+        let referencesContext = '';
+        let referencesInstructions = '';
 
-Knowledge Base Documents Referenced:
-${knowledgeBaseRefs
-  .map((ref) => (ref.url ? `- [${ref.name}](${ref.url})` : `- ${ref.name}`))
-  .join('\n')}`;
+        if (knowledgeBaseRefs.length > 0 || webSources.length > 0) {
+          referencesContext = '\n\nKnowledge Base Documents Used:\n';
+          knowledgeBaseRefs.forEach((ref) => {
+            if (ref.url) {
+              referencesContext += `- [${ref.name}](${ref.url})\n`;
+            } else {
+              referencesContext += `- ${ref.name}\n`;
+            }
+          });
+
+          if (webSources.length > 0) {
+            referencesContext += '\nWeb Sources Used:\n';
+            webSources.forEach((source) => {
+              if (source.url) {
+                referencesContext += `- [${source.name}](${source.url})\n`;
+              } else {
+                referencesContext += `- ${source.name}\n`;
+              }
+            });
+          }
+
+          referencesInstructions = `
+REQUIRED FORMAT FOR ALIGNMENT/COMPARISON ANALYSIS:
+## Alignment Analysis: [Topic]
+
+**Criteria 1: [Name]**
+- Description: [Brief description]
+- Alignment: [Alignment details]
+
+**Criteria 2: [Name]**
+- Description: [Brief description]  
+- Alignment: [Alignment details]
+
+**Criteria 3: [Name]**
+- Description: [Brief description]
+- Alignment: [Alignment details]
+
+CRITICAL: Include a "## References" section at the end with SEPARATE subsections for different source types:
+  
+  - Include "### Knowledge Base Documents" subsection for internal documents
+  - Include "### Web Sources" subsection for web search results (if any)
+  - Use bullet points (-) for each source, NOT numbered lists
+  - Make all source titles clickable links when URLs are available`;
         }
 
         const synthesisSystemMessage = new SystemMessage({
@@ -1084,17 +1142,46 @@ CRITICAL RULES:
 - You MUST NOT include any conversational phrases, greetings, introductions, or any text like "Here is the..." or "How can I assist...".
 - Your entire response must be the requested content itself.
 - Use ONLY the tool results provided. Do not add outside information.
-- Format with clear markdown headings, lists, and tables for readability.
+
+MARKDOWN FORMATTING BEST PRACTICES:
+- Use clear heading hierarchy: # Main Title, ## Section Headers, ### Subsections
+- Use bullet points (-) for lists, NOT nested numbering (avoid 1.1, 1.2, 2.1, 2.2)
+- For event details, use clean bullet structure:
+  - **Event Name**: [Event Title](link-if-available)
+  - **Date & Time**: Clear date/time format
+  - **Location**: Address or venue
+  - **Attendees**: [Name](email-link), [Name](email-link)
+- For calendar events: ALWAYS make event names clickable links when URLs are provided
+- For web results: ALWAYS make titles clickable links: [Article Title](URL)
+- For knowledge base documents: ALWAYS make document names clickable links: [Document Name](URL)
+- Use **bold** for emphasis, not ALL CAPS
+
+CRITICAL LINKING INSTRUCTIONS:
+- When mentioning ANY document or source in your content, check the "Knowledge Base Documents Used" and "Web Sources Used" sections below
+- ALWAYS use the exact URLs provided in those sections to create clickable links
+- NEVER mention a document name without making it a clickable link if a URL is available
+- Example: If you see "Ideal Client Profile.txt" in Knowledge Base Documents Used with a URL, write [Ideal Client Profile](URL) everywhere you mention it
+
+CRITICAL: NO TABLES FOR ALIGNMENT/COMPARISON ANALYSIS
+- NEVER use tables for alignment analysis, comparison analysis, or criteria evaluation
+- For any analysis involving "alignment", "comparison", "criteria", or "vs" - ALWAYS use structured lists
+- Tables are ONLY acceptable for simple data like contact info, dates, or basic facts
+
+SIMPLE TABLE GUIDELINES (for basic data only):
+- Only use tables for simple factual data (contact info, dates, basic stats)
+- Keep content very brief - single words or short phrases only
+- Never use tables when content requires explanation or analysis
+
+CONTENT STRUCTURE:
 - ${responseInstructions}
-- AVOID REPEATING CONTENT: If similar information appears multiple times in the tool results, consolidate it into a single, well-organized section.
-- ENSURE CLEAN FORMATTING: Use proper line breaks and avoid incomplete sentences or truncated text.
-- MAINTAIN READABILITY: Each section should flow naturally without awkward breaks or duplicated paragraphs.
-- IMPORTANT: Include a "## References" section at the end that lists both web sources AND knowledge base documents that were used.
+${referencesInstructions}
 - DO NOT include "End of Report", "End of Document", or any closing statements after the References section.
-- ALWAYS format ALL titles as clickable links when URLs are provided: [Title](URL). Never show titles as plain text with separate URLs below them.
-- For web sources: Format as numbered list with clickable titles: "1. [Article Title](URL)"
-- For knowledge base documents: Format as numbered list with clickable titles: "1. [Document Name](URL)"
-- DO NOT REPEAT THE SAME CONTENT MULTIPLE TIMES: If you notice duplicate information in the tool results, present it only once in the most appropriate section.
+- Ensure all links are properly formatted as [Text](URL) - never show raw URLs
+
+ALIGNMENT ANALYSIS OVERRIDE:
+- If creating alignment analysis, comparison analysis, or criteria evaluation: IGNORE any impulse to use tables
+- MANDATORY: Use the structured list format shown above for all alignment/comparison content
+- This applies to ANY content comparing two or more items, criteria, or concepts
 
 Current date: ${new Date().toISOString()}`,
         });
@@ -1105,9 +1192,11 @@ Current date: ${new Date().toISOString()}`,
 Tool Results Available:
 ---
 ${toolResults}
----${kbReferencesText}
+---${referencesContext}
 
-Create the ${responseType} now. Make sure to include both web sources and knowledge base documents in your References section.`,
+IMPORTANT: When writing your response, use the URLs provided above to make ALL document and source names clickable links. Do not mention any document name as plain text if a URL is available.
+
+Create the ${responseType} now.`,
         });
 
         this.logger.info('[LangGraph Synthesis] Invoking LLM for synthesis.', {
@@ -1119,7 +1208,11 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
 
         return [synthesisSystemMessage, synthesisInstruction];
       }),
-      this.llm,
+      // CRITICAL FIX: Configure LLM with explicit streaming for this node
+      this.llm.withConfig({
+        tags: ['synthesis_llm'],
+        metadata: { streaming: true },
+      }),
       RunnableLambda.from((aiMessage: AIMessage): Partial<GraphState> => {
         this.logger.info(
           '[LangGraph Synthesis] Synthesis completed, returning AI message in state.',
@@ -1138,8 +1231,13 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
       }),
     ]);
 
+    // CRITICAL FIX: Ensure proper tags for streaming detection
     return synthesisChain.withConfig({
       tags: ['final_node', 'synthesis'],
+      metadata: {
+        streaming: true,
+        node_type: 'synthesis',
+      },
     }) as Runnable<GraphState, Partial<GraphState>>;
   }
 
@@ -1199,6 +1297,213 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
    * Conditional Router Function
    * Determines the next step: call tools, synthesize the final report, or finish.
    */
+  /**
+   * Detect multi-document scenarios that require synthesis validation
+   * Task 2.2: Synthesis Validation implementation
+   */
+  private detectMultiDocumentScenario(state: GraphState): {
+    isMultiDocument: boolean;
+    documentsFound: number;
+    analysisType?: string;
+    toolsUsed: string[];
+  } {
+    const toolMessages = state.messages.filter(
+      (msg) => msg._getType() === 'tool',
+    );
+    const toolsUsed = toolMessages.map((msg: any) => msg.name || 'Unknown');
+
+    // Check if getMultipleDocuments tool was used
+    const multiDocToolUsed = toolMessages.some(
+      (msg: any) => msg.name === 'getMultipleDocuments',
+    );
+
+    let documentsFound = 0;
+    let analysisType: string | undefined;
+
+    if (multiDocToolUsed) {
+      // Analyze getMultipleDocuments results
+      const multiDocMessages = toolMessages.filter(
+        (msg: any) => msg.name === 'getMultipleDocuments',
+      );
+
+      for (const msg of multiDocMessages) {
+        try {
+          const content =
+            typeof msg.content === 'string'
+              ? msg.content
+              : JSON.stringify(msg.content);
+          const parsed = JSON.parse(content);
+
+          if (
+            parsed.success &&
+            parsed.documents &&
+            Array.isArray(parsed.documents)
+          ) {
+            documentsFound = Math.max(documentsFound, parsed.documents.length);
+            if (parsed.retrievalPlan?.analysisType) {
+              analysisType = parsed.retrievalPlan.analysisType;
+            }
+          }
+        } catch (error) {
+          // Failed to parse, continue checking other messages
+        }
+      }
+    } else {
+      // Fallback: Check if multiple individual getDocumentContents calls were made
+      const docContentMessages = toolMessages.filter(
+        (msg: any) => msg.name === 'getDocumentContents',
+      );
+
+      let successfulRetrievals = 0;
+      for (const msg of docContentMessages) {
+        try {
+          const content =
+            typeof msg.content === 'string'
+              ? msg.content
+              : JSON.stringify(msg.content);
+          const parsed = JSON.parse(content);
+
+          if (parsed.success && parsed.content) {
+            successfulRetrievals++;
+          }
+        } catch (error) {
+          // Failed to parse, continue checking
+        }
+      }
+      documentsFound = successfulRetrievals;
+    }
+
+    // Also check the original query for analysis intent
+    const originalQuery = state.input || '';
+    const hasAnalysisIntent =
+      /\b(?:compar[ei]|comparison|vs|versus|contrast|analysis|analyz[ei](?:ng)?|relationship|align)\b/i.test(
+        originalQuery,
+      );
+
+    const isMultiDocument = documentsFound >= 2 && hasAnalysisIntent;
+
+    this.logger.info('[LangGraph] Multi-document scenario detection', {
+      toolsUsed,
+      multiDocToolUsed,
+      documentsFound,
+      analysisType,
+      hasAnalysisIntent,
+      isMultiDocument,
+      originalQuery: originalQuery.substring(0, 100),
+    });
+
+    return {
+      isMultiDocument,
+      documentsFound,
+      analysisType,
+      toolsUsed,
+    };
+  }
+
+  /**
+   * Enhanced query intent analysis for better routing decisions
+   * Task 2.3: Enhanced Router Logic implementation
+   */
+  private analyzeQueryIntent(state: GraphState): {
+    intentType:
+      | 'analysis'
+      | 'research'
+      | 'simple_lookup'
+      | 'conversational'
+      | 'creative';
+    complexity: 'high' | 'medium' | 'low';
+    requiresDeepAnalysis: boolean;
+    suggestedResponseType:
+      | 'synthesis'
+      | 'simple_response'
+      | 'conversational_response';
+  } {
+    // Get the original user query
+    const userMessages = state.messages.filter(
+      (msg) => msg._getType() === 'human',
+    );
+    const originalQuery =
+      userMessages.length > 0
+        ? typeof userMessages[0].content === 'string'
+          ? userMessages[0].content
+          : JSON.stringify(userMessages[0].content)
+        : state.input || '';
+    const queryLower = originalQuery.toLowerCase();
+
+    // Intent classification patterns
+    const analysisPatterns =
+      /\b(?:analyz[ei](?:ng)?|analysis|analytical|compar[ei]|comparison|vs|versus|contrast|relationship|align|alignment|how.*relate|what.*relationship|differences?|similarities)\b/i;
+    const researchPatterns =
+      /\b(?:research|report|brief|proposal|summary|overview|findings|insights|recommendations?)\b/i;
+    const creativePatterns =
+      /\b(?:creative\s+brief|write\s+a|create\s+a|generate\s+a|develop\s+a|draft\s+a|prepare\s+a)\b/i;
+    const simpleLookupPatterns =
+      /\b(?:what\s+is|who\s+is|when\s+is|where\s+is|how\s+much|list|show\s+me|find|get\s+me)\b/i;
+
+    // Determine intent type
+    let intentType:
+      | 'analysis'
+      | 'research'
+      | 'simple_lookup'
+      | 'conversational'
+      | 'creative' = 'conversational';
+    let complexity: 'high' | 'medium' | 'low' = 'low';
+    let requiresDeepAnalysis = false;
+
+    if (analysisPatterns.test(originalQuery)) {
+      intentType = 'analysis';
+      complexity = 'high';
+      requiresDeepAnalysis = true;
+    } else if (creativePatterns.test(originalQuery)) {
+      intentType = 'creative';
+      complexity = 'high';
+      requiresDeepAnalysis = true;
+    } else if (researchPatterns.test(originalQuery)) {
+      intentType = 'research';
+      complexity = 'medium';
+      requiresDeepAnalysis = true;
+    } else if (simpleLookupPatterns.test(originalQuery)) {
+      intentType = 'simple_lookup';
+      complexity = 'low';
+      requiresDeepAnalysis = false;
+    }
+
+    // Adjust complexity based on query length and structure
+    if (
+      originalQuery.length > 100 ||
+      (originalQuery.includes('?') && originalQuery.split('?').length > 2)
+    ) {
+      complexity = complexity === 'low' ? 'medium' : 'high';
+    }
+
+    // Determine suggested response type
+    let suggestedResponseType:
+      | 'synthesis'
+      | 'simple_response'
+      | 'conversational_response' = 'conversational_response';
+
+    if (requiresDeepAnalysis || complexity === 'high') {
+      suggestedResponseType = 'synthesis';
+    } else if (complexity === 'medium' || intentType === 'simple_lookup') {
+      suggestedResponseType = 'simple_response';
+    }
+
+    this.logger.info('[LangGraph Router] Query intent analysis', {
+      originalQuery: originalQuery.substring(0, 100),
+      intentType,
+      complexity,
+      requiresDeepAnalysis,
+      suggestedResponseType,
+    });
+
+    return {
+      intentType,
+      complexity,
+      requiresDeepAnalysis,
+      suggestedResponseType,
+    };
+  }
+
   private routeNextStep(
     state: GraphState,
   ):
@@ -1243,18 +1548,102 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
     );
 
     if (hasToolResults) {
-      const needsSynthesis = state.needsSynthesis ?? true; // Default to true for backward compatibility
+      let needsSynthesis = state.needsSynthesis ?? true; // Default to true for backward compatibility
+
+      // Task 2.3: Enhanced Router Logic - Analyze query intent for better routing
+      const queryIntent = this.analyzeQueryIntent(state);
+
+      // Task 2.2: Synthesis Validation - Force synthesis for multi-document scenarios
+      const multiDocResults = this.detectMultiDocumentScenario(state);
+      if (multiDocResults.isMultiDocument) {
+        this.logger.info(
+          '[LangGraph Router] Multi-document scenario detected, forcing synthesis',
+          {
+            originalNeedsSynthesis: needsSynthesis,
+            multiDocDetails: multiDocResults,
+          },
+        );
+        needsSynthesis = true;
+      }
+
+      // NEW: Enhanced Synthesis Validation using SynthesisValidator
+      const userMessages = state.messages.filter(
+        (msg) => msg._getType() === 'human',
+      );
+      const originalQuery =
+        userMessages.length > 0
+          ? typeof userMessages[0].content === 'string'
+            ? userMessages[0].content
+            : JSON.stringify(userMessages[0].content)
+          : state.input || '';
+
+      const toolResults = state.messages.filter(
+        (msg) => msg._getType() === 'tool',
+      );
+      const validationContext = SynthesisValidator.createValidationContext(
+        originalQuery,
+        needsSynthesis,
+        toolResults,
+      );
+
+      const validationResult =
+        this.synthesisValidator.validateSynthesisNeed(validationContext);
+
+      if (validationResult.validationOverride) {
+        this.logger.info(
+          '[LangGraph Router] Synthesis validation override applied',
+          {
+            originalNeedsSynthesis: needsSynthesis,
+            forcedSynthesis: validationResult.shouldForceSynthesis,
+            reason: validationResult.reason,
+            confidence: validationResult.confidence,
+          },
+        );
+        needsSynthesis = validationResult.shouldForceSynthesis;
+      }
+
+      // Task 2.3: Enhanced Router Logic - Apply intent-based routing overrides
+      if (queryIntent.requiresDeepAnalysis && !needsSynthesis) {
+        this.logger.info(
+          '[LangGraph Router] Query requires deep analysis, overriding to synthesis',
+          {
+            originalNeedsSynthesis: needsSynthesis,
+            queryIntent,
+          },
+        );
+        needsSynthesis = true;
+      }
+
+      // Special case: Simple lookups with tool results should use simple response
+      if (
+        queryIntent.intentType === 'simple_lookup' &&
+        queryIntent.complexity === 'low' &&
+        !multiDocResults.isMultiDocument
+      ) {
+        this.logger.info(
+          '[LangGraph Router] Simple lookup detected, preferring simple response',
+          {
+            queryIntent,
+            multiDocResults,
+          },
+        );
+        needsSynthesis = false;
+      }
 
       this.logger.info(
         '[LangGraph Router] Tool results exist, checking synthesis requirement',
         {
           needsSynthesis,
+          originalNeedsSynthesis: state.needsSynthesis,
           defaultedToTrue: state.needsSynthesis === undefined,
+          forcedBySynthesisValidation: multiDocResults.isMultiDocument,
+          forcedByQueryIntent: queryIntent.requiresDeepAnalysis,
+          queryIntent,
           circuitBreakerHit: toolForcingCount >= MAX_TOOL_FORCING,
         },
       );
 
-      // RESPECT needsSynthesis flag regardless of circuit breaker
+      // RESPECT needsSynthesis flag (potentially modified by validation and intent analysis)
       if (needsSynthesis) {
         this.logger.info(
           '[LangGraph Router] Decision: Tool results exist and synthesis needed. Routing to synthesis.',
@@ -1270,6 +1659,9 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
 
     // 3. If there are no tool calls and no results, check if this is a simple conversational query
     if (!hasToolResults) {
+      // Task 2.3: Enhanced Router Logic - Use intent analysis for no-tool scenarios
+      const queryIntent = this.analyzeQueryIntent(state);
+
       // Check if the last message is an AI response without tool calls (conversational response)
       if (
         lastMessage &&
@@ -1278,12 +1670,26 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
       ) {
         this.logger.info(
           '[LangGraph Router] Decision: AI provided conversational response. Finishing graph.',
+          { queryIntent },
+        );
+        return 'conversational_response';
+      }
+
+      // If this is a conversational query that doesn't need tools, route to conversational response
+      if (
+        queryIntent.intentType === 'conversational' &&
+        queryIntent.complexity === 'low'
+      ) {
+        this.logger.info(
+          '[LangGraph Router] Decision: Simple conversational query, routing to conversational response.',
+          { queryIntent },
         );
         return 'conversational_response';
       }
 
       this.logger.warn(
         '[LangGraph Router] Decision: No tool calls and no results. Finishing graph to prevent loops.',
+        { queryIntent },
       );
       return '__end__';
     }
@@ -1326,6 +1732,9 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
       needsSynthesis,
     });
 
+    // Reset streaming coordinator for new request
+    this.streamingCoordinator.reset();
+
     const initialState = {
       messages: inputMessages,
       iterationCount: 0,
@@ -1340,52 +1749,86 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
       version: 'v2',
     });
 
-    let hasStreamedSynthesis = false;
-    let hasStreamedConversational = false;
-    let hasStreamedSimpleResponse = false;
     let finalState: any = null;
     const toolResults: any[] = [];
 
     try {
-      yield encoder.encode('🔍 Analyzing your request...\n\n');
+      // Initialize simplified phase-based progress tracking
+      const lastMessage = inputMessages[inputMessages.length - 1];
+      const userQuery =
+        typeof lastMessage?.content === 'string'
+          ? lastMessage.content
+          : JSON.stringify(lastMessage?.content) || '';
+
+      this.progressIndicator.initializeProgress(
+        userQuery,
+        undefined,
+        this.tools.map((t) => t.name),
+      );
+
+      // Show initial analysis plan
+      const planningIndicator =
+        this.progressIndicator.getPhaseIndicator('PLANNING');
+      if (planningIndicator) {
+        yield encoder.encode(`${planningIndicator}\n\n`);
+      }
+
+      const toolResults: Array<{ name: string; success: boolean; data?: any }> =
+        [];
+      let hasShownRetrieving = false;
+      let hasShownAnalyzing = false;
 
       for await (const event of eventStream) {
-        if (event.event === 'on_chain_start') {
-          // A node is starting to run
-          const nodeName = event.name;
-          if (nodeName === 'execute_tools') {
-            yield encoder.encode('🛠️ Gathering information...\n');
-          } else if (nodeName === 'simple_response') {
-            yield encoder.encode('\n📋 Formatting results...\n\n');
-          } else if (nodeName === 'conversational_response') {
-            yield encoder.encode('\n💬 Preparing response...\n\n');
-          } else if (nodeName === 'synthesis') {
-            yield encoder.encode('\n📝 Generating your research report...\n\n');
-          }
-        }
-
-        if (event.event === 'on_tool_start') {
-          // A specific tool is starting
-          const toolName = event.data.input.tool;
-          const query = event.data.input.tool_input?.query;
-          if (toolName === 'tavilySearch') {
-            yield encoder.encode(`🌐 Searching the web for "${query}"...\n`);
-          } else if (toolName === 'searchInternalKnowledgeBase') {
-            yield encoder.encode(
-              `📚 Searching knowledge base for "${query}"...\n`,
-            );
+        // Show retrieving phase when first tool starts
+        if (event.event === 'on_tool_start' && !hasShownRetrieving) {
+          const retrievingIndicator =
+            this.progressIndicator.getPhaseIndicator('RETRIEVING');
+          if (retrievingIndicator) {
+            yield encoder.encode(`${retrievingIndicator}\n`);
+            hasShownRetrieving = true;
           }
         }
 
         if (event.event === 'on_tool_end') {
-          // Capture tool results for non-synthesis cases
+          // Capture tool results and track completion
           const toolName = event.name;
           const toolOutput = event.data.output;
           if (toolOutput) {
             toolResults.push({
               name: toolName,
-              content: toolOutput.content || toolOutput,
+              success: true,
+              data: toolOutput,
             });
+          }
+        }
+
+        // Show analyzing phase when routing to synthesis (before synthesis starts)
+        if (
+          event.event === 'on_chain_start' &&
+          event.name === 'synthesis' &&
+          !hasShownAnalyzing
+        ) {
+          // Show tool completion summary first
+          const toolSummary =
+            this.progressIndicator.getToolCompletionSummary(toolResults);
+          if (toolSummary) {
+            yield encoder.encode(`${toolSummary}\n`);
+          }
+
+          const analyzingIndicator =
+            this.progressIndicator.getPhaseIndicator('ANALYZING');
+          if (analyzingIndicator) {
+            yield encoder.encode(`${analyzingIndicator}\n`);
+            hasShownAnalyzing = true;
+          }
+        }
+
+        // Show synthesizing phase when synthesis actually starts processing
+        if (event.event === 'on_chain_start' && event.name === 'synthesis') {
+          const synthesizingIndicator =
+            this.progressIndicator.getPhaseIndicator('SYNTHESIZING');
+          if (synthesizingIndicator) {
+            yield encoder.encode(`${synthesizingIndicator}\n\n`);
           }
         }
 
@@ -1393,17 +1836,20 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
           event.event === 'on_chat_model_stream' &&
           event.tags?.includes('final_node')
         ) {
+          // Mark that content streaming has started - this stops all progress indicators
+          this.progressIndicator.markContentStreamingStarted();
+
           // This is a token from a final node's LLM (synthesis, conversational, or simple_response)
           const content = event.data?.chunk?.content;
           if (typeof content === 'string') {
-            // Check which type of final node this is from
+            // Check which type of final node this is from and mark it in coordinator
             if (event.tags?.includes('synthesis')) {
-              hasStreamedSynthesis = true;
+              this.streamingCoordinator.markContentStreamed('synthesis');
             } else if (event.tags?.includes('conversational')) {
-              hasStreamedConversational = true;
+              this.streamingCoordinator.markContentStreamed('conversational');
             } else {
               // This must be from simple_response node
-              hasStreamedSimpleResponse = true;
+              this.streamingCoordinator.markContentStreamed('simple');
             }
             yield encoder.encode(content);
           }
@@ -1416,12 +1862,7 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
       }
 
       // Only output raw tool results if NO final node has streamed content
-      if (
-        !hasStreamedSynthesis &&
-        !hasStreamedConversational &&
-        !hasStreamedSimpleResponse &&
-        !needsSynthesis
-      ) {
+      if (this.streamingCoordinator.shouldStreamFallback() && !needsSynthesis) {
         this.logger.info(
           '[LangGraph Stream] No final node response streamed, outputting raw tool results',
         );
@@ -1435,67 +1876,20 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
               ) || [];
 
         if (toolMessages.length > 0) {
-          yield encoder.encode('\n📋 **Results:**\n\n');
+          // Use centralized formatter for consistent fallback formatting
+          const toolResultsFormatted: ToolResult[] = toolMessages.map(
+            (msg: any) => ({
+              name: msg.name || 'tool',
+              content: msg.content,
+            }),
+          );
 
-          for (const toolMsg of toolMessages) {
-            const toolName = toolMsg.name || 'Tool';
-            const content = toolMsg.content || 'No content';
+          const formattedContent = ContentFormatter.formatToolResults(
+            toolResultsFormatted,
+            '', // No specific query context in fallback
+          );
 
-            // Safely handle content formatting
-            let cleanContent = '';
-            try {
-              // First, ensure content is a string
-              const contentStr =
-                typeof content === 'string' ? content : JSON.stringify(content);
-
-              // Try to parse as JSON
-              const parsed = JSON.parse(contentStr);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                cleanContent = parsed
-                  .map((item, index) => {
-                    if (
-                      item &&
-                      typeof item === 'object' &&
-                      item.title &&
-                      item.url
-                    ) {
-                      const title = String(item.title).replace(
-                        /[^\w\s\-\.]/g,
-                        '',
-                      ); // Clean title
-                      const createdAt = item.created_at || 'Unknown';
-                      const url = String(item.url);
-                      return `${index + 1}. **${title}**\n   - Created: ${createdAt}\n   - URL: ${url}\n`;
-                    }
-                    return `${index + 1}. ${String(item).substring(0, 200)}...\n`;
-                  })
-                  .join('\n');
-              } else if (parsed && typeof parsed === 'object') {
-                cleanContent = JSON.stringify(parsed, null, 2).substring(
-                  0,
-                  1000,
-                );
-              } else {
-                cleanContent = String(parsed).substring(0, 1000);
-              }
-            } catch (parseError) {
-              // Not JSON or parsing failed, use content as-is but safely
-              cleanContent = String(content).substring(0, 1000);
-            }
-
-            // Ensure clean content is safe for streaming
-            cleanContent = cleanContent.trim();
-
-            // Don't show tool name if it's obvious from context
-            if (
-              toolName.toLowerCase().includes('search') ||
-              toolName.toLowerCase().includes('list')
-            ) {
-              yield encoder.encode(`${cleanContent}\n\n`);
-            } else {
-              yield encoder.encode(`**${toolName}:**\n${cleanContent}\n\n`);
-            }
-          }
+          yield encoder.encode(`\n${formattedContent}\n\n`);
         } else {
           // No tool results - check if there's a conversational AI response
           const aiMessages =
@@ -1530,21 +1924,19 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
             yield encoder.encode('\n✅ **Request completed successfully.**\n');
           }
         }
-      } else if (hasStreamedSimpleResponse) {
+      } else if (this.streamingCoordinator.hasNodeStreamed('simple')) {
         this.logger.info(
           '[LangGraph Stream] Simple response node has streamed content, skipping raw tool output',
         );
       }
 
       this.logger.info('LangGraph event stream completed.');
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('Error in LangGraph event streaming', { error });
 
       // If we have tool results but streaming failed, try to output them
       if (
-        !hasStreamedSynthesis &&
-        !hasStreamedConversational &&
-        !hasStreamedSimpleResponse &&
+        this.streamingCoordinator.shouldStreamFallback() &&
         !needsSynthesis &&
         toolResults.length > 0
       ) {
@@ -1552,58 +1944,20 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
           '[LangGraph Stream] Streaming failed but tool results available, outputting directly',
         );
         try {
-          yield encoder.encode('\n📋 **Results:**\n\n');
+          // Use centralized formatter for error fallback as well
+          const toolResultsFormatted: ToolResult[] = toolResults.map(
+            (msg: any) => ({
+              name: msg.name || 'tool',
+              content: msg.content,
+            }),
+          );
 
-          for (const toolMsg of toolResults) {
-            const content = toolMsg.content || 'No content';
+          const formattedContent = ContentFormatter.formatToolResults(
+            toolResultsFormatted,
+            '', // No specific query context in error fallback
+          );
 
-            // Safely handle content formatting
-            let cleanContent = '';
-            try {
-              // First, ensure content is a string
-              const contentStr =
-                typeof content === 'string' ? content : JSON.stringify(content);
-
-              // Try to parse as JSON
-              const parsed = JSON.parse(contentStr);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                cleanContent = parsed
-                  .map((item, index) => {
-                    if (
-                      item &&
-                      typeof item === 'object' &&
-                      item.title &&
-                      item.url
-                    ) {
-                      const title = String(item.title).replace(
-                        /[^\w\s\-\.]/g,
-                        '',
-                      ); // Clean title
-                      const createdAt = item.created_at || 'Unknown';
-                      const url = String(item.url);
-                      return `${index + 1}. **${title}**\n   - Created: ${createdAt}\n   - URL: ${url}\n`;
-                    }
-                    return `${index + 1}. ${String(item).substring(0, 200)}...\n`;
-                  })
-                  .join('\n');
-              } else if (parsed && typeof parsed === 'object') {
-                cleanContent = JSON.stringify(parsed, null, 2).substring(
-                  0,
-                  1000,
-                );
-              } else {
-                cleanContent = String(parsed).substring(0, 1000);
-              }
-            } catch (parseError) {
-              // Not JSON or parsing failed, use content as-is but safely
-              cleanContent = String(content).substring(0, 1000);
-            }
-
-            // Ensure clean content is safe for streaming
-            cleanContent = cleanContent.trim();
-
-            yield encoder.encode(`${cleanContent}\n\n`);
-          }
+          yield encoder.encode(`\n${formattedContent}\n\n`);
         } catch (fallbackError) {
           this.logger.error('Error in fallback tool result output', {
             fallbackError,
@@ -1616,37 +1970,6 @@ Create the ${responseType} now. Make sure to include both web sources and knowle
         );
       }
     }
-  }
-
-  /**
-   * Truncate content at sentence boundaries to avoid mid-sentence cuts
-   */
-  private truncateAtSentence(content: string, maxLength: number): string {
-    if (content.length <= maxLength) {
-      return content;
-    }
-
-    const truncated = content.substring(0, maxLength);
-
-    // Try to find the last sentence ending
-    const lastSentenceEnd = Math.max(
-      truncated.lastIndexOf('.'),
-      truncated.lastIndexOf('!'),
-      truncated.lastIndexOf('?'),
-    );
-
-    if (lastSentenceEnd > maxLength * 0.75) {
-      return truncated.substring(0, lastSentenceEnd + 1);
-    }
-
-    // If no sentence ending found, try to break at word boundary
-    const lastSpaceIndex = truncated.lastIndexOf(' ');
-    if (lastSpaceIndex > maxLength * 0.75) {
-      return truncated.substring(0, lastSpaceIndex);
-    }
-
-    // Fallback to hard truncation
-    return truncated;
   }
 
   /**

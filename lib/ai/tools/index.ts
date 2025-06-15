@@ -17,6 +17,7 @@ import { googleCalendarTool } from './googleCalendarTool';
 import { getMessagesFromOtherChatTool } from './getMessagesFromOtherChatTool';
 import { listDocumentsTool } from './list-documents';
 import { getDocumentContentsTool } from './get-document-contents';
+import { multiDocumentRetrievalTool } from './multi-document-retrieval';
 import {
   trackEvent,
   ANALYTICS_EVENTS,
@@ -128,6 +129,7 @@ export function getAvailableTools() {
     // Knowledge Base Tools
     listDocumentsTool,
     getDocumentContentsTool,
+    multiDocumentRetrievalTool,
     searchAndRetrieveKnowledgeBase,
     queryDocumentRowsTool,
     // Utility Tools
@@ -159,6 +161,7 @@ export const availableTools = getAvailableTools();
 export {
   listDocumentsTool,
   getDocumentContentsTool,
+  multiDocumentRetrievalTool,
   searchAndRetrieveKnowledgeBase,
   requestSuggestionsTool,
   tavilySearchTool,
