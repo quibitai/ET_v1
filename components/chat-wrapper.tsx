@@ -68,16 +68,48 @@ export function ChatWrapper({
     generateId: generateUUID,
     sendExtraMessageFields: true,
     streamProtocol: 'data',
-    body: {
-      id: id,
-      chatId: id,
-      fileContext: fileContext,
-      artifactContext: null,
-      collapsedArtifactsContext: null,
-      activeBitContextId: activeBitContextId,
-    },
+
     onError: (error) => {
       console.error('🚨 [ChatWrapper useChat Error]', error);
+    },
+    experimental_prepareRequestBody: ({
+      messages,
+      requestData,
+      requestBody,
+    }) => {
+      const body = {
+        id: id,
+        chatId: id,
+        messages: messages,
+        fileContext: fileContext, // This ensures the current fileContext is included
+        artifactContext: null,
+        collapsedArtifactsContext: null,
+        activeBitContextId: activeBitContextId,
+        ...requestBody, // Include any additional request body data
+      };
+
+      console.log('🔍 [DEBUG] experimental_prepareRequestBody called with:', {
+        hasFileContext: !!fileContext,
+        fileContextFilename: fileContext?.filename,
+        messagesCount: messages.length,
+        requestDataKeys: requestData ? Object.keys(requestData) : [],
+        requestBodyKeys: requestBody ? Object.keys(requestBody) : [],
+      });
+
+      console.log('🔍 [DEBUG] Final body being returned:', {
+        hasFileContext: !!body.fileContext,
+        fileContextKeys: body.fileContext ? Object.keys(body.fileContext) : [],
+        bodyKeys: Object.keys(body),
+        fileContextPreview: body.fileContext
+          ? {
+              filename: body.fileContext.filename,
+              contentType: body.fileContext.contentType,
+              extractedTextLength: body.fileContext.extractedText?.length || 0,
+            }
+          : null,
+      });
+
+      return body;
     },
     onResponse: (response) => {
       console.log('📡 [ChatWrapper Response]', {
@@ -92,8 +124,10 @@ export function ChatWrapper({
         role: message.role,
         contentLength: message.content.length,
         status: 'completed',
+        hadFileContextWhenFinished: !!fileContext,
       });
       // Clear file context after the request completes
+      console.log('🔍 [DEBUG] Clearing fileContext after stream completion');
       clearFileContext();
     },
   });
@@ -167,6 +201,15 @@ export function ChatWrapper({
       extractedText: string;
     }) => {
       console.log('[ChatWrapper] File processed:', fileMeta);
+      console.log('🔍 [DEBUG] Setting fileContext:', {
+        filename: fileMeta.filename,
+        contentType: fileMeta.contentType,
+        url: fileMeta.url,
+        hasExtractedText: !!fileMeta.extractedText,
+        extractedTextLength: fileMeta.extractedText?.length || 0,
+        extractedTextPreview:
+          fileMeta.extractedText?.substring(0, 200) || 'No text',
+      });
       setFileContext(fileMeta);
     },
     [],
@@ -178,6 +221,23 @@ export function ChatWrapper({
 
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    console.log('🔍 [DEBUG] Form submit with fileContext:', {
+      hasFileContext: !!fileContext,
+      fileContextFilename: fileContext?.filename,
+      inputLength: input.length,
+      inputPreview: input.substring(0, 100),
+      fullFileContext: fileContext, // Log the complete object
+    });
+
+    // Also log what will be sent in the body
+    console.log('🔍 [DEBUG] useChat body will contain:', {
+      id: id,
+      chatId: id,
+      fileContext: fileContext,
+      hasFileContextInBody: !!fileContext,
+      activeBitContextId: activeBitContextId,
+    });
+
     handleSubmit();
     // Don't clear file context immediately - let it be available for the request
     // clearFileContext();

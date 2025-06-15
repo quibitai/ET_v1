@@ -184,6 +184,7 @@ export class SimpleLangGraphWrapper {
           simple_response: 'simple_response',
           conversational_response: 'conversational_response',
           synthesis: 'synthesis', // ADD SYNTHESIS PATH
+          __end__: END, // Map __end__ to END
           finish: END,
         },
       );
@@ -1136,7 +1137,11 @@ Tool Results Available:
 ${toolResults}
 ---${referencesContext}
 
-IMPORTANT: When writing your response, use the URLs provided above to make ALL document and source names clickable links. Do not mention any document name as plain text if a URL is available.
+IMPORTANT FORMATTING INSTRUCTIONS:
+- When writing your response, use the URLs provided above to make ALL document and source names clickable links
+- Do not mention any document name as plain text if a URL is available
+- If the tool results include a "formatted_list" field (from listDocuments), use that exact formatted list with clickable links
+- For document listings, present the formatted_list exactly as provided - do not modify the format or add extra text
 
 Create the ${responseType} now.`,
         });
@@ -1757,7 +1762,8 @@ Create the ${responseType} now.`,
       });
 
       // Delegate to the new Phase 8 streamLangChainAgent method
-      yield* this.streamLangChainAgent(userInput);
+      // Pass the config containing fileContext
+      yield* this.streamLangChainAgent(userInput, undefined, config);
 
       this.logger.info('[Phase 8] True real-time streaming completed');
     } catch (error: any) {
@@ -2056,24 +2062,43 @@ Create the ${responseType} now.`,
   async *streamLangChainAgent(
     input: string,
     queryClassification?: any,
+    config?: RunnableConfig,
   ): AsyncGenerator<Uint8Array, void, unknown> {
     const encoder = new TextEncoder();
 
     try {
-      console.log('🔍 [DEBUG] streamLangChainAgent called with input:', {
-        input: input,
-        inputLength: input.length,
-        queryClassification: queryClassification?.intent || 'not provided',
-      });
+      // Always include the specialist system prompt
+      const inputMessages: BaseMessage[] = [];
 
-      const inputMessages: BaseMessage[] = [new HumanMessage(input)];
+      // Always add the specialist system prompt first
+      if (this.config.systemPrompt) {
+        inputMessages.push(new SystemMessage(this.config.systemPrompt));
+      }
+
+      // Handle fileContext if present - add as additional system message
+      if (config?.metadata?.fileContext) {
+        const fileContext = config.metadata.fileContext as any;
+
+        // Create enhanced system message with file content
+        const fileContextMessage = `
+ATTACHED DOCUMENT ANALYSIS:
+Filename: ${fileContext.filename}
+Content Type: ${fileContext.contentType}
+Extracted Text:
+${fileContext.extractedText}
+
+The user has attached the above document. Please analyze and respond based on the attached document content, not the knowledge base documents.
+`;
+
+        // Add the file context as an additional system message
+        inputMessages.push(new SystemMessage(fileContextMessage));
+      }
+
+      // Add the user input
+      inputMessages.push(new HumanMessage(input));
 
       // Determine if synthesis is needed
       const needsSynthesis = this.determineIfSynthesisNeeded(input);
-      console.log('🔍 [DEBUG] determineIfSynthesisNeeded called:', {
-        input,
-        cleanInput: input.toLowerCase().trim(),
-      });
 
       if (needsSynthesis) {
         console.log(
@@ -2084,11 +2109,11 @@ Create the ${responseType} now.`,
         );
 
         // Phase 8: True Real-Time Streaming
-        yield* this.streamWithRealTimeTokens(inputMessages);
+        yield* this.streamWithRealTimeTokens(inputMessages, config);
       } else {
         // For non-synthesis queries, use direct streaming
         console.log('[Phase 8] Direct streaming for non-synthesis query');
-        yield* this.streamWithRealTimeTokens(inputMessages);
+        yield* this.streamWithRealTimeTokens(inputMessages, config);
       }
     } catch (error) {
       console.error('[Phase 8] streamLangChainAgent error:', error);
