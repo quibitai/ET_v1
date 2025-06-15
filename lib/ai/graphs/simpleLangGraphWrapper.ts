@@ -1513,6 +1513,30 @@ Create the ${responseType} now.`,
       return 'use_tools';
     }
 
+    // 1.5. CRITICAL: If the last message is an AI response with content (no tool calls), end the graph
+    if (
+      lastMessage &&
+      lastMessage._getType() === 'ai' &&
+      lastMessage.content &&
+      (!('tool_calls' in lastMessage) ||
+        !lastMessage.tool_calls ||
+        (Array.isArray(lastMessage.tool_calls) &&
+          lastMessage.tool_calls.length === 0))
+    ) {
+      this.logger.info(
+        '[LangGraph Router] Decision: AI provided final response with content. Ending graph to prevent duplicate responses.',
+        {
+          messageType: lastMessage._getType(),
+          hasContent: !!lastMessage.content,
+          hasToolCalls:
+            'tool_calls' in lastMessage && Array.isArray(lastMessage.tool_calls)
+              ? lastMessage.tool_calls.length
+              : 0,
+        },
+      );
+      return '__end__';
+    }
+
     // 2. Check if we have tool results
     const hasToolResults = state.messages.some((m) => m._getType() === 'tool');
     const toolForcingCount = state.toolForcingCount || 0;
@@ -1653,7 +1677,7 @@ Create the ${responseType} now.`,
           '[LangGraph Router] Decision: AI provided conversational response. Finishing graph.',
           { queryIntent },
         );
-        return 'conversational_response';
+        return '__end__';
       }
 
       // If this is a conversational query that doesn't need tools, route to conversational response

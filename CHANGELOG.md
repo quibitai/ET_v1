@@ -44,6 +44,12 @@ This major release completely resolves the streaming architecture with genuine r
 - **Real-Time Token Capture**: Direct LLM streaming during synthesis execution
 - **Progressive Rate Monitoring**: Token rate tracking from 0.4 to 37+ t/s
 - **Intelligent Fallbacks**: Multiple streaming strategies with graceful degradation
+- **Duplicate Response Prevention**: Router detects final AI responses and ends graph execution
+
+#### **🔧 Critical Bug Fixes**
+- **FIXED**: Duplicate content in document listing - Router now properly detects final AI responses
+- **FIXED**: Multiple response nodes executing for same query - Added early termination logic
+- **FIXED**: Conversational + Simple response duplication - Router checks AI content before tool results
 
 ## [4.2.0] - 2025-06-13
 
