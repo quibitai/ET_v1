@@ -247,6 +247,22 @@ export class ContextWindowManager {
       }
     }
 
+    // CRITICAL FIX: Ensure we always have at least one non-system message
+    // If truncation removed all conversation, preserve the most recent user message
+    const hasNonSystemMessages = result.some((m) => m._getType() !== 'system');
+    if (!hasNonSystemMessages && nonSystemMessages.length > 0) {
+      // Find the most recent user message
+      const lastUserMessage = [...nonSystemMessages]
+        .reverse()
+        .find((m) => m._getType() === 'human');
+      if (lastUserMessage) {
+        result.push(lastUserMessage);
+        this.logger.warn(
+          '[ContextWindowManager] Emergency preservation of user message to prevent empty array',
+        );
+      }
+    }
+
     this.logger.info(
       '[ContextWindowManager] Conservative truncation completed',
       {
@@ -264,8 +280,17 @@ export class ContextWindowManager {
           ),
         estimatedTokens: this.estimateTokenCount(result),
         availableTokens,
+        hasNonSystemMessages,
       },
     );
+
+    // FINAL SAFETY CHECK: Never return empty array
+    if (result.length === 0 && messages.length > 0) {
+      this.logger.error(
+        '[ContextWindowManager] CRITICAL: Truncation resulted in empty array, preserving original first message',
+      );
+      return [messages[0]];
+    }
 
     return result;
   }

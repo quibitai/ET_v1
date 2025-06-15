@@ -80,6 +80,10 @@ export async function POST(req: NextRequest) {
             const escapedText = JSON.stringify(text).slice(1, -1); // Remove outer quotes from JSON.stringify
             const dataStreamPart = `0:"${escapedText}"\n`;
             controller.enqueue(encoder.encode(dataStreamPart));
+
+            // CRITICAL: Add small delay to ensure visible streaming
+            // This prevents chunks from being batched together
+            await new Promise((resolve) => setTimeout(resolve, 10));
           }
 
           // After streaming completes, save the assistant message to database
@@ -122,6 +126,11 @@ export async function POST(req: NextRequest) {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'X-Content-Type-Options': 'nosniff',
+        'Transfer-Encoding': 'chunked',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'X-Proxy-Buffering': 'no',
       },
     });
   } catch (error) {
