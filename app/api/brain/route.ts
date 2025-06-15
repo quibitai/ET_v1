@@ -10,12 +10,14 @@
  */
 
 import type { NextRequest } from 'next/server';
+import { brainRequestSchema } from '@/lib/validation/brainValidation';
 import { BrainOrchestrator } from '@/lib/services/brainOrchestrator';
 import { getRequestLogger } from '@/lib/services/observabilityService';
 import { getClientConfig } from '@/lib/db/queries';
-import { brainRequestSchema } from '@/lib/validation/brainValidation';
 import { auth } from '@/app/(auth)/auth';
 import { MessageService } from '@/lib/services/messageService';
+import { randomUUID } from 'node:crypto';
+import type { DBMessage } from '@/lib/db/schema';
 
 // Removed Edge Runtime - using Node.js runtime for database compatibility
 export const dynamic = 'force-dynamic';
@@ -93,20 +95,46 @@ export async function POST(req: NextRequest) {
             session?.user?.clientId
           ) {
             try {
-              await messageService.saveAssistantMessage(
-                assistantContent.trim(),
-                request.chatId,
-                session.user.clientId || 'default',
+              // MEMORY FIX: Use saveMessagesWithMemory for memory storage
+              const assistantMessage: DBMessage = {
+                id: randomUUID(),
+                chatId: request.chatId,
+                role: 'assistant',
+                parts: [{ type: 'text', text: assistantContent.trim() }],
+                attachments: [],
+                createdAt: new Date(),
+                clientId: session.user.clientId || 'default',
+              };
+
+              // Import saveMessagesWithMemory from queries
+              const { saveMessagesWithMemory } = await import(
+                '@/lib/db/queries'
               );
+
               logger.info(
-                'Assistant message saved successfully after streaming',
+                '🧠 MEMORY TEST: About to save message with memory storage',
                 {
                   chatId: request.chatId,
                   contentLength: assistantContent.length,
+                  enableMemoryStorage: true,
+                },
+              );
+
+              await saveMessagesWithMemory({
+                messages: [assistantMessage],
+                enableMemoryStorage: true,
+              });
+
+              logger.info(
+                '✅ MEMORY TEST: Assistant message saved successfully with memory storage',
+                {
+                  chatId: request.chatId,
+                  contentLength: assistantContent.length,
+                  messageId: assistantMessage.id,
                 },
               );
             } catch (error) {
-              logger.error('Failed to save assistant message after streaming', {
+              logger.error('Failed to save assistant message with memory', {
                 chatId: request.chatId,
                 error: error instanceof Error ? error.message : 'Unknown error',
               });

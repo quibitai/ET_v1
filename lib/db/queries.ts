@@ -443,17 +443,9 @@ export async function saveMessagesWithMemory({
   messages: Array<DBMessage>;
   enableMemoryStorage?: boolean;
 }) {
-  console.log(
-    '[saveMessagesWithMemory] Function called with memory storage:',
-    enableMemoryStorage ? 'ENABLED' : 'DISABLED',
-  );
-
   try {
     // First, save messages using the existing function
     const result = await saveMessages({ messages });
-    console.log(
-      '[saveMessagesWithMemory] Messages saved successfully to database',
-    );
 
     // If memory storage is enabled, process conversation turns
     if (enableMemoryStorage && messages.length > 0) {
@@ -472,46 +464,35 @@ export async function saveMessagesWithMemory({
  * Extracts user-assistant conversation turns and stores them with embeddings
  */
 async function processConversationalMemory(messages: Array<DBMessage>) {
-  console.log('[ConversationalMemory] Processing messages for memory storage');
-
   try {
-    // Group messages by chatId for processing
-    const messagesByChat = messages.reduce(
-      (acc, msg) => {
-        if (!acc[msg.chatId]) {
-          acc[msg.chatId] = [];
-        }
-        acc[msg.chatId].push(msg);
-        return acc;
-      },
-      {} as Record<string, DBMessage[]>,
-    );
+    // Process each unique chatId
+    const chatIds = [...new Set(messages.map((msg) => msg.chatId))];
 
-    // Process each chat's messages
-    for (const [chatId, chatMessages] of Object.entries(messagesByChat)) {
-      // Sort messages by creation time to ensure proper order
-      const sortedMessages = chatMessages.sort((a, b) => {
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return timeA - timeB;
-      });
+    for (const chatId of chatIds) {
+      // Get recent messages from this chat to find conversation pairs
+      const recentMessages = await db
+        .select()
+        .from(message)
+        .where(eq(message.chatId, chatId))
+        .orderBy(desc(message.createdAt))
+        .limit(10); // Get last 10 messages to find pairs
+
+      // Reverse to get chronological order
+      const chronologicalMessages = recentMessages.reverse();
 
       // Look for user-assistant conversation pairs
-      let userMessage: DBMessage | null = null;
+      let userMessage: any = null;
+      let storedCount = 0;
 
-      for (const message of sortedMessages) {
-        if (message.role === 'user') {
-          userMessage = message;
-        } else if (message.role === 'assistant' && userMessage) {
+      for (const msg of chronologicalMessages) {
+        if (msg.role === 'user') {
+          userMessage = msg;
+        } else if (msg.role === 'assistant' && userMessage) {
           // We have a complete conversation turn
           const userText = extractTextFromMessage(userMessage);
-          const assistantText = extractTextFromMessage(message);
+          const assistantText = extractTextFromMessage(msg);
 
           if (userText && assistantText) {
-            console.log(
-              `[ConversationalMemory] Storing conversation turn for chat ${chatId}`,
-            );
-
             // Store the conversation turn with embeddings
             const stored = await storeConversationalMemory(
               chatId,
@@ -521,19 +502,19 @@ async function processConversationalMemory(messages: Array<DBMessage>) {
             );
 
             if (stored) {
-              console.log(
-                `[ConversationalMemory] Successfully stored turn for chat ${chatId}`,
-              );
-            } else {
-              console.warn(
-                `[ConversationalMemory] Failed to store turn for chat ${chatId}`,
-              );
+              storedCount++;
             }
           }
 
           // Reset for next potential turn
           userMessage = null;
         }
+      }
+
+      if (storedCount > 0) {
+        console.log(
+          `[ConversationalMemory] Stored ${storedCount} conversation turns for chat ${chatId.substring(0, 8)}`,
+        );
       }
     }
   } catch (error) {
@@ -568,18 +549,12 @@ function extractTextFromMessage(message: DBMessage): string | null {
 
 export async function getMessagesByChatId({ id }: { id: string }) {
   try {
-    console.log(
-      `[DB:getMessagesByChatId] Fetching messages for chat ID: ${id}`,
-    );
     const messages = await db
       .select()
       .from(message)
       .where(eq(message.chatId, id))
       .orderBy(asc(message.createdAt));
 
-    console.log(
-      `[DB:getMessagesByChatId] Found ${messages.length} messages for chat ID: ${id}`,
-    );
     return messages;
   } catch (error) {
     console.error(

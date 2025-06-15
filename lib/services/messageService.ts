@@ -296,103 +296,90 @@ export class MessageService {
   }
 
   /**
-   * Save user messages to the database
-   */
-  public async saveUserMessages(
-    messages: UIMessage[] | MessageData[],
-    chatId: string,
-    clientId: string,
-  ): Promise<void> {
-    if (!messages || messages.length === 0) {
-      return;
-    }
-
-    const dbMessages: DBMessage[] = messages.map((message) => ({
-      id: message.id || randomUUID(),
-      chatId,
-      role: message.role,
-      parts: [{ type: 'text', text: this.sanitizeContent(message.content) }],
-      attachments:
-        message.attachments || message.experimental_attachments || [],
-      createdAt: message.createdAt || new Date(),
-      clientId,
-    }));
-
-    this.logger.info('Saving user messages to database', {
-      messageCount: dbMessages.length,
-      chatId,
-    });
-
-    try {
-      // Use enhanced memory storage for better contextual awareness
-      await saveMessagesWithMemory({
-        messages: dbMessages,
-        enableMemoryStorage: true,
-      });
-      this.logger.info(
-        `Successfully saved ${dbMessages.length} user messages to chat ${chatId} with memory storage`,
-      );
-    } catch (error) {
-      this.logger.error('Failed to save user messages', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        chatId,
-      });
-      // Optionally re-throw or handle as needed
-    }
-  }
-
-  /**
-   * Save assistant message to the database
+   * Save assistant message to database with enhanced memory storage
    */
   public async saveAssistantMessage(
     content: string,
     chatId: string,
     clientId: string,
-    messageId?: string,
   ): Promise<void> {
-    if (!content || !chatId) {
-      this.logger.warn(
-        'Cannot save assistant message: missing content or chatId',
-      );
-      return;
-    }
-
-    const assistantMessage: DBMessage = {
-      id: messageId || randomUUID(),
-      chatId,
-      role: 'assistant',
-      parts: [{ type: 'text', text: this.sanitizeContent(content) }],
-      attachments: [],
-      createdAt: new Date(),
-      clientId,
-    };
-
-    this.logger.info('Saving assistant message to database', {
-      messageId: assistantMessage.id,
-      chatId,
+    this.logger.info('Saving assistant message with memory storage', {
       contentLength: content.length,
+      chatId: chatId.substring(0, 8),
+      clientId,
     });
 
     try {
+      const assistantMessage: DBMessage = {
+        id: randomUUID(),
+        chatId,
+        role: 'assistant',
+        parts: [{ type: 'text', text: content }],
+        attachments: [],
+        createdAt: new Date(),
+        clientId,
+      };
+
       // Use enhanced memory storage for better contextual awareness
       await saveMessagesWithMemory({
         messages: [assistantMessage],
         enableMemoryStorage: true,
       });
-      this.logger.info(
-        `Successfully saved assistant message to chat ${chatId} with memory storage`,
-        {
-          messageId: assistantMessage.id,
-          responseLength: content.length,
-        },
-      );
+
+      this.logger.info('Assistant message saved successfully with memory', {
+        messageId: assistantMessage.id,
+        chatId,
+      });
     } catch (error) {
-      this.logger.error('Failed to save assistant message', {
+      this.logger.error('Failed to save assistant message with memory', {
         error: error instanceof Error ? error.message : 'Unknown error',
         chatId,
-        messageId: assistantMessage.id,
       });
-      // Don't re-throw to avoid breaking the response flow
+      throw error;
+    }
+  }
+
+  /**
+   * Save user message to database with enhanced memory storage
+   */
+  public async saveUserMessage(
+    content: string,
+    chatId: string,
+    clientId: string,
+  ): Promise<void> {
+    this.logger.info('Saving user message with memory storage', {
+      contentLength: content.length,
+      chatId: chatId.substring(0, 8),
+      clientId,
+    });
+
+    try {
+      const userMessage: DBMessage = {
+        id: randomUUID(),
+        chatId,
+        role: 'user',
+        parts: [{ type: 'text', text: content }],
+        attachments: [],
+        createdAt: new Date(),
+        clientId,
+      };
+
+      // Use enhanced memory storage for better contextual awareness
+      await saveMessagesWithMemory({
+        messages: [userMessage],
+        enableMemoryStorage: true,
+      });
+
+      this.logger.info('User message saved successfully with memory', {
+        messageId: userMessage.id,
+        chatId,
+      });
+    } catch (error) {
+      this.logger.error('Failed to save user message with memory', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        chatId,
+      });
+      throw error;
     }
   }
 

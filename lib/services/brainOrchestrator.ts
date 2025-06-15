@@ -8,10 +8,15 @@ import {
   createLangChainAgent,
   streamLangChainAgent,
   type LangChainBridgeConfig,
+  type LangChainAgent,
 } from './langchainBridge';
 import { loadPrompt } from '@/lib/ai/prompts/loader';
 import { ChatRepository } from '@/lib/db/repositories/chatRepository';
 import { auth } from '@/app/(auth)/auth';
+import type { ProcessedContext } from './contextService';
+import type { DBMessage } from '@/lib/db/schema';
+import type { ConversationalMemorySnippet } from '@/lib/contextUtils';
+import type { BaseMessage } from '@langchain/core/messages';
 
 export class BrainOrchestrator {
   private logger: RequestLogger;
@@ -61,8 +66,9 @@ export class BrainOrchestrator {
         fileContextFilename: context.fileContext?.filename,
       });
 
-      const conversationHistory = this.messageService.convertToLangChainFormat(
-        request.messages,
+      const conversationHistory = await this.buildLangChainConversationHistory(
+        context,
+        request,
       );
       const baseSystemPrompt = await loadPrompt({
         modelId: request.selectedChatModel || 'gpt-4o',
@@ -158,14 +164,62 @@ export class BrainOrchestrator {
       );
     }
 
-    const userMessages = request.messages.filter((m) => m.role === 'user');
-    if (userMessages.length > 0) {
-      await this.messageService.saveUserMessages(
-        userMessages,
-        chatId,
-        session.user.clientId || 'default',
+    // Save user messages with memory
+    if (request.messages && request.messages.length > 0) {
+      const userMessages = request.messages.filter(
+        (msg) => msg.role === 'user',
       );
-      this.logger.info(`Saved ${userMessages.length} user messages.`);
+      const clientId = session?.user?.clientId || 'default';
+
+      // Save the most recent user message with memory storage
+      const latestUserMessage = userMessages[userMessages.length - 1];
+      if (latestUserMessage && request.chatId) {
+        await this.messageService.saveUserMessage(
+          latestUserMessage.content,
+          request.chatId,
+          clientId,
+        );
+      }
     }
+  }
+
+  private async buildLangChainConversationHistory(
+    processedContext: ProcessedContext,
+    brainRequest: BrainRequest,
+  ): Promise<any[]> {
+    // MEMORY INTEGRATION: Use processed history from ContextService if available
+    if (
+      processedContext.processedHistory &&
+      processedContext.processedHistory.length > 0
+    ) {
+      this.logger.info('Using processed history with integrated memory', {
+        historyLength: processedContext.processedHistory.length,
+      });
+
+      // Convert LangChain messages back to conversation format for consistency
+      return processedContext.processedHistory.map((message) => {
+        if (message._getType() === 'human') {
+          return { role: 'user', content: message.content };
+        } else if (message._getType() === 'ai') {
+          return { role: 'assistant', content: message.content };
+        } else {
+          return { role: 'system', content: message.content };
+        }
+      });
+    }
+
+    // Fallback to original message processing if no processed history available
+    if (!brainRequest.messages || brainRequest.messages.length === 0) {
+      return [];
+    }
+
+    this.logger.info(
+      'Using fallback message processing (no processed history)',
+      {
+        originalMessageCount: brainRequest.messages.length,
+      },
+    );
+
+    return this.messageService.convertToLangChainFormat(brainRequest.messages);
   }
 }
