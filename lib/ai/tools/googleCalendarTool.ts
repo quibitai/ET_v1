@@ -264,10 +264,10 @@ export const googleCalendarTool = new DynamicStructuredTool({
           return `You have no events scheduled for the requested date.`;
         }
 
-        // Format the events in a readable way
+        // Format the events in a readable way using proper markdown
         let result = `You have ${events.length} event${events.length !== 1 ? 's' : ''} scheduled:\n\n`;
 
-        events.forEach((event: any, index: number) => {
+        events.forEach((event: any) => {
           // Format date to be more readable
           const startDate = event?.startDateTime
             ? new Date(event?.startDateTime).toLocaleDateString([], {
@@ -293,19 +293,21 @@ export const googleCalendarTool = new DynamicStructuredTool({
               })
             : 'No end time';
 
-          result += `${index + 1}. ${event?.summary || 'Untitled Event'} - ${startDate}, ${startTime} to ${endTime}`;
-          // Add hyperlink if available
-          if (event?.htmlLink) {
-            result += ` (Link: ${event.htmlLink})`;
-          }
-          result += '\n';
+          // Use proper markdown formatting with clickable links
+          const eventTitle = event?.summary || 'Untitled Event';
+          const eventLink = event?.htmlLink
+            ? `[${eventTitle}](${event.htmlLink})`
+            : `**${eventTitle}**`;
 
-          if (event?.description && event?.description.trim() !== '') {
-            result += `   Description: ${event?.description}\n`;
-          }
+          result += `- ${eventLink}\n`;
+          result += `  - **Date & Time**: ${startDate}, ${startTime} to ${endTime}\n`;
 
           if (event?.location && event?.location.trim() !== '') {
-            result += `   Location: ${event?.location}\n`;
+            result += `  - **Location**: ${event.location}\n`;
+          }
+
+          if (event?.description && event?.description.trim() !== '') {
+            result += `  - **Description**: ${event.description}\n`;
           }
 
           if (
@@ -313,7 +315,16 @@ export const googleCalendarTool = new DynamicStructuredTool({
             Array.isArray(event?.attendees) &&
             event?.attendees.length > 0
           ) {
-            result += `   Attendees: ${event?.attendees.join(', ')}\n`;
+            // Format attendees as clickable email links if they contain @ symbol
+            const formattedAttendees = event.attendees
+              .map((attendee: string) => {
+                if (attendee.includes('@')) {
+                  return `[${attendee}](mailto:${attendee})`;
+                }
+                return attendee;
+              })
+              .join(', ');
+            result += `  - **Attendees**: ${formattedAttendees}\n`;
           }
 
           result += '\n';

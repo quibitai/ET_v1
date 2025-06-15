@@ -213,8 +213,10 @@ function determineIfSynthesisNeeded(
   const synthesisRequiredPatterns = [
     /\breport\b/i,
     /\bresearch\b/i,
-    /\banalyz[ei]/i,
-    /\bcompare\b/i,
+    // FIXED: Enhanced analysis patterns to catch "analysis", "analyze", "analyzing", "analytical"
+    /\banalyz[ei](?:ng|s)?\b|\banalysis\b|\banalytical\b|\banalyse\b/i,
+    // FIXED: Enhanced comparison patterns to catch "comparative", "comparison", "comparing"
+    /\bcompare\b|\bcomparative\b|\bcomparison\b|\bcomparing\b/i,
     /\bsummar[yi]/i,
     /\boverview\b/i,
     /\balignment\b/i,
@@ -234,6 +236,12 @@ function determineIfSynthesisNeeded(
     /\bgenerate\s+a/i,
     /\bprepare\s+a/i,
     /\bdraft\s+a/i,
+    /\bvs\b|\bversus\b/i,
+    /\bcontrast\b|\bcontrasting\b/i,
+    /\bdifferences?\b/i,
+    /\bsimilarities\b/i,
+    /\brelationship\b/i,
+    /\bhow\s+.*\s+align/i,
   ];
 
   // DEBUGGING: Test synthesis patterns
