@@ -815,3 +815,852 @@ This architecture ensures that the ORM has a clear, unambiguous understanding of
 **System Status**: Production Ready
 
 *This architecture represents a significant advancement in RAG system design, combining proven reliability with cutting-edge AI orchestration capabilities for enterprise-ready applications.* 
+
+## 🔐 **Authentication & Security Architecture**
+
+### **NextAuth.js Implementation**
+**Location**: `app/(auth)/auth.ts`, `app/(auth)/auth.config.ts`
+
+The system implements a comprehensive authentication layer using NextAuth.js v5 with custom credential providers and session management.
+
+#### **Authentication Flow**
+```typescript
+// Custom Credential Provider
+Credentials({
+  credentials: {},
+  async authorize({ email, password }: any) {
+    const users = await getUser(email);
+    if (users.length === 0) return null;
+    const passwordsMatch = await compare(password, users[0].password!);
+    if (!passwordsMatch) return null;
+    return users[0] as any;
+  },
+})
+```
+
+#### **Session Management Architecture**
+```typescript
+interface ExtendedSession {
+  user: {
+    id?: string;
+    email?: string | null;
+    clientId?: string;  // Multi-tenant support
+  };
+}
+
+// JWT Token Enhancement
+async jwt({ token, user }) {
+  if (user) {
+    token.id = user.id;
+    token.clientId = user.clientId; // Client-specific context
+  }
+  return token;
+}
+```
+
+### **Route Protection Strategy**
+**Location**: `middleware.ts`
+
+#### **Middleware Configuration**
+```typescript
+export const config = {
+  matcher: [
+    // Protect all routes except:
+    // - NextAuth routes (/api/auth/*)
+    // - Static assets (_next/*, favicon.ico)
+    // - Public API endpoints
+    '/((?!api/auth|_next|favicon.ico|api/brain|api/ping).*)',
+  ],
+};
+```
+
+#### **Role-Based Access Control**
+```typescript
+// Admin Access Validation
+export function isAdminUser(email: string): boolean {
+  const adminPatterns = ['admin', 'hayden', 'adam@quibit.ai'];
+  return adminPatterns.some(pattern => 
+    email.toLowerCase().includes(pattern.toLowerCase())
+  );
+}
+```
+
+### **Security Measures**
+
+#### **Development Mode Safeguards**
+- Authentication bypass for development endpoints
+- Enhanced logging for security events
+- Environment-specific security policies
+
+#### **Data Protection**
+- Password hashing with bcrypt
+- SQL injection prevention via Drizzle ORM
+- XSS protection through content sanitization
+- CSRF protection via NextAuth.js built-ins
+
+#### **API Security**
+```typescript
+// Authentication Check Pattern
+const session = await auth();
+if (!session?.user?.id) {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
+
+// Resource Authorization
+const chat = await getChatById({ id: chatId });
+if (chat.userId !== session.user.id) {
+  return new Response('Unauthorized', { status: 401 });
+}
+```
+
+## 🎨 **Frontend Architecture**
+
+### **Next.js App Router Structure**
+**Location**: `app/` directory
+
+```
+app/
+├── (auth)/           # Authentication routes group
+│   ├── login/        # Login page
+│   ├── register/     # Registration page
+│   └── auth.ts       # NextAuth configuration
+├── (chat)/           # Chat application routes
+│   ├── chat/[id]/    # Dynamic chat routes
+│   └── api/          # Chat-specific API routes
+├── (main)/           # Main application routes
+├── admin/            # Admin interface
+└── api/              # Global API routes
+```
+
+### **Component Architecture**
+**Location**: `components/` directory
+
+#### **UI Component System**
+```typescript
+// Shadcn UI Integration
+components/
+├── ui/               # Base UI components
+│   ├── button.tsx
+│   ├── input.tsx
+│   ├── dialog.tsx
+│   └── tabs.tsx
+├── auth-form.tsx     # Authentication components
+├── submit-button.tsx # Form interaction components
+└── toast.tsx         # Notification system
+```
+
+#### **Chat Interface Components**
+```typescript
+interface ChatComponentProps {
+  chatId: string;
+  messages: UIMessage[];
+  onSubmit: (message: string) => void;
+  isLoading: boolean;
+  specialist?: SpecialistConfig;
+}
+
+// Real-time Message Streaming
+const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+  api: '/api/brain',
+  body: {
+    currentActiveSpecialistId: specialist?.id,
+    userTimezone: timezone,
+  },
+});
+```
+
+### **State Management Pattern**
+
+#### **React Server Components**
+- Server-side data fetching for initial page loads
+- Reduced client-side JavaScript bundle
+- Automatic caching and revalidation
+
+#### **Client State Management**
+```typescript
+// Chat State Management
+interface ChatState {
+  messages: UIMessage[];
+  currentChat: Chat | null;
+  specialist: SpecialistConfig | null;
+  isStreaming: boolean;
+  fileContext?: FileContext;
+}
+
+// Context Providers
+<AuthProvider>
+  <ChatProvider>
+    <SpecialistProvider>
+      <ChatInterface />
+    </SpecialistProvider>
+  </ChatProvider>
+</AuthProvider>
+```
+
+### **Real-Time UI Updates**
+
+#### **Streaming Integration**
+```typescript
+// Vercel AI SDK Integration
+import { useChat } from 'ai/react';
+
+const { messages, append, isLoading } = useChat({
+  api: '/api/brain',
+  onResponse: (response) => {
+    // Handle streaming response
+  },
+  onFinish: (message) => {
+    // Handle completion
+  },
+});
+```
+
+#### **Progressive Enhancement**
+- Server-side rendering for core functionality
+- Client-side hydration for interactive features
+- Graceful degradation for JavaScript-disabled clients
+
+## 🔌 **Complete API Architecture**
+
+### **API Route Organization**
+```
+api/
+├── brain/            # Core AI orchestration
+├── auth/             # NextAuth handlers
+├── admin/            # Admin operations
+│   ├── refine-prompt/
+│   └── update-specialist/
+├── chat/             # Chat management
+├── documents/        # Document operations
+│   ├── [docId]/
+│   │   ├── listen/   # SSE endpoints (deprecated)
+│   │   └── title/
+│   └── save/
+├── files/            # File management
+│   ├── upload/       # Vercel Blob integration
+│   └── extract/      # n8n webhook integration
+├── messages/         # Message operations
+└── test-*/           # Development endpoints
+```
+
+### **Core API Endpoints**
+
+#### **Brain API - `/api/brain`**
+**Primary AI Orchestration Endpoint**
+
+```typescript
+interface BrainRequest {
+  messages: Message[];
+  id: string; // Chat ID
+  selectedChatModel?: string;
+  fileContext?: FileContext;
+  currentActiveSpecialistId?: string | null;
+  activeBitContextId?: string | null;
+  userTimezone?: string;
+  
+  // Cross-UI context sharing
+  isFromGlobalPane?: boolean;
+  referencedChatId?: string | null;
+  mainUiChatId?: string | null;
+}
+
+interface BrainResponse {
+  // Server-Sent Events stream
+  stream: ReadableStream<Uint8Array>;
+}
+```
+
+#### **File Upload API - `/api/files/upload`**
+**Vercel Blob Storage Integration**
+
+```typescript
+// POST /api/files/upload
+interface FileUploadRequest {
+  file: File; // FormData
+}
+
+interface FileUploadResponse {
+  url: string;
+  downloadUrl: string;
+  pathname: string;
+  contentType: string;
+  contentDisposition: string;
+}
+```
+
+#### **File Extraction API - `/api/files/extract`**
+**n8n Webhook Integration for Document Processing**
+
+```typescript
+// POST /api/files/extract
+interface ExtractionRequest {
+  fileUrl: string;
+  contentType: string;
+  filename: string;
+}
+
+interface ExtractionResponse {
+  extractedText: string;
+  metadata: {
+    pageCount?: number;
+    wordCount?: number;
+    extractionMethod: string;
+  };
+}
+```
+
+#### **Message Management API - `/api/messages`**
+```typescript
+// GET /api/messages?chatId={chatId}
+interface MessagesResponse {
+  messages: Array<{
+    id: string;
+    chatId: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    parts: MessagePart[];
+    attachments: MessageAttachment[];
+    createdAt: string;
+  }>;
+}
+```
+
+#### **Vote API - `/api/vote`**
+**Message Rating System**
+
+```typescript
+// GET /api/vote?chatId={chatId}
+interface VotesResponse {
+  votes: Array<{
+    messageId: string;
+    type: 'up' | 'down';
+    createdAt: string;
+  }>;
+}
+
+// PATCH /api/vote
+interface VoteRequest {
+  chatId: string;
+  messageId: string;
+  type: 'up' | 'down';
+}
+```
+
+### **Admin API Endpoints**
+
+#### **Specialist Management - `/api/admin/update-specialist`**
+```typescript
+interface UpdateSpecialistRequest {
+  id: string;
+  name: string;
+  description: string;
+  personaPrompt: string;
+  defaultTools: string[];
+  clientContext?: {
+    displayName: string;
+    mission: string;
+    customInstructions: string;
+  };
+}
+```
+
+#### **Prompt Enhancement - `/api/admin/refine-prompt`**
+```typescript
+interface PromptRefinementRequest {
+  currentPrompt: string;
+  selectedTools: string[];
+  specialistContext: {
+    name: string;
+    description: string;
+    contextId: string;
+  };
+}
+
+interface PromptRefinementResponse {
+  enhancedPrompt: string;
+  improvements: string[];
+  toolIntegrations: ToolIntegration[];
+}
+```
+
+### **Development & Testing Endpoints**
+```
+/api/test-*           # Various development testing endpoints
+/api/debug-history    # Debug conversation history
+/api/ping            # Health check endpoint
+```
+
+## 📁 **File Management System**
+
+### **Vercel Blob Storage Integration**
+**Location**: `app/(chat)/api/files/upload/route.ts`
+
+#### **Upload Pipeline**
+```typescript
+const uploadPipeline = {
+  1: "Client uploads file via FormData",
+  2: "Server validates file type and size",
+  3: "Upload to Vercel Blob storage",
+  4: "Return public URL and metadata",
+  5: "Store file reference in database"
+};
+```
+
+#### **File Validation**
+```typescript
+const FileSchema = z.object({
+  file: z
+    .instanceof(Blob)
+    .refine((file) => file.size <= 50 * 1024 * 1024, 'File too large') // 50MB
+    .refine((file) => 
+      ['application/pdf', 'text/plain', 'image/*'].some(type => 
+        file.type.startsWith(type)
+      ), 'Unsupported file type'
+    ),
+});
+```
+
+### **File Processing Architecture**
+
+#### **n8n Integration for Document Extraction**
+**Location**: `app/api/files/extract/route.ts`
+
+```typescript
+// Webhook Configuration
+const N8N_EXTRACT_WEBHOOK_URL = process.env.N8N_EXTRACT_WEBHOOK_URL;
+const N8N_EXTRACT_AUTH_TOKEN = process.env.N8N_EXTRACT_AUTH_TOKEN;
+
+// Processing Flow
+const extractionFlow = {
+  1: "Receive file URL from client",
+  2: "Forward to n8n webhook with authentication",
+  3: "n8n processes document (PDF, DOCX, etc.)",
+  4: "Return extracted text and metadata",
+  5: "Store extraction result in context"
+};
+```
+
+### **File Reference Tracking**
+**Location**: `lib/db/schema.ts` - `chatFileReferences` table
+
+```typescript
+interface FileReference {
+  id: string;
+  chatId: string;
+  userId: string;
+  messageId?: string;
+  fileType: 'upload' | 'knowledge_base' | 'artifact';
+  fileMetadata: {
+    originalName: string;
+    contentType: string;
+    size: number;
+    url: string;
+  };
+  // Reference tracking for different file types
+  documentMetadataId?: string;      // Knowledge base files
+  documentChunkId?: number;         // Document chunks  
+  artifactDocumentId?: string;      // Generated artifacts
+  clientId: string;
+  createdAt: Date;
+}
+```
+
+## 🧪 **Testing Infrastructure**
+
+### **End-to-End Testing with Playwright**
+**Location**: `playwright.config.ts`, `tests/`
+
+#### **Test Configuration**
+```typescript
+export default defineConfig({
+  testDir: './tests',
+  fullyParallel: true,
+  retries: process.env.CI ? 2 : 1,
+  timeout: 60 * 1000,
+  
+  projects: [
+    {
+      name: 'setup:auth',
+      testMatch: /auth.setup.ts/,
+    },
+    {
+      name: 'chat',
+      testMatch: /chat.test.ts/,
+      dependencies: ['setup:auth'],
+      use: {
+        storageState: 'playwright/.auth/session.json',
+      },
+    },
+    {
+      name: 'reasoning',
+      testMatch: /reasoning.test.ts/,
+      dependencies: ['setup:reasoning'],
+    },
+    {
+      name: 'artifacts',
+      testMatch: /artifacts.test.ts/,
+      dependencies: ['setup:auth'],
+    },
+  ],
+});
+```
+
+#### **Authentication Setup**
+**Location**: `tests/auth.setup.ts`
+
+```typescript
+setup('authenticate', async ({ page }) => {
+  const testEmail = `test-${getUnixTime(new Date())}@playwright.com`;
+  const testPassword = generateId(16);
+
+  await page.goto('/register');
+  await page.getByPlaceholder('user@acme.com').fill(testEmail);
+  await page.getByLabel('Password').fill(testPassword);
+  await page.getByRole('button', { name: 'Sign Up' }).click();
+
+  await expect(page.getByTestId('toast')).toContainText(
+    'Account created successfully!'
+  );
+
+  await page.context().storageState({ path: authFile });
+});
+```
+
+#### **Chat Functionality Tests**
+```typescript
+class ChatTestSuite {
+  async testBasicChatFlow() {
+    // Test message sending and receiving
+    // Test streaming responses
+    // Test specialist selection
+    // Test file uploads
+  }
+  
+  async testReasoningCapabilities() {
+    // Test complex multi-step queries
+    // Test tool usage
+    // Test context retention
+  }
+  
+  async testArtifactGeneration() {
+    // Test document creation
+    // Test code generation
+    // Test artifact editing
+  }
+}
+```
+
+### **Unit Testing with Vitest**
+**Location**: `vitest.config.ts`, `lib/ai/tools/__tests__/`
+
+#### **Test Configuration**
+```typescript
+export default defineConfig({
+  test: {
+    environment: 'node',
+    globals: true,
+    setupFiles: ['./lib/ai/tools/__tests__/setup.ts'],
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './'),
+    },
+  },
+});
+```
+
+#### **Tool Testing Framework**
+```typescript
+// Mock Setup
+vi.mock('@/lib/services/observabilityService', () => ({
+  trackEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Test Structure
+describe('AI Tool Integration', () => {
+  test('should execute tool with proper context', async () => {
+    // Test tool execution
+    // Verify context propagation
+    // Check error handling
+  });
+});
+```
+
+### **Testing Scripts**
+```bash
+# End-to-end testing
+pnpm test                    # Full Playwright suite
+pnpm test:chat              # Chat functionality tests
+pnpm test:reasoning         # Complex reasoning tests
+
+# Unit testing  
+pnpm test:unit              # Run all unit tests
+pnpm test:unit:run          # Single run without watch
+
+# Tool-specific testing
+pnpm asana:tests            # Asana integration tests
+pnpm asana:demo             # Interactive tool demos
+```
+
+## 🚀 **Enhanced DevOps & Deployment**
+
+### **Build Pipeline**
+**Location**: `package.json`, `next.config.ts`
+
+#### **Build Process**
+```bash
+# Production Build Steps
+1. tsx lib/db/migrate       # Run database migrations
+2. next build              # Build Next.js application  
+3. Static analysis         # Type checking and linting
+4. Test execution          # Run test suites
+5. Asset optimization      # Image and bundle optimization
+```
+
+#### **Environment Configuration**
+```typescript
+// next.config.ts
+const nextConfig = {
+  experimental: {
+    serverComponentsExternalPackages: ['bcrypt'],
+  },
+  images: {
+    domains: ['vercel-blob.com'],
+  },
+  env: {
+    CUSTOM_KEY: process.env.CUSTOM_KEY,
+  },
+};
+```
+
+### **Database Management**
+
+#### **Migration System**
+**Location**: `drizzle.config.ts`, `lib/db/migrate.ts`
+
+```typescript
+// Database Operations
+pnpm db:generate     # Generate migration files
+pnpm db:migrate      # Apply migrations
+pnpm db:studio       # Visual database browser
+pnpm db:push         # Push schema changes
+pnpm db:pull         # Pull schema from database
+```
+
+#### **Schema Management**
+```typescript
+// Migration Pattern
+export async function up(db: NodePgDatabase) {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS new_table (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      -- columns
+    );
+  `);
+}
+```
+
+### **Environment Management**
+
+#### **Required Environment Variables**
+```bash
+# Core Services
+DATABASE_URL="postgresql://..."
+NEXTAUTH_SECRET="..."
+NEXTAUTH_URL="https://your-domain.com"
+
+# AI Services  
+OPENAI_API_KEY="sk-..."
+ANTHROPIC_API_KEY="sk-ant-..."
+
+# Storage & Processing
+BLOB_READ_WRITE_TOKEN="vercel_blob_..."
+N8N_EXTRACT_WEBHOOK_URL="https://..."
+N8N_EXTRACT_AUTH_TOKEN="..."
+
+# Integrations
+TAVILY_API_KEY="tvly-..."
+ASANA_ACCESS_TOKEN="..."
+GOOGLE_CALENDAR_CLIENT_ID="..."
+WEATHER_API_KEY="..."
+
+# Monitoring
+NEXT_PUBLIC_SUPABASE_URL="https://..."
+SUPABASE_SERVICE_ROLE_KEY="..."
+```
+
+#### **Development Configuration**
+```bash
+# Development Overrides
+NODE_ENV=development
+AUTH_DEBUG=true           # Enhanced auth logging
+PLAYWRIGHT=true          # Test mode indicators
+```
+
+### **Deployment Architecture**
+
+#### **Vercel Deployment**
+```json
+// vercel.json
+{
+  "framework": "nextjs",
+  "buildCommand": "pnpm build",
+  "devCommand": "pnpm dev",
+  "installCommand": "pnpm install",
+  "functions": {
+    "app/api/brain/route.ts": {
+      "maxDuration": 300
+    }
+  }
+}
+```
+
+#### **Production Optimizations**
+- **Edge Functions**: Global distribution for API endpoints
+- **Static Generation**: Pre-rendered pages for performance
+- **Image Optimization**: Automatic WebP conversion and resizing
+- **Bundle Analysis**: Tree shaking and code splitting
+
+### **Monitoring & Observability**
+
+#### **Performance Monitoring**
+```typescript
+// Request Tracking
+interface RequestMetrics {
+  correlationId: string;
+  endpoint: string;
+  duration: number;
+  statusCode: number;
+  userId?: string;
+  clientId?: string;
+}
+
+// Error Tracking
+interface ErrorEvent {
+  error: Error;
+  context: RequestContext;
+  timestamp: Date;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+}
+```
+
+#### **Health Checks**
+```typescript
+// GET /api/ping
+interface HealthCheck {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  timestamp: string;
+  services: {
+    database: 'up' | 'down';
+    ai_services: 'up' | 'down';
+    file_storage: 'up' | 'down';
+  };
+  version: string;
+}
+```
+
+## 🔧 **Troubleshooting & Operations**
+
+### **Common Issues & Solutions**
+
+#### **Authentication Problems**
+```bash
+# Symptoms: Login redirects or session issues
+# Solutions:
+1. Check NEXTAUTH_SECRET environment variable
+2. Verify database connection for user queries
+3. Review middleware configuration
+4. Check cookie domain settings
+```
+
+#### **Streaming Issues**
+```bash
+# Symptoms: Incomplete responses or connection drops
+# Solutions:
+1. Verify timeout configurations (300s limit)
+2. Check network connection stability  
+3. Review streaming buffer sizes
+4. Monitor memory usage during streaming
+```
+
+#### **Tool Execution Failures**
+```bash
+# Symptoms: Tool calls failing or timing out
+# Solutions:
+1. Verify API keys for external services
+2. Check network connectivity to tool endpoints
+3. Review tool-specific configuration
+4. Monitor rate limiting
+```
+
+### **Performance Optimization**
+
+#### **Database Optimization**
+```sql
+-- Index Optimization
+CREATE INDEX CONCURRENTLY idx_chat_user_recent 
+ON chat(user_id, created_at DESC);
+
+CREATE INDEX CONCURRENTLY idx_message_chat_role 
+ON message(chat_id, role, created_at);
+
+-- Query Performance
+EXPLAIN ANALYZE SELECT * FROM chat 
+WHERE user_id = $1 
+ORDER BY created_at DESC 
+LIMIT 10;
+```
+
+#### **Caching Strategy**
+```typescript
+// Context Caching
+const contextCache = new Map<string, ProcessedContext>();
+
+// Tool Result Caching  
+const toolCache = new Map<string, ToolResult>();
+
+// Cache Invalidation
+function invalidateUserCache(userId: string) {
+  // Clear user-specific cached data
+}
+```
+
+### **Backup & Recovery**
+
+#### **Database Backup Strategy**
+```bash
+# Automated Backups
+pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql
+
+# Point-in-time Recovery
+# Configure WAL archiving for production
+```
+
+#### **File Storage Backup**
+```bash
+# Vercel Blob Storage
+# Implement periodic backup to secondary storage
+# Configure retention policies
+```
+
+## 🔮 **Future Roadmap & Enhancement Plan**
+
+### **Immediate Priorities (Q1 2025)**
+- **Enhanced Security**: Advanced authentication, rate limiting, DDoS protection
+- **Performance Optimization**: Caching layer implementation, query optimization
+- **Testing Coverage**: Comprehensive unit test suite, integration testing
+- **Monitoring Enhancement**: Real-time alerting, performance dashboards
+
+### **Medium-term Goals (Q2-Q3 2025)**
+- **Multi-Modal Support**: Image, audio, and video processing capabilities
+- **Advanced Analytics**: ML-powered usage pattern analysis
+- **Microservices Migration**: Service decomposition for independent scaling
+- **API Ecosystem**: Extended API surface for third-party integrations
+
+### **Long-term Vision (Q4 2025+)**
+- **AI Mesh Architecture**: Distributed AI processing across multiple providers
+- **Advanced Memory Systems**: Knowledge graph construction, entity relationships
+- **Cross-Platform Integration**: Mobile applications, desktop clients
+- **Enterprise Features**: Advanced security, compliance, audit trails
+
+*This architecture represents a significant advancement in RAG system design, combining proven reliability with cutting-edge AI orchestration capabilities for enterprise-ready applications.* 
