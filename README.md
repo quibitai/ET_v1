@@ -1,14 +1,40 @@
-# Echo Tango v4.6.0 - Production-Ready RAG System
+# Echo Tango v4.8.0 - Production-Ready RAG System
 
-🎉 **v4.6.0 Release - Code Quality & Maintenance** 🎉
+🎉 **v4.8.0 Release - Critical Sidebar History Fix** 🎉
 
 A production-ready, hybrid RAG (Retrieval-Augmented Generation) system with sophisticated AI orchestration, featuring intelligent routing between LangChain and LangGraph execution paths, dynamic specialist personas, comprehensive tool integration, **enterprise-grade admin interface**, and **advanced streaming capabilities**.
 
-## 🚀 **What's New in v4.6.0**
+## 🚀 **What's New in v4.8.0**
 
-### **🧹 Code Quality & Maintenance Release**
+### **🐛 Critical Sidebar History Refresh Fix**
 
-This release focuses on cleaning up debugging code, removing legacy components, and improving overall code quality while maintaining all existing functionality from the powerful v4.5.0 streaming architecture.
+This release resolves a critical user experience issue where new chats weren't appearing in the sidebar until manual page refresh, along with comprehensive code cleanup and performance improvements.
+
+#### **🎯 Critical Bug Fixes**
+- **RESOLVED**: Sidebar history refresh issue - New chats now appear immediately after streaming completion
+- **FIXED**: Cache invalidation timing - Direct SWR mutate calls with proper database synchronization
+- **ELIMINATED**: Manual refresh requirement for new chat visibility
+
+#### **🔧 Technical Implementation**
+- **REPLACED**: Complex `invalidateCache()` abstraction with direct `mutateChatHistory()` calls
+- **ADDED**: 100ms timing delay to ensure database operations complete before cache refresh
+- **MAINTAINED**: Optimistic updates during chat creation for immediate UI feedback
+- **PRESERVED**: Sophisticated streaming architecture while fixing cache consistency
+
+#### **🧹 Code Quality & Performance**
+- **REMOVED**: Debugging UI elements (test chat button, manual refresh buttons, cache invalidation controls)
+- **ELIMINATED**: 75+ lines of test functionality and debugging code
+- **CLEANED**: 50+ excessive console.log statements and diagnostic callbacks
+- **OPTIMIZED**: Chat grouping logic by removing verbose pagination logging
+- **SIMPLIFIED**: Import statements by removing unused dependencies
+
+#### **🚀 Performance Improvements**
+- **REDUCED**: Re-render overhead by eliminating unnecessary diagnostic callbacks
+- **IMPROVED**: Load times through reduced logging overhead
+- **ENHANCED**: Developer experience with cleaner console output
+- **MAINTAINED**: Zero impact on streaming or core chat functionality
+
+### **🎯 Previous Major Features (v4.6.0 & Earlier)**
 
 #### **🧹 Code Cleanup**
 - **REMOVED**: All debugging trace code from specialist context flow

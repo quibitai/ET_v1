@@ -254,11 +254,6 @@ export function getDocumentHistoryPaginationKey(
 
 // The main hook for chat history management
 export function useChatHistory(currentChatId?: string) {
-  console.log(
-    '[useChatHistory] Hook initializing with currentChatId:',
-    currentChatId,
-  );
-
   const router = useRouter();
   const { data: session, status } = useSession();
   const [isPending, startTransition] = useTransition();
@@ -374,27 +369,6 @@ export function useChatHistory(currentChatId?: string) {
     },
   );
 
-  // Log SWR state changes
-  useEffect(() => {
-    console.log('[useChatHistory] SWR state update:', {
-      chatHistory: chatHistory?.length || 0,
-      isValidating: isValidatingChatHistory,
-      isLoading: isLoadingChatHistory,
-    });
-  }, [chatHistory, isValidatingChatHistory, isLoadingChatHistory]);
-
-  // Listen for global cache invalidation events
-  const { invalidateCache } = useChatCacheInvalidation();
-
-  // Provide a manual refresh function that uses the new cache invalidation
-  const refreshChatHistory = useCallback(async () => {
-    console.log('[useChatHistory] Manual refresh triggered');
-    await invalidateCache({
-      logger: (message, data) =>
-        console.log(`[useChatHistory] ${message}`, data),
-    });
-  }, [invalidateCache]);
-
   // Document History fetching with SWR - DISABLED (deprecated in Phase 1, Task 1.2)
   const {
     data: paginatedDocumentHistories,
@@ -434,54 +408,15 @@ export function useChatHistory(currentChatId?: string) {
   // Memoize grouped chats to prevent excessive recalculation
   const groupedChats = useMemo(() => {
     if (!chatHistory) {
-      console.log('[useChatHistory] No paginated chat histories available yet');
       return null;
     }
-
-    console.log(
-      '[useChatHistory] Processing paginated chat histories:',
-      chatHistory.length,
-      'pages',
-    );
-
-    // Log details of each pagination page
-    chatHistory.forEach((page, idx) => {
-      console.log(
-        `[useChatHistory] Page ${idx + 1} contains ${page.chats.length} chats, hasMore: ${page.hasMore}`,
-      );
-      // Log first few chat details for debugging
-      page.chats.slice(0, 3).forEach((chat, chatIdx) => {
-        console.log(
-          `[useChatHistory] Chat ${chatIdx + 1}: id=${chat.id.substring(0, 8)}..., title="${chat.title}", bitContextId="${chat.bitContextId}"`,
-        );
-      });
-    });
 
     const chatsFromHistory = chatHistory.flatMap(
       (paginatedChatHistory) => paginatedChatHistory.chats,
     );
 
-    console.log(
-      `[useChatHistory] Total chats after flatMap: ${chatsFromHistory.length}`,
-    );
-
     // Filter and group chats
     const result = separateChatsByType(chatsFromHistory);
-
-    // Log the grouped result summary
-    console.log('[useChatHistory] Grouped chats counts:', {
-      today: result.today.length,
-      yesterday: result.yesterday.length,
-      lastWeek: result.lastWeek.length,
-      lastMonth: result.lastMonth.length,
-      older: result.older.length,
-      total:
-        result.today.length +
-        result.yesterday.length +
-        result.lastWeek.length +
-        result.lastMonth.length +
-        result.older.length,
-    });
 
     return result;
   }, [chatHistory]);
@@ -665,6 +600,5 @@ export function useChatHistory(currentChatId?: string) {
     // Utilities
     mutateChatHistory,
     mutateDocumentHistory,
-    refreshChatHistory,
   };
 }
