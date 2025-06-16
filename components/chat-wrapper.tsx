@@ -60,7 +60,7 @@ export function ChatWrapper({
   const onFinishProcessedRef = useRef<Set<string>>(new Set());
 
   // Get cache invalidation functions
-  const { addChatOptimistically, invalidateCache } = useChatCacheInvalidation();
+  const { addChatOptimistically } = useChatCacheInvalidation();
 
   // Get hook-specific mutate function for real-time sidebar updates
   const { mutateChatHistory } = useChatHistory();
@@ -189,21 +189,20 @@ export function ChatWrapper({
       });
 
       if (isNewChat) {
-        console.log(
-          '🔄 [ChatWrapper] New chat detected, but skipping cache invalidation to preserve optimistic update',
-          {
-            chatId: id,
-            activeBitContextId,
-            messagesLength: messages.length,
-          },
-        );
+        // Trigger cache refresh after streaming completes to show the real chat
+        try {
+          // Add a small delay to ensure database operations are complete
+          await new Promise((resolve) => setTimeout(resolve, 100));
 
-        // Skip cache invalidation to preserve the optimistic update
-        // The optimistic update should remain until the next natural revalidation
+          // Call SWR's mutate function directly to refresh the cache
+          await mutateChatHistory();
+        } catch (error) {
+          console.error('[ChatWrapper] Failed to refresh chat history:', error);
+          // Don't break the UI if cache invalidation fails
+        }
       }
 
       // Clear file context after the request completes
-      console.log('🔍 [DEBUG] Clearing fileContext after stream completion');
       clearFileContext();
 
       // Clean up processed message key after a delay

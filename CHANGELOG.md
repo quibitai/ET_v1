@@ -5,6 +5,47 @@ All notable changes to the Echo Tango RAG System will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.8.0] - 2025-01-16
+
+### 🐛 **Critical Sidebar History Refresh Fix**
+
+This release resolves a critical user experience issue where new chats weren't appearing in the sidebar until manual page refresh, along with comprehensive code cleanup and performance improvements.
+
+#### **🎯 Critical Bug Fixes**
+- **RESOLVED**: Sidebar history refresh issue - New chats now appear immediately after streaming completion
+- **FIXED**: Cache invalidation timing - Direct SWR mutate calls with proper database synchronization
+- **ELIMINATED**: Manual refresh requirement for new chat visibility
+
+#### **🔧 Technical Implementation**
+- **REPLACED**: Complex `invalidateCache()` abstraction with direct `mutateChatHistory()` calls
+- **ADDED**: 100ms timing delay to ensure database operations complete before cache refresh
+- **MAINTAINED**: Optimistic updates during chat creation for immediate UI feedback
+- **PRESERVED**: Sophisticated streaming architecture while fixing cache consistency
+
+#### **🧹 Code Quality & Performance**
+- **REMOVED**: Debugging UI elements (test chat button, manual refresh buttons, cache invalidation controls)
+- **ELIMINATED**: 75+ lines of test functionality and debugging code
+- **CLEANED**: 50+ excessive console.log statements and diagnostic callbacks
+- **OPTIMIZED**: Chat grouping logic by removing verbose pagination logging
+- **SIMPLIFIED**: Import statements by removing unused dependencies (`RotateCw`, unused cache functions)
+
+#### **🚀 Performance Improvements**
+- **REDUCED**: Re-render overhead by eliminating unnecessary diagnostic callbacks
+- **IMPROVED**: Load times through reduced logging overhead
+- **ENHANCED**: Developer experience with cleaner console output
+- **MAINTAINED**: Zero impact on streaming or core chat functionality
+
+#### **📋 Files Modified**
+- `components/chat-wrapper.tsx` - Streamlined onFinish callback with direct cache refresh
+- `components/sidebar-history.tsx` - Removed debugging UI and cleaned imports
+- `hooks/use-chat-history.ts` - Simplified cache management and removed diagnostics
+
+#### **🎯 User Experience Impact**
+- ✅ **Immediate Sidebar Updates**: New chats appear instantly after streaming
+- ✅ **Clean Interface**: Removed debugging clutter from production UI
+- ✅ **Maintained Performance**: No impact on streaming or chat functionality
+- ✅ **Better Reliability**: Simplified cache logic reduces potential failure points
+
 ## [v4.7.1] - 2025-01-16
 
 ### 🔧 **Browser Extension Compatibility Fix**
