@@ -194,7 +194,7 @@ export namespace ContentFormatter {
   ): string {
     const prompts = {
       document_list:
-        'You are presenting a document list to the user. Output ONLY the provided document list exactly as formatted. Do NOT add any conversational text, questions, or additional commentary. Do NOT convert bullet points (-) to numbered lists (1., 2., 3.). Do NOT change the indentation or structure. Preserve all bullet points (-) and sub-bullet points exactly as provided. Just output the document list as-is.',
+        'You are presenting a document list to the user. Output ONLY the provided document list exactly as formatted. Do NOT add any conversational text, questions, or additional commentary. Do NOT convert bullet points (-) to numbered lists (1., 2., 3.). Do NOT change the indentation or structure. Preserve all bullet points (-) and sub-bullet points exactly as provided. NEVER use numbered lists within numbered lists. Just output the document list as-is.',
       content:
         'You are a helpful assistant. Present the provided information clearly and directly to the user. Do NOT change the formatting, numbering, or bullet points. Do NOT include any raw JSON data, tool results, technical details, or instructions. Just present the content exactly as provided.',
       generic: 'Provide a brief acknowledgment that the request was processed.',

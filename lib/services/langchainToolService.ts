@@ -67,8 +67,13 @@ export class LangChainToolService {
   private logger: RequestLogger;
   private config: LangChainToolConfig;
   private toolMetadata: Map<string, LangChainToolMetadata>;
+  private session?: any;
 
-  constructor(logger: RequestLogger, config: LangChainToolConfig = {}) {
+  constructor(
+    logger: RequestLogger,
+    config: LangChainToolConfig = {},
+    session?: any,
+  ) {
     this.logger = logger;
     this.config = {
       enableToolExecution: true,
@@ -77,14 +82,15 @@ export class LangChainToolService {
       ...config,
     };
     this.toolMetadata = new Map();
-    this.initializeToolMetadata();
+    this.session = session;
+    // Initialize metadata asynchronously when selectTools is called
   }
 
   /**
    * Select and filter tools based on context and configuration
    * Extracted from langchainBridge.selectTools()
    */
-  public selectTools(): ToolSelectionResult {
+  public async selectTools(): Promise<ToolSelectionResult> {
     const startTime = performance.now();
 
     this.logger.info('Starting LangChain tool selection', {
@@ -93,11 +99,17 @@ export class LangChainToolService {
       maxTools: this.config.maxTools,
     });
 
+    // Initialize tool metadata if not already done
+    if (this.toolMetadata.size === 0) {
+      await this.initializeToolMetadata(this.session);
+    }
+
     // Setup client-specific tool configurations
     const clientSpecificConfigs = this.setupClientToolConfigs();
 
-    // Start with all available tools (loaded dynamically)
-    let selectedTools = [...getAvailableTools()];
+    // Start with all available tools (loaded dynamically with session)
+    const allAvailableTools = await getAvailableTools(this.session);
+    let selectedTools = [...allAvailableTools];
     const appliedFilters: string[] = [];
 
     // Apply tool execution filter
@@ -148,7 +160,7 @@ export class LangChainToolService {
     const duration = performance.now() - startTime;
 
     this.logger.info('LangChain tool selection completed', {
-      totalAvailable: getAvailableTools().length,
+      totalAvailable: allAvailableTools.length,
       selected: selectedTools.length,
       selectionTime: `${duration.toFixed(2)}ms`,
       appliedFilters,
@@ -157,7 +169,7 @@ export class LangChainToolService {
 
     return {
       tools: selectedTools,
-      totalAvailable: getAvailableTools().length,
+      totalAvailable: allAvailableTools.length,
       selected: selectedTools.length,
       selectionTime: duration,
       appliedFilters,
@@ -268,9 +280,9 @@ export class LangChainToolService {
   /**
    * Initialize tool metadata for better management
    */
-  private initializeToolMetadata(): void {
+  private async initializeToolMetadata(session?: any): Promise<void> {
     // Initialize metadata for available tools (loaded dynamically)
-    const availableTools = getAvailableTools();
+    const availableTools = await getAvailableTools(session);
     for (const tool of availableTools) {
       if (!tool || !tool.name) {
         this.logger.warn('Invalid tool found during metadata initialization', {
@@ -383,8 +395,10 @@ export class LangChainToolService {
   /**
    * Get tools by category
    */
-  public getToolsByCategory(category: LangChainToolCategory): any[] {
-    const availableTools = getAvailableTools();
+  public async getToolsByCategory(
+    category: LangChainToolCategory,
+  ): Promise<any[]> {
+    const availableTools = await getAvailableTools(this.session);
     return availableTools.filter((tool) => {
       const metadata = this.toolMetadata.get(tool.name);
       return metadata?.category === category;
@@ -402,17 +416,18 @@ export class LangChainToolService {
 export function createLangChainToolService(
   logger: RequestLogger,
   config?: LangChainToolConfig,
+  session?: any,
 ): LangChainToolService {
-  return new LangChainToolService(logger, config);
+  return new LangChainToolService(logger, config, session);
 }
 
 /**
  * Quick tool selection utility
  */
-export function selectLangChainTools(
+export async function selectLangChainTools(
   logger: RequestLogger,
   config: LangChainToolConfig,
-): ToolSelectionResult {
+): Promise<ToolSelectionResult> {
   const service = createLangChainToolService(logger, config);
-  return service.selectTools();
+  return await service.selectTools();
 }

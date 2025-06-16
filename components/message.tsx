@@ -49,9 +49,9 @@ const PurePreviewMessage = ({
     return <ThinkingMessage />;
   }
 
-  // Add a clear log to see when PurePreviewMessage renders and with what props
+  // Reduced logging for better console readability
   console.log(
-    `[PurePreviewMessage ${message.id?.substring(0, 5)}] Rendering. isLoading: ${isLoading}, Content: "${typeof message.content === 'string' ? message.content.substring(0, 30) : 'N/A'}"`,
+    `[PurePreviewMessage ${message.id?.substring(0, 5)}] Rendering. isLoading: ${isLoading}`,
   );
 
   // Get message data first. Use live streamData if available, otherwise use data attached to the message.
@@ -71,59 +71,54 @@ const PurePreviewMessage = ({
   const toolCalls: any[] = [];
   const thinkingContent: string[] = [];
 
-  if (data && Array.isArray(data)) {
-    console.log(
-      `[PurePreviewMessage ${message.id?.substring(0, 5)}] Processing ${data.length} data items:`,
-      data.map((item, i) => ({
-        index: i,
-        type: item?.type,
-        keys: Object.keys(item || {}),
-      })),
-    );
+  if (data && data.length > 0) {
+    // Only log data processing if debug flag is set
+    if (
+      process.env.NODE_ENV === 'development' &&
+      window?.location?.search?.includes('debug=message')
+    ) {
+      console.log(
+        `[PurePreviewMessage ${message.id?.substring(0, 5)}] Processing ${data.length} data items`,
+      );
+    }
 
     data.forEach((item: any, index: number) => {
-      console.log(
-        `[PurePreviewMessage ${message.id?.substring(0, 5)}] Data item ${index}:`,
-        { type: item?.type, item },
-      );
-
-      // Look for various tool call formats
-      if (
-        item?.type === 'tool-call' ||
-        item?.type === 'tool-result' ||
-        item?.type === 'tool_call' ||
-        item?.type === 'tool_result' ||
-        item?.toolName ||
-        item?.tool_name
-      ) {
-        console.log(
-          `[PurePreviewMessage ${message.id?.substring(0, 5)}] Found tool call:`,
-          item,
-        );
-        toolCalls.push(item);
+      if (item.type === 'tool-call') {
+        try {
+          const toolCall = item.toolCall;
+          if (toolCall?.toolName && toolCall?.args) {
+            toolCalls.push(item);
+          }
+        } catch (error) {
+          console.error(
+            `[PurePreviewMessage ${message.id?.substring(0, 5)}] Error processing tool call:`,
+            error,
+          );
+        }
       }
 
       // Look for thinking content in various formats
       if (
         item?.type === 'thinking' ||
         (item?.content &&
-          typeof item.content === 'string' &&
-          item.content.includes('<think>')) ||
+          typeof item?.content === 'string' &&
+          item?.content?.includes('<think>')) ||
         (item?.text &&
-          typeof item.text === 'string' &&
-          item.text.includes('<think>'))
+          typeof item?.text === 'string' &&
+          item?.text?.includes('<think>'))
       ) {
-        thinkingContent.push(item.content || item.text || JSON.stringify(item));
+        thinkingContent.push(
+          item?.content || item?.text || JSON.stringify(item),
+        );
       }
     });
 
-    console.log(
-      `[PurePreviewMessage ${message.id?.substring(0, 5)}] Extracted:`,
-      {
-        toolCallsCount: toolCalls.length,
-        thinkingContentCount: thinkingContent.length,
-      },
-    );
+    // Reduced logging - only show counts if there are items
+    if (toolCalls.length > 0 || thinkingContent.length > 0) {
+      console.log(
+        `[PurePreviewMessage ${message.id?.substring(0, 5)}] Found: ${toolCalls.length} tools, ${thinkingContent.length} thinking`,
+      );
+    }
   }
 
   // Find the conclusive 'artifact-end' event from the message data, if it exists.

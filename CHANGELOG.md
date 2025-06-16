@@ -5,6 +5,36 @@ All notable changes to the Echo Tango RAG System will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.7.1] - 2025-01-16
+
+### 🔧 **Browser Extension Compatibility Fix**
+
+This release resolves React hydration mismatch errors caused by browser extensions that modify DOM elements.
+
+#### **🐛 Bug Fixes**
+- **FIXED**: React hydration mismatch errors in `SidebarUserNav` component
+- **FIXED**: Browser extension interference with image elements (HoverZoom compatibility)
+- **RESOLVED**: Console errors related to className mismatches between server and client rendering
+
+#### **🔧 Technical Implementation**
+- **ADDED**: `suppressHydrationWarning={true}` to image components susceptible to browser extension modifications
+- **ENHANCED**: Application resilience to third-party DOM modifications
+- **IMPROVED**: Clean development console output by eliminating hydration warnings
+
+#### **📚 Documentation**
+- **ADDED**: `docs/HYDRATION_MISMATCH_FIX.md` - Comprehensive documentation of the fix
+- **DOCUMENTED**: Browser extension compatibility approach and technical rationale
+
+#### **🎯 User Experience**
+- **PRESERVED**: Full HoverZoom extension functionality for users
+- **MAINTAINED**: All existing application functionality
+- **ELIMINATED**: Disruptive console errors that affected developer experience
+
+#### **🏗️ Architecture**
+- **FOLLOWED**: React best practices for handling third-party DOM modifications
+- **MAINTAINED**: Clean separation of concerns between application and browser extensions
+- **PRESERVED**: Component functionality while adding extension compatibility
+
 ## [v4.7.0] - 2024-12-16
 
 ### 🧠 **Conversational Memory System Implementation**

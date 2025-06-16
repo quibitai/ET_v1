@@ -95,10 +95,14 @@ export class BrainOrchestrator {
         verbose: true,
       };
 
+      // Get session for MCP tool loading
+      const session = await auth();
+
       const agent = await createLangChainAgent(
         systemPrompt,
         langChainConfig,
         this.logger,
+        session, // Pass session for MCP tool loading
       );
 
       return streamLangChainAgent(
@@ -162,6 +166,10 @@ export class BrainOrchestrator {
         },
         [],
       );
+
+      // Note: Cache invalidation is now handled client-side when new chats are created
+      // Server-side cache invalidation has been removed as it was incorrectly
+      // attempting to call client-side functions from the server
     }
 
     // Save user messages with memory

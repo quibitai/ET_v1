@@ -312,10 +312,11 @@ export class QueryClassifier {
       );
 
       // OVERRIDE: If any tool forcing is detected, always use LangChain
-      // This ensures web search, asana, etc. go through the proper tool system
+      // This ensures web search, knowledge base, etc. go through the proper tool system
+      // NOTE: Asana intent temporarily disabled until MCP integration is working
       if (
         webSearchIntent.hasIntent ||
-        asanaIntent.hasIntent ||
+        // asanaIntent.hasIntent || // Temporarily disabled
         knowledgeBaseIntent.hasIntent ||
         documentListingIntent.hasIntent ||
         documentContentIntent.hasIntent ||
@@ -326,7 +327,7 @@ export class QueryClassifier {
           'Overriding routing decision: tool intent detected, forcing LangChain',
           {
             webSearchIntent: webSearchIntent.hasIntent,
-            asanaIntent: asanaIntent.hasIntent,
+            // asanaIntent: asanaIntent.hasIntent, // Temporarily disabled
             knowledgeBaseIntent: knowledgeBaseIntent.hasIntent,
             documentListingIntent: documentListingIntent.hasIntent,
             documentContentIntent: documentContentIntent.hasIntent,
@@ -436,7 +437,8 @@ export class QueryClassifier {
         // Prioritize tool forcing by confidence level
         const toolIntents = [
           { name: 'tavilySearch', intent: webSearchIntent },
-          { name: 'asana_list_tasks', intent: asanaIntent }, // Use most common Asana tool
+          // NOTE: Asana tools temporarily disabled until MCP integration is working
+          // { name: 'asana_list_tasks', intent: asanaIntent }, // Use most common Asana tool
           { name: 'getDocumentContents', intent: documentContentIntent }, // Highest priority for specific content
           { name: 'listDocuments', intent: documentListingIntent }, // Prioritize listing over searching
           { name: 'listDocuments', intent: companyInfoIntent }, // Company info should also list documents first

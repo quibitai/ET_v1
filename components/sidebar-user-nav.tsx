@@ -54,6 +54,7 @@ export function SidebarUserNav({ user }: { user: User }) {
                   width={30}
                   height={30}
                   className="rounded-full cursor-pointer"
+                  suppressHydrationWarning={true}
                 />
               </div>
             </DropdownMenuTrigger>
@@ -115,6 +116,7 @@ export function SidebarUserNav({ user }: { user: User }) {
                   width={24}
                   height={24}
                   className="rounded-full"
+                  suppressHydrationWarning={true}
                 />
                 <span className="truncate">{user?.email}</span>
                 <ChevronUp className="ml-auto" />
@@ -127,6 +129,7 @@ export function SidebarUserNav({ user }: { user: User }) {
                   width={30}
                   height={30}
                   className="rounded-full cursor-pointer"
+                  suppressHydrationWarning={true}
                 />
               </div>
             )}

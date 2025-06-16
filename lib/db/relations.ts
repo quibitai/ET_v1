@@ -11,6 +11,8 @@ import {
   conversationalMemory,
   specialists,
   analyticsEvents,
+  mcpServers,
+  userMcpIntegrations,
 } from './schema';
 
 // Client Relationships
@@ -38,6 +40,7 @@ export const userRelations = relations(user, ({ one, many }) => ({
   conversationSummaries: many(conversationSummaries),
   chatFileReferences: many(chatFileReferences),
   conversationalMemory: many(conversationalMemory),
+  mcpIntegrations: many(userMcpIntegrations),
 }));
 
 // Chat Relationships
@@ -180,6 +183,26 @@ export const analyticsEventRelations = relations(
     chat: one(chat, {
       fields: [analyticsEvents.chatId],
       references: [chat.id],
+    }),
+  }),
+);
+
+// MCP Server Relationships
+export const mcpServerRelations = relations(mcpServers, ({ many }) => ({
+  userIntegrations: many(userMcpIntegrations),
+}));
+
+// User MCP Integration Relationships
+export const userMcpIntegrationRelations = relations(
+  userMcpIntegrations,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [userMcpIntegrations.userId],
+      references: [user.id],
+    }),
+    mcpServer: one(mcpServers, {
+      fields: [userMcpIntegrations.mcpServerId],
+      references: [mcpServers.id],
     }),
   }),
 );

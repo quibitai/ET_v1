@@ -145,7 +145,7 @@ export const listDocumentsTool = new DynamicStructuredTool({
         });
       }
 
-      // Format document list with clickable links
+      // Format document list with functional clickable links
       const documentList = data.map((doc) => ({
         id: doc.id,
         title: doc.title,
@@ -156,12 +156,9 @@ export const listDocumentsTool = new DynamicStructuredTool({
         clickable_link: `[${doc.title}](/api/documents/${doc.id})`,
       }));
 
-      // Create formatted list for immediate display
+      // Create formatted list for immediate display using bullet points to avoid nested numbering
       const formattedList = documentList
-        .map(
-          (doc, index) =>
-            `${index + 1}. [${doc.title}](/api/documents/${doc.id})`,
-        )
+        .map((doc) => `- [${doc.title}](/api/documents/${doc.id})`)
         .join('\n');
 
       // Track successful completion
@@ -182,7 +179,7 @@ export const listDocumentsTool = new DynamicStructuredTool({
         total_count: documentList.length,
         formatted_list: formattedList,
         usage_instructions:
-          "To retrieve a document's full content, use the getDocumentContents tool with the document's id. When displaying the list to users, use the formatted_list with clickable links.",
+          "To retrieve a document's full content, use the getDocumentContents tool with the document's id. When displaying the list to users, use the formatted_list with clickable links that allow users to view documents directly.",
       });
     } catch (err: any) {
       const duration = performance.now() - startTime;
