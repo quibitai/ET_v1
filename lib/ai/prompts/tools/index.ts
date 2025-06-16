@@ -1,5 +1,5 @@
 import { dataAnalysisToolInstructions } from './data-analysis';
-import { getAvailableTools } from '../../tools';
+import { availableTools } from '../../tools';
 // Document tool instructions removed as part of Echo Tango v1 simplification
 // Import instructions for other tools as they are created
 
@@ -87,7 +87,6 @@ export function getToolPromptInstructions(
   toolIds: string[] = [],
 ): string {
   const relevantInstructions = new Set<string>();
-  const availableTools = getAvailableTools(); // Get the single source of truth.
 
   console.log(
     '[ToolInstructions] Generating instructions from dynamically loaded tools.',

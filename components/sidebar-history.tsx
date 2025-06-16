@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useChatHistory } from '@/hooks/use-chat-history';
 import type { GroupedChats, ChatSummary } from '@/lib/types';
+import { useChatCacheInvalidation } from '@/lib/utils/chatCacheInvalidation';
 
 const PAGE_SIZE = 20;
 
@@ -161,6 +162,9 @@ export const SidebarHistory = memo(function SidebarHistory({
     mutateChatHistory,
   } = useChatHistory(chatId);
 
+  // Get cache invalidation functions for testing
+  const { invalidateCache, addChatOptimistically } = useChatCacheInvalidation();
+
   // Log fetched sidebar chats information
   useEffect(() => {
     console.log('[SidebarHistory] Current sidebar state:', {
@@ -177,6 +181,91 @@ export const SidebarHistory = memo(function SidebarHistory({
         : null,
     });
   }, [hasEmptyChatHistory, isLoadingChatHistory, chatGroups]);
+
+  const handleCreateTestChat = async () => {
+    console.log('[SidebarHistory] Creating test chat');
+
+    const testChat = {
+      id: `test-${Date.now()}`,
+      title: 'Test Chat',
+      bitContextId: 'echo-tango-specialist',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      visibility: 'private' as const,
+      userId: user?.id || '',
+      clientId: user?.clientId || 'echo-tango',
+    };
+
+    try {
+      // Use the specific mutate function from the hook instead of global mutate
+      console.log(
+        '[SidebarHistory] Using hook-specific mutate function for optimistic update',
+      );
+
+      await mutateChatHistory(
+        async (currentData: any) => {
+          console.log('[SidebarHistory] Current cache data:', currentData);
+
+          if (!currentData || !Array.isArray(currentData)) {
+            console.log('[SidebarHistory] Invalid cache data structure');
+            return currentData;
+          }
+
+          // Get the first page
+          const firstPage = currentData[0];
+          if (
+            !firstPage ||
+            !firstPage.chats ||
+            !Array.isArray(firstPage.chats)
+          ) {
+            console.log('[SidebarHistory] Invalid first page structure');
+            return currentData;
+          }
+
+          // Create optimistic chat
+          const optimisticChat = {
+            id: testChat.id,
+            title: testChat.title,
+            createdAt: testChat.createdAt,
+            updatedAt: testChat.updatedAt,
+            visibility: testChat.visibility,
+            userId: testChat.userId,
+            clientId: testChat.clientId,
+            bitContextId: testChat.bitContextId,
+          };
+
+          console.log(
+            '[SidebarHistory] Adding optimistic chat:',
+            optimisticChat,
+          );
+
+          // Create updated first page
+          const updatedFirstPage = {
+            ...firstPage,
+            chats: [optimisticChat, ...firstPage.chats],
+          };
+
+          // Return updated data
+          const result = [updatedFirstPage, ...currentData.slice(1)];
+          console.log(
+            '[SidebarHistory] Returning updated cache data with',
+            result[0].chats.length,
+            'chats',
+          );
+          return result;
+        },
+        {
+          revalidate: false,
+          populateCache: true,
+          rollbackOnError: true,
+        },
+      );
+
+      console.log('[SidebarHistory] Test chat created successfully');
+    } catch (error) {
+      console.error('[SidebarHistory] Failed to create test chat:', error);
+    }
+  };
 
   // Handle loading state
   if (isLoadingChatHistory) {
@@ -202,16 +291,52 @@ export const SidebarHistory = memo(function SidebarHistory({
         <div className="px-1 my-2">
           <div className="flex items-center justify-between text-xs font-medium text-muted-foreground mb-1 px-2">
             Recent Chats
-            <button
-              type="button"
-              onClick={() => mutateChatHistory()}
-              className="p-1 hover:bg-muted rounded-sm"
-              title="Refresh chat history"
-            >
-              <RotateCw
-                className={`h-3 w-3 ${isLoadingChatHistory ? 'animate-spin' : ''}`}
-              />
-            </button>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={handleCreateTestChat}
+                className="p-1 hover:bg-muted rounded-sm"
+                title="Create test chat"
+              >
+                ➕
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  console.log(
+                    '[SidebarHistory] Manual cache invalidation triggered',
+                  );
+                  try {
+                    await invalidateCache({
+                      logger: (msg, data) =>
+                        console.log(`[SidebarHistory] ${msg}`, data),
+                    });
+                    console.log(
+                      '[SidebarHistory] Cache invalidation completed',
+                    );
+                  } catch (error) {
+                    console.error(
+                      '[SidebarHistory] Cache invalidation failed:',
+                      error,
+                    );
+                  }
+                }}
+                className="p-1 hover:bg-muted rounded-sm"
+                title="Force cache invalidation"
+              >
+                🔄
+              </button>
+              <button
+                type="button"
+                onClick={() => mutateChatHistory()}
+                className="p-1 hover:bg-muted rounded-sm"
+                title="Refresh chat history"
+              >
+                <RotateCw
+                  className={`h-3 w-3 ${isLoadingChatHistory ? 'animate-spin' : ''}`}
+                />
+              </button>
+            </div>
           </div>
           <DaySection
             day="today"

@@ -1,5 +1,11 @@
 import { availableTools } from '@/lib/ai/tools';
 import type { RequestLogger } from './observabilityService';
+import type { Session } from 'next-auth';
+import { mcpService } from './mcpService';
+import {
+  getMcpServerByName,
+  getDecryptedAccessTokenByServerName,
+} from '@/lib/db/repositories/mcpIntegrations';
 
 // Import timezone tool
 import { timezoneToolDefinition } from '@/lib/tools/timezoneTool';
@@ -150,11 +156,12 @@ export function categorizeTools(): CategorizedTool[] {
 }
 
 /**
- * Intelligent tool selection based on user query analysis
+ * Enhanced tool selection with MCP integration support
  */
 export async function selectRelevantTools(
   context: ToolContext,
-  maxTools = 26, // Increased to allow access to all available tools
+  session: Session | null = null, // Enhanced: Accept user session
+  maxTools = 26,
 ): Promise<any[]> {
   const { userQuery, logger } = context;
 
@@ -209,11 +216,30 @@ export async function selectRelevantTools(
   const categorizedTools = categorizeTools();
   const keywords = userQuery.toLowerCase();
 
-  logger.info('Starting intelligent tool selection for all specialists', {
+  logger.info('Starting intelligent tool selection with MCP support', {
     userQuery: userQuery.substring(0, 100),
     totalTools: categorizedTools.length,
     specialist: context.activeBitContextId,
+    hasSession: !!session,
+    userId: session?.user?.id,
   });
+
+  // Enhanced: Load MCP tools for authenticated users
+  let mcpTools: any[] = [];
+  if (session?.user?.id) {
+    try {
+      mcpTools = await loadUserMcpTools(session.user.id, logger);
+      logger.info(`Loaded ${mcpTools.length} MCP tools for user`, {
+        userId: session.user.id,
+        mcpToolNames: mcpTools.map((t) => t.name),
+      });
+    } catch (error) {
+      logger.error('Failed to load MCP tools for user', {
+        userId: session.user.id,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
 
   // Scoring system for tool relevance
   const toolScores: Map<string, number> = new Map();
@@ -370,6 +396,19 @@ export async function selectRelevantTools(
       }
     }
 
+    // Enhanced: MCP tool scoring
+    if (mcpTools.some((mcp) => mcp.name === tool.name)) {
+      // Boost score for MCP tools when relevant
+      if (
+        tool.name.toLowerCase().includes('asana') &&
+        (keywords.includes('asana') ||
+          keywords.includes('task') ||
+          keywords.includes('project'))
+      ) {
+        score += 15; // High priority for relevant MCP tools
+      }
+    }
+
     toolScores.set(tool.name, score);
   }
 
@@ -382,15 +421,89 @@ export async function selectRelevantTools(
     .slice(0, maxTools)
     .map((ct) => ct.tool);
 
-  logger.info('Intelligent tool selection completed', {
+  logger.info('Enhanced tool selection completed', {
     selectedTools: sortedTools.map((t) => t.name),
+    mcpTools: mcpTools.length,
     scores: Object.fromEntries(
-      sortedTools.map((t) => [t.name, toolScores.get(t.name) || 0]),
+      sortedTools
+        .slice(0, 10)
+        .map((t) => [t.name, toolScores.get(t.name) || 0]),
     ),
-    specialist: context.activeBitContextId,
   });
 
   return sortedTools;
+}
+
+/**
+ * Loads MCP tools for a specific user
+ */
+async function loadUserMcpTools(
+  userId: string,
+  logger: RequestLogger,
+): Promise<any[]> {
+  const mcpTools: any[] = [];
+
+  try {
+    // Load Asana MCP tools if user has integration
+    const asanaServer = await getMcpServerByName('Asana');
+    if (asanaServer?.isEnabled) {
+      const asanaToken = await getDecryptedAccessTokenByServerName(
+        userId,
+        'Asana',
+      );
+
+      if (asanaToken) {
+        const asanaClient = await mcpService.connectToServer(
+          asanaServer,
+          userId,
+          asanaToken,
+        );
+
+        if (asanaClient) {
+          const availableMcpTools = await mcpService.getAvailableTools(
+            asanaClient,
+            'Asana',
+          );
+          const langChainTools = mcpService.convertToLangChainTools(
+            availableMcpTools,
+            asanaClient,
+            'Asana',
+          );
+
+          mcpTools.push(...langChainTools);
+
+          logger.info('Successfully loaded Asana MCP tools', {
+            userId,
+            toolCount: langChainTools.length,
+            toolNames: langChainTools.map((t) => t.name),
+          });
+        }
+      }
+    }
+
+    // TODO: Add other MCP integrations here as they become available
+    // Example: Slack, GitHub, etc.
+  } catch (error) {
+    logger.error('Error loading MCP tools', {
+      userId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+
+  return mcpTools;
+}
+
+/**
+ * Determines the category for MCP tools
+ */
+function determineMcpToolCategory(toolName: string): ToolCategory {
+  if (toolName.toLowerCase().includes('asana')) {
+    return ToolCategory.ASANA;
+  }
+
+  // Add more MCP tool categorization logic here
+
+  return ToolCategory.EXTERNAL;
 }
 
 /**

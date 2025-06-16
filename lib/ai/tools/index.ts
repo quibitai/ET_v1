@@ -23,29 +23,103 @@ import {
   ANALYTICS_EVENTS,
 } from '@/lib/services/observabilityService';
 
-// Import Asana tools from the new modular structure
-import { createAsanaTools } from './asana/integration/tool-factory-simple';
+// Legacy Asana tools import removed - only MCP integration supported
 
-// Create Asana tool instances lazily to avoid startup validation errors
-let asanaTools: ReturnType<typeof createAsanaTools> | null = null;
+// Import MCP integration repository for loading user MCP tools
+import { McpIntegrationRepository } from '@/lib/db/repositories/mcpIntegrations';
+import { McpService } from '@/lib/services/mcpService';
 
-function getAsanaTools() {
-  if (!asanaTools) {
-    try {
-      console.log('[AsanaTools] Creating Asana tools...');
-      asanaTools = createAsanaTools('default-session');
-      console.log(
-        '[AsanaTools] Successfully created',
-        asanaTools.length,
-        'tools:',
-        asanaTools.map((t) => t.name),
-      );
-    } catch (error) {
-      console.error('[AsanaTools] Failed to create Asana tools:', error);
-      asanaTools = []; // Return empty array on error to prevent crashes
+// Legacy Asana tools removed - only MCP integration supported
+
+/**
+ * Loads MCP tools for a specific user
+ */
+async function getUserMcpTools(
+  userId: string,
+): Promise<DynamicStructuredTool[]> {
+  try {
+    // Get user's active MCP integrations
+    const integrations =
+      await McpIntegrationRepository.getUserMcpIntegrations(userId);
+
+    if (integrations.length === 0) {
+      return [];
     }
+
+    const mcpService = new McpService();
+    const allMcpTools: DynamicStructuredTool[] = [];
+
+    // For each integration, connect and get tools
+    for (const integration of integrations) {
+      try {
+        // Get the server configuration
+        const server = await McpIntegrationRepository.getMcpServerById(
+          integration.mcpServerId,
+        );
+        if (!server) {
+          console.warn(
+            `[ToolIndex] Server not found for integration: ${integration.mcpServerId}`,
+          );
+          continue;
+        }
+
+        // Get decrypted access token
+        const accessToken =
+          await McpIntegrationRepository.getDecryptedAccessToken(
+            userId,
+            integration.mcpServerId,
+          );
+
+        if (!accessToken) {
+          console.warn(
+            `[ToolIndex] No access token for user ${userId} and server ${server.name}`,
+          );
+          continue;
+        }
+
+        // Connect to MCP server
+        const client = await mcpService.connectToServer(
+          server,
+          userId,
+          accessToken,
+        );
+        if (!client) {
+          console.warn(
+            `[ToolIndex] Failed to connect to MCP server: ${server.name}`,
+          );
+          continue;
+        }
+
+        // Get available tools from the server
+        const mcpTools = await mcpService.getAvailableTools(
+          client,
+          server.name,
+        );
+
+        // Convert to LangChain tools
+        const langchainTools = mcpService.convertToLangChainTools(
+          mcpTools,
+          client,
+          server.name,
+        );
+        allMcpTools.push(...langchainTools);
+
+        console.log(
+          `[ToolIndex] Loaded ${langchainTools.length} tools from ${server.name} MCP server`,
+        );
+      } catch (error) {
+        console.error(
+          `[ToolIndex] Error loading tools from integration ${integration.serverName}:`,
+          error,
+        );
+      }
+    }
+
+    return allMcpTools;
+  } catch (error) {
+    console.error('[ToolIndex] Error loading user MCP tools:', error);
+    return [];
   }
-  return asanaTools;
 }
 
 // Create budget creation helper tool
@@ -124,7 +198,7 @@ const createBudgetTool = new DynamicStructuredTool({
   },
 });
 
-export function getAvailableTools() {
+export async function getAvailableTools(session?: any) {
   const staticTools = [
     // Knowledge Base Tools
     listDocumentsTool,
@@ -143,20 +217,78 @@ export function getAvailableTools() {
     getMessagesFromOtherChatTool,
   ];
 
-  // Get Asana tools dynamically each time
-  const asanaTools = getAsanaTools();
+  let integrationTools: DynamicStructuredTool[] = [];
+
+  // Check if user has MCP integrations and load MCP tools
+  if (session?.user?.id) {
+    try {
+      const mcpTools = await getUserMcpTools(session.user.id);
+
+      if (mcpTools.length > 0) {
+        console.log('[ToolIndex] Loading MCP tools:', {
+          userId: session.user.id,
+          mcpToolCount: mcpTools.length,
+          mcpToolNames: mcpTools.map((t: DynamicStructuredTool) => t.name),
+        });
+        integrationTools = mcpTools;
+      } else {
+        // No MCP integrations available
+        console.log(
+          '[ToolIndex] No MCP integrations found, no legacy tools available',
+        );
+        integrationTools = [];
+      }
+    } catch (error) {
+      console.error('[ToolIndex] Error loading MCP tools:', error);
+      integrationTools = [];
+    }
+  } else {
+    // No session, no integration tools available
+    console.log(
+      '[ToolIndex] No session provided, no integration tools available',
+    );
+    integrationTools = [];
+  }
 
   console.log('[ToolIndex] Loading tools:', {
     staticTools: staticTools.length,
-    asanaTools: asanaTools.length,
-    total: staticTools.length + asanaTools.length,
+    integrationTools: integrationTools.length,
+    total: staticTools.length + integrationTools.length,
+    hasSession: !!session,
+    userId: session?.user?.id,
   });
 
-  return [...staticTools, ...asanaTools];
+  return [...staticTools, ...integrationTools];
 }
 
-// For backward compatibility, export availableTools as a getter
-export const availableTools = getAvailableTools();
+// Synchronous version for backward compatibility (without session-aware MCP tools)
+function getAvailableToolsSync() {
+  const staticTools = [
+    // Knowledge Base Tools
+    listDocumentsTool,
+    getDocumentContentsTool,
+    multiDocumentRetrievalTool,
+    searchAndRetrieveKnowledgeBase,
+    queryDocumentRowsTool,
+    // Utility Tools
+    requestSuggestionsTool,
+    createBudgetTool,
+    // Search & Retrieval Tools
+    tavilySearchTool,
+    tavilyExtractTool,
+    // Integration Tools
+    googleCalendarTool,
+    getMessagesFromOtherChatTool,
+  ];
+
+  // No legacy tools available - only MCP integration supported
+  const integrationTools: DynamicStructuredTool[] = [];
+
+  return [...staticTools, ...integrationTools];
+}
+
+// For backward compatibility, export availableTools as synchronous array
+export const availableTools = getAvailableToolsSync();
 
 export {
   listDocumentsTool,
@@ -167,5 +299,5 @@ export {
   tavilySearchTool,
   getMessagesFromOtherChatTool,
   googleCalendarTool,
-  getAsanaTools, // Modern Asana function calling tools getter
+  // Legacy Asana tools removed - only MCP integration supported
 };

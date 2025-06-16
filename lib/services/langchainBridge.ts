@@ -65,6 +65,7 @@ export async function createLangChainAgent(
   systemPrompt: string,
   config: LangChainBridgeConfig,
   logger: RequestLogger,
+  session?: any, // Session for MCP tool loading
 ): Promise<LangChainAgent> {
   const startTime = performance.now();
   logger.info('Creating LangChain agent with config', { ...config });
@@ -90,9 +91,11 @@ export async function createLangChainAgent(
     streaming: true,
   });
 
-  // Select tools
+  // Select tools with session for MCP integration
   const tools =
-    config.enableToolExecution !== false ? selectTools(config, logger) : [];
+    config.enableToolExecution !== false
+      ? await selectTools(config, logger, session)
+      : [];
 
   // Always use LangGraph
   const langGraphConfig: LangGraphWrapperConfig = {
@@ -263,10 +266,11 @@ function determineIfSynthesisNeeded(
   return false;
 }
 
-function selectTools(
+async function selectTools(
   config: LangChainBridgeConfig,
   logger: RequestLogger,
-): any[] {
+  session?: any, // Session for MCP tool loading
+): Promise<any[]> {
   const toolConfig: LangChainToolConfig = {
     contextId: config.contextId,
     clientConfig: config.clientConfig,
@@ -275,6 +279,7 @@ function selectTools(
     verbose: config.verbose,
   };
 
-  const toolService = createLangChainToolService(logger, toolConfig);
-  return toolService.selectTools().tools;
+  const toolService = createLangChainToolService(logger, toolConfig, session);
+  const result = await toolService.selectTools();
+  return result.tools;
 }

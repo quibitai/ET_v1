@@ -13,7 +13,7 @@ import {
 import { getAvailableSpecialists } from '@/lib/ai/prompts/specialists';
 
 export async function GET(request: NextRequest) {
-  // Reduced API logging
+  console.log('[API History] Request received');
 
   try {
     const session = (await auth()) as Session;
@@ -32,6 +32,15 @@ export async function GET(request: NextRequest) {
     const bitContextId = searchParams.get('contextId');
     const page = Number.parseInt(searchParams.get('page') || '1', 10);
     const limit = Number.parseInt(searchParams.get('limit') || '20', 10);
+
+    console.log('[API History] Request parameters:', {
+      historyType,
+      bitContextId,
+      page,
+      limit,
+      userId: `${userId.substring(0, 8)}...`,
+      clientId,
+    });
 
     // Special handling for 'all-specialists' type
     if (historyType === 'all-specialists') {
@@ -110,7 +119,13 @@ export async function GET(request: NextRequest) {
 
     const hasMore = chatSummaries.length === limit;
 
-    // Only log errors, not successful operations
+    console.log('[API History] Query results:', {
+      resolvedContextId,
+      chatCount: chatSummaries.length,
+      hasMore,
+      chatIds: chatSummaries.map((chat) => `${chat.id.substring(0, 8)}...`),
+      chatTitles: chatSummaries.map((chat) => chat.title),
+    });
 
     return NextResponse.json(
       {

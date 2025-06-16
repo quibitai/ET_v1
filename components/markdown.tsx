@@ -24,7 +24,7 @@ const components: Partial<Components> = {
   },
   ul: ({ node, children, ...props }) => {
     return (
-      <ul className="list-decimal list-outside ml-4" {...props}>
+      <ul className="list-disc list-outside ml-4" {...props}>
         {children}
       </ul>
     );
@@ -38,28 +38,40 @@ const components: Partial<Components> = {
   },
   a: ({ node, children, ...props }) => {
     const href = props.href;
-    const isExternal =
+
+    // Simplified and more reliable external link detection
+    const isExternal = !!(
       href &&
       (href.startsWith('http://') ||
         href.startsWith('https://') ||
-        href.startsWith('mailto:'));
+        href.startsWith('mailto:') ||
+        href.startsWith('ftp://') ||
+        href.startsWith('//'))
+    );
 
+    // Debug logging for link detection (remove in production)
+    if (href && process.env.NODE_ENV === 'development') {
+      console.log('[Markdown Link]', { href, isExternal, children });
+    }
+
+    // For external links, always use native <a> tag
     if (isExternal) {
       return (
         <a
+          href={href}
           className="text-blue-500 hover:underline"
           target="_blank"
-          rel="noreferrer"
-          {...props}
+          rel="noopener noreferrer"
         >
           {children}
         </a>
       );
     }
 
+    // For internal links, use Next.js Link
     return (
       // @ts-expect-error
-      <Link className="text-blue-500 hover:underline" {...props}>
+      <Link className="text-blue-500 hover:underline" href={href || '#'}>
         {children}
       </Link>
     );
@@ -117,17 +129,13 @@ function linkifyUrls(text: string): string {
   // URL regex that matches http/https URLs
   const urlRegex = /(https?:\/\/[^\s\)]+)/g;
 
-  return text.replace(urlRegex, (url) => {
+  return text.replace(urlRegex, (url, offset) => {
     // Don't linkify URLs that are already in markdown link format
-    const beforeUrl = text.substring(0, text.indexOf(url));
-    const afterUrl = text.substring(text.indexOf(url) + url.length);
+    const beforeUrl = text.substring(0, offset);
+    const afterUrl = text.substring(offset + url.length);
 
     // Check if this URL is already in a markdown link [text](url)
-    if (
-      beforeUrl.endsWith('](') ||
-      beforeUrl.endsWith('](') ||
-      afterUrl.startsWith(')')
-    ) {
+    if (beforeUrl.endsWith('](') || afterUrl.startsWith(')')) {
       return url; // Already a markdown link, don't modify
     }
 
@@ -136,7 +144,32 @@ function linkifyUrls(text: string): string {
       return url; // Already in HTML link, don't modify
     }
 
-    // Convert to markdown link
+    // Enhanced pattern for references - try to extract domain name for cleaner links
+    const domainMatch = url.match(/https?:\/\/(?:www\.)?([^\/]+)/);
+    const domain = domainMatch?.[1] ?? url;
+
+    // For references section, create cleaner link text
+    if (
+      beforeUrl.includes('References') ||
+      beforeUrl.includes('## References')
+    ) {
+      // Try to find a better title from the line context
+      const lineStart = Math.max(0, beforeUrl.lastIndexOf('\n'));
+      const currentLine = text.substring(lineStart, offset + url.length);
+
+      // Extract title before the URL (common pattern: "Title. Source. URL")
+      const titleMatch = currentLine.match(
+        /^\d*\.?\s*([^\.]+)\.\s*[^\.]+\.\s*https?:/,
+      );
+      if (titleMatch?.[1]) {
+        return `[${titleMatch[1].trim()}](${url})`;
+      }
+
+      // Fallback to domain name
+      return `[${domain}](${url})`;
+    }
+
+    // Default behavior for non-reference URLs
     return `[${url}](${url})`;
   });
 }

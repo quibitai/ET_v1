@@ -1,15 +1,18 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import {
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  useEffect,
+  useTransition,
+} from 'react';
 import { useRouter } from 'next/navigation';
-import { useTransition } from 'react';
 import useSWRInfinite from 'swr/infinite';
 import { useSession } from 'next-auth/react';
 import { isToday, isYesterday, subMonths, subWeeks } from 'date-fns';
 import { toast } from 'sonner';
-
-import { fetcher } from '@/lib/utils';
 import { deleteChat } from '@/app/(chat)/actions';
 import type { Chat } from '@/lib/db/schema';
-// Document type removed in Phase 1, Task 1.2
 import type {
   ChatHistory,
   DocumentHistory,
@@ -17,6 +20,9 @@ import type {
   ExpandedSections,
   ChatSummary,
 } from '@/lib/types';
+import { useChatCacheInvalidation } from '@/lib/utils/chatCacheInvalidation';
+
+import { fetcher } from '@/lib/utils';
 
 const PAGE_SIZE = 20;
 
@@ -145,35 +151,12 @@ export function getChatHistoryPaginationKey(
     const type = 'sidebar';
 
     // Get contextId from localStorage - only if we're in the browser
+    // FIXED: Make this stable by not modifying localStorage during key generation
     const activeContextId =
       typeof window !== 'undefined'
         ? localStorage.getItem('current-active-specialist') ||
           'echo-tango-specialist'
         : 'echo-tango-specialist';
-
-    // Add uniqueness tracker to prevent repeated fetches
-    // This creates a stable key that will only change when the specialist changes
-    const lastFetchTimestamp =
-      typeof window !== 'undefined'
-        ? localStorage.getItem('last-sidebar-fetch-timestamp') || '0'
-        : '0';
-    const now = Date.now();
-
-    // Only update the timestamp for new fetches, not for SWR internal validation
-    if (
-      typeof window !== 'undefined' &&
-      Number(lastFetchTimestamp) + 5000 < now
-    ) {
-      // 5 second minimum between actual fetches
-      localStorage.setItem('last-sidebar-fetch-timestamp', now.toString());
-      console.log(
-        `[SWR Key Gen] Updating timestamp, prev=${lastFetchTimestamp}, new=${now}`,
-      );
-    } else {
-      console.log(
-        `[SWR Key Gen] Using existing timestamp ${lastFetchTimestamp}, not updating yet`,
-      );
-    }
 
     console.log(
       `[SWR Key Gen] >> Using type=${type}, contextId=${activeContextId}`,
@@ -375,9 +358,19 @@ export function useChatHistory(currentChatId?: string) {
     fetcher,
     {
       revalidateFirstPage: false,
-      revalidateOnFocus: true, // Auto-refresh on window focus
-      revalidateIfStale: true, // Revalidate if stale on mount
+      revalidateOnFocus: false, // Turned off for event-based invalidation
+      revalidateIfStale: false, // Turned off for event-based invalidation
+      refreshInterval: 0, // Turned off in favor of event-based invalidation
+      refreshWhenHidden: false,
+      refreshWhenOffline: false,
+      dedupingInterval: 5000, // Keep a reasonable deduping interval
       onError: (error) => handleSWRError(error, 'Chat History'),
+      onSuccess: (data) => {
+        console.log('[useChatHistory] SWR fetch successful:', {
+          pages: data?.length || 0,
+          timestamp: new Date().toISOString(),
+        });
+      },
     },
   );
 
@@ -389,6 +382,18 @@ export function useChatHistory(currentChatId?: string) {
       isLoading: isLoadingChatHistory,
     });
   }, [chatHistory, isValidatingChatHistory, isLoadingChatHistory]);
+
+  // Listen for global cache invalidation events
+  const { invalidateCache } = useChatCacheInvalidation();
+
+  // Provide a manual refresh function that uses the new cache invalidation
+  const refreshChatHistory = useCallback(async () => {
+    console.log('[useChatHistory] Manual refresh triggered');
+    await invalidateCache({
+      logger: (message, data) =>
+        console.log(`[useChatHistory] ${message}`, data),
+    });
+  }, [invalidateCache]);
 
   // Document History fetching with SWR - DISABLED (deprecated in Phase 1, Task 1.2)
   const {
@@ -444,6 +449,12 @@ export function useChatHistory(currentChatId?: string) {
       console.log(
         `[useChatHistory] Page ${idx + 1} contains ${page.chats.length} chats, hasMore: ${page.hasMore}`,
       );
+      // Log first few chat details for debugging
+      page.chats.slice(0, 3).forEach((chat, chatIdx) => {
+        console.log(
+          `[useChatHistory] Chat ${chatIdx + 1}: id=${chat.id.substring(0, 8)}..., title="${chat.title}", bitContextId="${chat.bitContextId}"`,
+        );
+      });
     });
 
     const chatsFromHistory = chatHistory.flatMap(
@@ -654,5 +665,6 @@ export function useChatHistory(currentChatId?: string) {
     // Utilities
     mutateChatHistory,
     mutateDocumentHistory,
+    refreshChatHistory,
   };
 }

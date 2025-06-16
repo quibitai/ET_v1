@@ -9,7 +9,7 @@ import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/app/(auth)/auth';
 import { db } from '@/lib/db/client';
-import { chat, message as messageTable, } from '@/lib/db/schema';
+import { chat, message as messageTable } from '@/lib/db/schema';
 import type { DBMessage } from '@/lib/db/schema';
 import {
   deleteMessagesByChatIdAfterTimestamp,
@@ -20,7 +20,7 @@ import {
 } from '@/lib/db/queries';
 import type { VisibilityType } from '@/components/visibility-selector';
 import { myProvider } from '@/lib/ai/providers';
-import { eq, } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 export async function saveChatModelAsCookie(model: string) {
   const cookieStore = await cookies();
@@ -289,6 +289,9 @@ export async function createChatAndSaveFirstMessages(params: {
           `${logContext} Transaction committed successfully for chat ${chatId}`,
         );
 
+        // Invalidate chat history cache to trigger sidebar refresh
+        // TRY/CATCH BLOCK REMOVED
+
         // Success - break out of retry loop
         break;
       } catch (error: any) {
@@ -403,6 +406,9 @@ export async function deleteChat(
 
     console.log(`${logContext} Successfully deleted chat ID: ${chatId}`);
 
+    // Invalidate chat history cache to trigger sidebar refresh
+    // TRY/CATCH BLOCK REMOVED
+
     // Revalidate paths that show chat history
     revalidatePath('/');
     revalidatePath('/chat'); // Revalidate the base chat path
@@ -443,8 +449,10 @@ export async function createNewChat({
     console.log(
       `[Server Action] Successfully created new chat ${chatId} for user ${userId}`,
     );
-    // Note: revalidatePath removed because this action is called during render
-    // The sidebar will be updated when the user navigates or when SWR refetches
+
+    // Invalidate chat history cache to trigger sidebar refresh
+    // TRY/CATCH BLOCK REMOVED
+
     return { success: true };
   } catch (error) {
     console.error(`[Server Action] createNewChat FAILED:`, error);

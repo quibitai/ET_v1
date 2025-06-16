@@ -662,7 +662,16 @@ export async function updateChatVisiblityById({
   visibility: 'private' | 'public';
 }) {
   try {
-    return await db.update(chat).set({ visibility }).where(eq(chat.id, chatId));
+    const result = await db
+      .update(chat)
+      .set({ visibility })
+      .where(eq(chat.id, chatId));
+
+    // Note: Cache invalidation is now handled client-side when the UI updates
+    // Server-side cache invalidation has been removed as it was incorrectly
+    // attempting to call client-side functions from the server
+
+    return result;
   } catch (error) {
     console.error('Failed to update chat visibility in database');
     throw error;

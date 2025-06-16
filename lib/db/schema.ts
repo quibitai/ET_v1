@@ -289,5 +289,52 @@ export const analyticsEvents = pgTable('analytics_events', {
 
 export type AnalyticsEvent = InferSelectModel<typeof analyticsEvents>;
 
+// MCP Server Configuration
+export const mcpServers = pgTable('mcp_servers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: varchar('name', { length: 256 }).notNull().unique(),
+  description: text('description'),
+  url: varchar('url', { length: 2048 }).notNull(),
+  protocol: varchar('protocol', { length: 50 }).notNull().default('sse'), // 'sse' or 'streamable_http'
+  isEnabled: boolean('is_enabled').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type McpServer = InferSelectModel<typeof mcpServers>;
+
+// User MCP Integrations (OAuth connections)
+export const userMcpIntegrations = pgTable(
+  'user_mcp_integrations',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    mcpServerId: uuid('mcp_server_id')
+      .notNull()
+      .references(() => mcpServers.id, { onDelete: 'cascade' }),
+    accessToken: text('access_token').notNull(), // This will be encrypted
+    refreshToken: text('refresh_token'), // This will be encrypted
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    scope: text('scope'), // OAuth scopes granted
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (table) => {
+    return {
+      pk: primaryKey({ columns: [table.userId, table.mcpServerId] }),
+      userIdx: index('user_mcp_integrations_user_idx').on(table.userId),
+      serverIdx: index('user_mcp_integrations_server_idx').on(
+        table.mcpServerId,
+      ),
+      activeIdx: index('user_mcp_integrations_active_idx').on(table.isActive),
+    };
+  },
+);
+
+export type UserMcpIntegration = InferSelectModel<typeof userMcpIntegrations>;
+
 // Export all relations
 export * from './relations';

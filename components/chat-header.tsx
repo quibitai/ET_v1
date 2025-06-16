@@ -5,8 +5,12 @@ import React, { useEffect, useState, useMemo, memo } from 'react';
 import { SidebarToggle } from '@/components/sidebar-toggle';
 import { Button } from '@/components/ui/button';
 import { PlusIcon, ChevronDown, CheckIcon } from 'lucide-react';
-import { useSidebar } from './ui/sidebar';
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
+import { useSidebar } from '@/components/ui/sidebar';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { type VisibilityType, VisibilitySelector } from './visibility-selector';
 import {
   DropdownMenu,
@@ -15,18 +19,22 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { getAvailableSpecialists } from '@/lib/ai/prompts/specialists';
-import { CHAT_BIT_GENERAL_CONTEXT_ID } from '@/lib/constants';
+import {
+  CHAT_BIT_GENERAL_CONTEXT_ID,
+  ECHO_TANGO_SPECIALIST_ID,
+} from '@/lib/constants';
+import { useChatCacheInvalidation } from '@/lib/utils/chatCacheInvalidation';
 
 // Default option for general chat
-// const GENERAL_CHAT_OPTION = {
-//   id: CHAT_BIT_GENERAL_CONTEXT_ID,
-//   name: 'General Chat',
-//   description: 'Standard chat without specialist persona',
-// };
+const GENERAL_CHAT_OPTION = {
+  id: CHAT_BIT_GENERAL_CONTEXT_ID,
+  name: 'General Chat',
+  description: 'General conversational assistant',
+};
 
 // Echo Tango specialist option
 const ECHO_TANGO_OPTION = {
-  id: 'echo-tango-specialist',
+  id: ECHO_TANGO_SPECIALIST_ID,
   name: 'Echo Tango',
   description: 'Specialist for Echo Tango client',
 };
@@ -265,6 +273,8 @@ function PureChatHeader({
             onClick={() => {
               // When creating a new chat, set Echo Tango as the default specialist
               setCurrentActiveSpecialistId(ECHO_TANGO_OPTION.id);
+
+              // Navigate to new chat - the cache will be invalidated when the first message is sent
               router.push('/');
               router.refresh();
             }}

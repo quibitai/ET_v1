@@ -996,9 +996,25 @@ export class SimpleLangGraphWrapper {
         const queryLower = userQuery.toLowerCase();
         let responseType = 'comprehensive research report';
         let responseInstructions = `Create a comprehensive research report that synthesizes all the information gathered. Structure your response with clear sections, actionable insights, and specific recommendations.`;
+        let isSimpleFileListing = false;
 
-        // Enhanced query analysis for response type
+        // Check for simple file listing requests
         if (
+          (queryLower.includes('list') && queryLower.includes('file')) ||
+          (queryLower.includes('show') && queryLower.includes('file')) ||
+          queryLower.includes('list files') ||
+          queryLower.includes('available files') ||
+          queryLower.includes('files in the knowledge base') ||
+          queryLower.includes('what files') ||
+          (queryLower.includes('documents') &&
+            (queryLower.includes('list') || queryLower.includes('show')))
+        ) {
+          responseType = 'file listing';
+          responseInstructions = `Present the file listing clearly and simply. Use the exact formatted_list provided in the tool results.`;
+          isSimpleFileListing = true;
+        }
+        // Enhanced query analysis for response type
+        else if (
           queryLower.includes('comparison') ||
           queryLower.includes('compare') ||
           queryLower.includes('versus') ||
@@ -1025,33 +1041,56 @@ export class SimpleLangGraphWrapper {
           responseInstructions = `Create a thorough analytical report that breaks down the key components, evaluates different aspects, and provides data-driven insights and recommendations.`;
         }
 
-        // Build references section
+        // Build references section (skip for simple file listings)
         let referencesContext = '';
-        if (knowledgeBaseRefs.length > 0 || webSources.length > 0) {
+        if (
+          !isSimpleFileListing &&
+          (knowledgeBaseRefs.length > 0 || webSources.length > 0)
+        ) {
           referencesContext = `\n\nIMPORTANT REFERENCES TO INCLUDE:
 Knowledge Base Documents Used:`;
 
           knowledgeBaseRefs.forEach((ref) => {
-            referencesContext += `\n- ${ref.name}${ref.url ? ` (${ref.url})` : ''}`;
+            // Format as markdown link if URL is available
+            if (ref.url) {
+              referencesContext += `\n- [${ref.name}](${ref.url})`;
+            } else {
+              referencesContext += `\n- ${ref.name}`;
+            }
           });
 
           if (webSources.length > 0) {
             referencesContext += `\n\nWeb Sources Used:`;
             webSources.forEach((source) => {
-              referencesContext += `\n- ${source.name}${source.url ? ` (${source.url})` : ''}`;
+              // Format as markdown link if URL is available
+              if (source.url) {
+                referencesContext += `\n- [${source.name}](${source.url})`;
+              } else {
+                referencesContext += `\n- ${source.name}`;
+              }
             });
           }
 
           referencesContext += `\n\nYou MUST include a "References" section at the end with these sources as clickable links.`;
         }
 
-        const referencesInstructions = `
+        const referencesInstructions = isSimpleFileListing
+          ? ''
+          : `
 ## References Section Requirements:
 - ALWAYS include a "References" section at the end of your response
 - List all sources used in the analysis
+- CRITICAL: Only list sources under "Knowledge Base Documents" if they came from getDocumentContents tool
+- CRITICAL: Only list sources under "Web Sources" if they came from webSearch tool
 - Format knowledge base documents as: [Document Name](URL) if URL available
 - Format web sources as: [Article Title](URL)
-- Group by source type: "Knowledge Base Documents" and "Web Sources"`;
+- Group by source type: "Knowledge Base Documents" and "Web Sources"
+- DO NOT duplicate sources - if you mention a source in the body, do not repeat the full citation in references
+- In references, only provide the source name and link, no descriptions
+- NEVER show raw URLs - ALWAYS format as clickable markdown links [Title](URL)
+- CRITICAL: Use BULLET POINTS (- ) for references, NOT numbered lists (1. 2. 3.)
+- Example format: - [Sharks of the Gulf of Mexico](https://www.sharksider.com/sharks-gulf-mexico/)
+- NEVER use numbered lists within numbered lists - this creates confusing double numbering`;
 
         const synthesisSystemMessage = new SystemMessage({
           content: `You are an expert research analyst creating ${responseType}s. Your task is to synthesize information from multiple sources into a coherent, well-structured analysis.
@@ -1059,10 +1098,12 @@ Knowledge Base Documents Used:`;
 RESPONSE FORMATTING REQUIREMENTS:
 - Use clear markdown formatting with proper headers (##, ###)
 - Create well-organized sections with logical flow
-- Use bullet points and numbered lists for clarity
+- Use bullet points (-) for most lists, numbered lists (1. 2. 3.) only for sequential steps or rankings
 - Make all document and source names clickable links using [Name](URL) format
 - Use **bold** for key terms and emphasis
 - Include specific examples and quotes from sources when relevant
+- CRITICAL: NEVER mix numbered lists within numbered lists - this creates confusing double numbering
+- For References sections, ALWAYS use bullet points (-), NEVER numbered lists
 
 DOCUMENT LINKING REQUIREMENTS:
 - For knowledge base documents: [Document Name](URL) - use exact URLs provided below
@@ -1076,7 +1117,7 @@ CONTENT STRUCTURE REQUIREMENTS:
 - Use clear section headers (##, ###) to organize content
 - Include specific data points, quotes, and examples from sources
 - Provide actionable insights and recommendations
-- End with a comprehensive References section
+${isSimpleFileListing ? '- For file listings: Present the list clearly without additional analysis or references' : '- End with a comprehensive References section'}
 
 CRITICAL FORMATTING RULES:
 - **NO TABLES** for alignment analysis, comparison analysis, or criteria evaluation
@@ -1105,6 +1146,13 @@ CRITICAL LINKING INSTRUCTIONS:
 - NEVER mention a document name without making it a clickable link if a URL is available
 - Example: If you see "Ideal Client Profile.txt" in Knowledge Base Documents Used with a URL, write [Ideal Client Profile](URL) everywhere you mention it
 
+CRITICAL SOURCE CATEGORIZATION:
+- Knowledge Base Documents: ONLY sources that came from internal document retrieval (getDocumentContents tool)
+- Web Sources: ONLY sources that came from web search (webSearch tool)
+- NEVER categorize web search results as knowledge base documents
+- NEVER categorize internal documents as web sources
+- If unsure about source type, check which tool provided the information
+
 CRITICAL: NO TABLES FOR ALIGNMENT/COMPARISON ANALYSIS
 - NEVER use tables for alignment analysis, comparison analysis, or criteria evaluation
 - For any analysis involving "alignment", "comparison", "criteria", or "vs" - ALWAYS use structured lists
@@ -1119,7 +1167,9 @@ CONTENT STRUCTURE:
 - ${responseInstructions}
 ${referencesInstructions}
 - DO NOT include "End of Report", "End of Document", or any closing statements after the References section.
-- Ensure all links are properly formatted as [Text](URL) - never show raw URLs
+- Ensure all links are properly formatted as [Text](URL) - NEVER show raw URLs
+- In the References section specifically, ALWAYS use markdown links: [Source Title](URL)
+- Example reference format: [Sharks of the Gulf of Mexico](https://www.sharksider.com/sharks-gulf-mexico/)
 
 ALIGNMENT ANALYSIS OVERRIDE:
 - If creating alignment analysis, comparison analysis, or criteria evaluation: IGNORE any impulse to use tables
@@ -1867,8 +1917,9 @@ Create the ${responseType} now.`,
       listDocuments: '📚 Retrieving documents...\n',
       getDocumentContents: '📄 Loading document content...\n',
       tavilySearch: '🔍 Searching the web...\n',
-      asana_list_tasks: '📋 Fetching tasks...\n',
-      asana_create_task: '✅ Creating task...\n',
+      // NOTE: Asana tools temporarily disabled until MCP integration is working
+      // asana_list_tasks: '📋 Fetching tasks...\n',
+      // asana_create_task: '✅ Creating task...\n',
     };
     return progressMessages[toolName] || null;
   }
