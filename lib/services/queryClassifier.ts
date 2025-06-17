@@ -365,13 +365,33 @@ export class QueryClassifier {
       // 8. NEW: Enhanced tool forcing strategy with sequence awareness
       let forceToolCall: any = null;
 
+      // Check for explicit web search + knowledge base combination
+      const hasExplicitWebSearch =
+        /search\s+(?:the\s+)?web/i.test(userInput) ||
+        /web\s+search/i.test(userInput);
+      const hasKnowledgeBaseRef =
+        /(?:knowledge\s+base|examples?|templates?|samples?)/i.test(userInput);
+      const isResearchQuery =
+        /(?:research|report|analysis|create.*report)/i.test(userInput);
+
       // Special case: "based on samples/templates in knowledge base" pattern
       const basedOnSamplesPattern =
         /(?:based on|using|from)\s+(?:samples?|templates?|examples?)\s+(?:in\s+)?(?:the\s+)?(?:knowledge\s+base|documents|files)/i;
       const createWithSamplesPattern =
         /(?:create|generate|write|make)\s+.+\s+(?:based on|using|from)\s+(?:samples?|templates?|examples?)/i;
 
-      if (
+      if (hasExplicitWebSearch && hasKnowledgeBaseRef && isResearchQuery) {
+        this.logger.info(
+          '[QueryClassifier] Detected explicit web search + knowledge base research query - forcing both tools',
+        );
+
+        // Force tool usage but let agent orchestrate the sequence
+        forceToolCall = 'required';
+
+        this.logger.info(
+          '[QueryClassifier] Forcing required tools for comprehensive research workflow',
+        );
+      } else if (
         basedOnSamplesPattern.test(userInput) ||
         createWithSamplesPattern.test(userInput)
       ) {

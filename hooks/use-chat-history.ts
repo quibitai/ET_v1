@@ -19,6 +19,8 @@ import type {
   GroupedChats,
   ExpandedSections,
   ChatSummary,
+  GroupedSpecialistHistory,
+  SpecialistWithChats,
 } from '@/lib/types';
 import { useChatCacheInvalidation } from '@/lib/utils/chatCacheInvalidation';
 
@@ -62,7 +64,31 @@ export const groupChatsByDate = (
   );
 };
 
-// Update the separateChatsByType function with more inclusive filtering
+// Update the separateChatsByType function to work with grouped specialist data
+export const separateChatsBySpecialist = (
+  specialistHistory: GroupedSpecialistHistory,
+): Record<string, GroupedChats> => {
+  console.log('[useChatHistory] Processing grouped specialist history');
+
+  const result: Record<string, GroupedChats> = {};
+
+  specialistHistory.specialists.forEach((specialist) => {
+    console.log(
+      `[useChatHistory] Processing ${specialist.chats.length} chats for specialist: ${specialist.name}`,
+    );
+
+    // Group this specialist's chats by date
+    result[specialist.id] = groupChatsByDate(specialist.chats);
+  });
+
+  console.log(
+    `[useChatHistory] Processed chats for ${Object.keys(result).length} specialists`,
+  );
+
+  return result;
+};
+
+// Keep the original function for backward compatibility
 export const separateChatsByType = (
   chats: Chat[] | ChatSummary[],
 ): GroupedChats => {
@@ -144,22 +170,12 @@ export function getChatHistoryPaginationKey(
     return null;
   }
 
-  // Get the active bit context ID from localStorage, default to 'chat-model'
+  // Use all-specialists endpoint to get chats grouped by specialist
   try {
-    // Determine the type of history being requested
-    // For now, we're hard-coding type=sidebar here to ensure we get sidebar requests
-    const type = 'sidebar';
-
-    // Get contextId from localStorage - only if we're in the browser
-    // FIXED: Make this stable by not modifying localStorage during key generation
-    const activeContextId =
-      typeof window !== 'undefined'
-        ? localStorage.getItem('current-active-specialist') ||
-          'echo-tango-specialist'
-        : 'echo-tango-specialist';
+    const type = 'all-specialists';
 
     console.log(
-      `[SWR Key Gen] >> Using type=${type}, contextId=${activeContextId}`,
+      `[SWR Key Gen] >> Using type=${type} for specialist-grouped sidebar`,
     );
 
     // Create the URL with correct parameters
@@ -167,35 +183,21 @@ export function getChatHistoryPaginationKey(
 
     if (pageIndex === 0) {
       // Create a very clear, unmissable log about the key being generated
-      url = `/api/history?type=${type}&contextId=${activeContextId}&limit=${PAGE_SIZE}`;
+      url = `/api/history?type=${type}&limit=${PAGE_SIZE}`;
       console.log(
-        `[SWR Key Gen] SIDEBAR ATTEMPT >> Type: ${type}, ContextID: ${activeContextId}, Page: ${
+        `[SWR Key Gen] ALL-SPECIALISTS ATTEMPT >> Type: ${type}, Page: ${
           pageIndex + 1
         }, Limit: ${PAGE_SIZE} || FINAL KEY: ${url}`,
       );
       return url;
     }
 
-    const firstChatFromPage = previousPageData.chats.at(-1);
-
-    if (!firstChatFromPage) {
-      console.log(
-        '[getChatHistoryPaginationKey] No chats in previous page, returning null',
-      );
-      return null;
-    }
-
-    // Include the same parameters as the first page, plus the cursor
-    url = `/api/history?type=${type}&contextId=${activeContextId}&limit=${PAGE_SIZE}&cursor=${firstChatFromPage.id}`;
+    // For simplicity, we'll only load the first page for now
+    // Pagination across all specialists is complex and can be added later if needed
     console.log(
-      `[SWR Key Gen] SIDEBAR PAGINATION ATTEMPT >> Type: ${type}, ContextID: ${activeContextId}, Page: ${
-        pageIndex + 1
-      }, Limit: ${PAGE_SIZE}, Cursor: ${firstChatFromPage.id.substring(
-        0,
-        8,
-      )}... || FINAL KEY: ${url}`,
+      '[getChatHistoryPaginationKey] Returning null for pagination beyond first page',
     );
-    return url;
+    return null;
   } catch (error) {
     console.error('[getChatHistoryPaginationKey] Error generating key:', error);
     // In case of error, return a sane default that will at least load some data
@@ -338,7 +340,7 @@ export function useChatHistory(currentChatId?: string) {
     }
   }, []);
 
-  // Chat History fetching with SWR
+  // Chat History fetching with SWR - Updated to handle grouped specialist data
   const {
     data: chatHistory,
     error: chatHistoryError,
@@ -347,7 +349,7 @@ export function useChatHistory(currentChatId?: string) {
     mutate: mutateChatHistory,
     size: chatHistoryPageSize,
     setSize: setChatHistoryPageSize,
-  } = useSWRInfinite<ChatHistory>(
+  } = useSWRInfinite<GroupedSpecialistHistory>(
     // Only fetch if session is ready
     isSessionReady ? getChatHistoryPaginationKey : () => null,
     fetcher,
@@ -405,34 +407,72 @@ export function useChatHistory(currentChatId?: string) {
   // Flag to prevent multiple initializations
   const initializedRef = useRef(false);
 
-  // Memoize grouped chats to prevent excessive recalculation
-  const groupedChats = useMemo(() => {
-    if (!chatHistory) {
-      return null;
+  // Memoize grouped chats by specialist to prevent excessive recalculation
+  const groupedSpecialistChats = useMemo(() => {
+    if (!chatHistory || chatHistory.length === 0) {
+      return {};
     }
 
-    const chatsFromHistory = chatHistory.flatMap(
-      (paginatedChatHistory) => paginatedChatHistory.chats,
-    );
+    // The first page contains all the grouped specialist data
+    const specialistHistory = chatHistory[0];
 
-    // Filter and group chats
-    const result = separateChatsByType(chatsFromHistory);
+    console.log('[useChatHistory] Processing specialist history:', {
+      specialistCount: specialistHistory.specialists.length,
+      specialists: specialistHistory.specialists.map((s) => ({
+        id: s.id,
+        name: s.name,
+        chatCount: s.chats.length,
+      })),
+    });
+
+    // Process the grouped specialist data
+    const result = separateChatsBySpecialist(specialistHistory);
 
     return result;
   }, [chatHistory]);
 
+  // For backward compatibility, create a flattened view of all chats
+  const groupedChats = useMemo(() => {
+    if (
+      !groupedSpecialistChats ||
+      Object.keys(groupedSpecialistChats).length === 0
+    ) {
+      return null;
+    }
+
+    // Flatten all specialist chats into a single grouped structure
+    const allChats: ChatSummary[] = [];
+    Object.values(groupedSpecialistChats).forEach((specialistGroups) => {
+      allChats.push(
+        ...specialistGroups.today,
+        ...specialistGroups.yesterday,
+        ...specialistGroups.lastWeek,
+        ...specialistGroups.lastMonth,
+        ...specialistGroups.older,
+      );
+    });
+
+    return groupChatsByDate(allChats);
+  }, [groupedSpecialistChats]);
+
   // Check if chat history is empty
   const hasEmptyChatHistory = useMemo(() => {
-    if (!groupedChats) return true;
+    if (
+      !groupedSpecialistChats ||
+      Object.keys(groupedSpecialistChats).length === 0
+    )
+      return true;
 
-    return (
-      groupedChats.today.length === 0 &&
-      groupedChats.yesterday.length === 0 &&
-      groupedChats.lastWeek.length === 0 &&
-      groupedChats.lastMonth.length === 0 &&
-      groupedChats.older.length === 0
+    // Check if any specialist has chats
+    return !Object.values(groupedSpecialistChats).some(
+      (specialistGroups) =>
+        specialistGroups.today.length > 0 ||
+        specialistGroups.yesterday.length > 0 ||
+        specialistGroups.lastWeek.length > 0 ||
+        specialistGroups.lastMonth.length > 0 ||
+        specialistGroups.older.length > 0,
     );
-  }, [groupedChats]);
+  }, [groupedSpecialistChats]);
 
   // Check if we've reached the end of pagination
   const hasReachedChatEnd = useMemo(() => {
@@ -561,6 +601,7 @@ export function useChatHistory(currentChatId?: string) {
   return {
     // Chat data
     groupedChats,
+    groupedSpecialistChats,
     hasEmptyChatHistory,
     hasReachedChatEnd,
     isLoadingChatHistory,

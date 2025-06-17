@@ -24,7 +24,7 @@ const tavilySearchSchema = z.object({
 export const tavilySearchTool = new DynamicStructuredTool({
   name: 'tavilySearch',
   description:
-    'Search the web for real-time information about companies, organizations, current events, industry trends, or any external information. Use immediately when users mention specific companies, ask for research, or need current data. Essential for comprehensive research tasks.',
+    'Search the web for comprehensive information about companies, organizations, current events, industry trends, or any external information. Returns up to 12 diverse results per search. IMPORTANT: Use broad, comprehensive queries that capture multiple aspects (e.g., "LWCC Baton Rouge company profile mission values leadership recent news" instead of separate searches). Essential for research tasks requiring current data.',
   schema: tavilySearchSchema,
   func: async ({ query }) => {
     const startTime = performance.now();
@@ -42,8 +42,10 @@ export const tavilySearchTool = new DynamicStructuredTool({
 
     // Create an instance of TavilySearchResults
     const tavilySearch = new TavilySearchResults({
-      maxResults: 7,
+      maxResults: 12,
       apiKey: process.env.TAVILY_API_KEY,
+      includeAnswer: true,
+      includeRawContent: true,
     });
 
     try {

@@ -51,6 +51,7 @@ export function ChatWrapper({
     logKeyRef.current = currentLogKey;
   }
 
+  // File context state
   const [fileContext, setFileContext] = useState<FileContext | null>(null);
 
   // Store the first user message for title generation (using ref for immediate access)
@@ -64,6 +65,32 @@ export function ChatWrapper({
 
   // Get hook-specific mutate function for real-time sidebar updates
   const { mutateChatHistory } = useChatHistory();
+
+  // Specialist state management (moved from ChatPaneContext)
+  const [currentActiveSpecialistId, setCurrentActiveSpecialistId] =
+    useState<string>(activeBitContextId || 'echo-tango-specialist');
+
+  // Sync the current specialist ID with the active bit context for API calls
+  const effectiveActiveBitContextId =
+    currentActiveSpecialistId || activeBitContextId || 'echo-tango-specialist';
+
+  // Update localStorage and cookie when specialist changes (for persistence across page loads)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && currentActiveSpecialistId) {
+      localStorage.setItem(
+        'current-active-specialist',
+        currentActiveSpecialistId,
+      );
+
+      // Also set cookie for server-side access
+      document.cookie = `current-active-specialist=${currentActiveSpecialistId}; path=/; max-age=${60 * 60 * 24 * 30}`; // 30 days
+
+      console.log(
+        '[ChatWrapper] Updated localStorage and cookie specialist:',
+        currentActiveSpecialistId,
+      );
+    }
+  }, [currentActiveSpecialistId]);
 
   const {
     messages,
@@ -101,7 +128,7 @@ export function ChatWrapper({
         fileContext: fileContext, // This ensures the current fileContext is included
         artifactContext: null,
         collapsedArtifactsContext: null,
-        activeBitContextId: activeBitContextId,
+        activeBitContextId: effectiveActiveBitContextId, // Use the current specialist selection
         ...requestBody, // Include any additional request body data
       };
 
@@ -111,12 +138,15 @@ export function ChatWrapper({
         messagesCount: messages.length,
         requestDataKeys: requestData ? Object.keys(requestData) : [],
         requestBodyKeys: requestBody ? Object.keys(requestBody) : [],
+        activeBitContextId: effectiveActiveBitContextId,
+        currentActiveSpecialistId: currentActiveSpecialistId,
       });
 
       console.log('🔍 [DEBUG] Final body being returned:', {
         hasFileContext: !!body.fileContext,
         fileContextKeys: body.fileContext ? Object.keys(body.fileContext) : [],
         bodyKeys: Object.keys(body),
+        activeBitContextId: body.activeBitContextId,
         fileContextPreview: body.fileContext
           ? {
               filename: body.fileContext.filename,
@@ -211,88 +241,6 @@ export function ChatWrapper({
       }, 5000);
     },
   });
-
-  // Wrapper function to capture user input before submission
-  const handleSubmit = useCallback(
-    (event?: { preventDefault?: () => void }, chatRequestOptions?: any) => {
-      console.log('🚨 [WRAPPER] handleSubmit wrapper function called!', {
-        timestamp: new Date().toISOString(),
-        inputValue: input,
-        messagesLength: messages.length,
-      });
-
-      // Debug: Check conditions before capture
-      console.log('🔍 [DEBUG] Capture conditions check:', {
-        messagesLength: messages.length,
-        hasInput: !!input.trim(),
-        inputValue: input,
-        alreadyHasFirstMessage: !!firstUserMessageRef.current,
-        refCurrentValue: firstUserMessageRef.current,
-        shouldCapture:
-          messages.length === 0 && input.trim() && !firstUserMessageRef.current,
-      });
-
-      // Capture the user input for title generation (only for new chats)
-      if (messages.length === 0 && input.trim()) {
-        console.log(
-          '✅ [ChatWrapper] Captured user input for title generation:',
-          input.trim(),
-        );
-
-        // Generate optimistic title from user input
-        const words = input.trim().split(' ');
-        let chatTitle = words.slice(0, 5).join(' ');
-        if (chatTitle.length > 50) chatTitle = `${chatTitle.slice(0, 47)}...`;
-
-        console.log('✅ [ChatWrapper] Creating optimistic chat:', {
-          chatTitle,
-          chatId: id,
-        });
-
-        // Add chat optimistically to sidebar
-        addChatOptimistically({
-          id,
-          title: chatTitle,
-          visibility: selectedVisibilityType,
-          bitContextId: activeBitContextId || 'echo-tango-specialist',
-        }).catch((e) =>
-          console.error('❌ [ChatWrapper] optimistic add failed:', e),
-        );
-      } else {
-        console.log('❌ [ChatWrapper] NOT capturing user input because:', {
-          messagesLength: messages.length,
-          hasInput: !!input.trim(),
-        });
-      }
-
-      console.log('🔍 [DEBUG] handleSubmit wrapper called with:', {
-        messagesLength: messages.length,
-        inputValue: input,
-        inputTrimmed: input.trim(),
-        hasInput: !!input.trim(),
-        currentFirstUserMessage: firstUserMessageRef.current,
-        shouldStoreMessage:
-          messages.length === 0 && input.trim() && !firstUserMessageRef.current,
-      });
-
-      // Call the original handleSubmit
-      return originalHandleSubmit(event, chatRequestOptions);
-    },
-    // FIXED: Stabilize dependencies to prevent infinite re-renders
-    [
-      messages.length,
-      input,
-      originalHandleSubmit,
-      id,
-      selectedVisibilityType,
-      activeBitContextId,
-      addChatOptimistically,
-    ],
-  );
-
-  // Specialist state management (moved from ChatPaneContext)
-  const [currentActiveSpecialistId, setCurrentActiveSpecialistId] =
-    useState<string>(activeBitContextId || 'echo-tango-specialist');
 
   // Check if current chat is committed (has messages)
   const isCurrentChatCommitted = messages.length > 0;
@@ -395,6 +343,84 @@ export function ChatWrapper({
   const clearFileContext = useCallback(() => {
     setFileContext(null);
   }, []);
+
+  // Wrapper function to capture user input before submission
+  const handleSubmit = useCallback(
+    (event?: { preventDefault?: () => void }, chatRequestOptions?: any) => {
+      console.log('🚨 [WRAPPER] handleSubmit wrapper function called!', {
+        timestamp: new Date().toISOString(),
+        inputValue: input,
+        messagesLength: messages.length,
+      });
+
+      // Debug: Check conditions before capture
+      console.log('🔍 [DEBUG] Capture conditions check:', {
+        messagesLength: messages.length,
+        hasInput: !!input.trim(),
+        inputValue: input,
+        alreadyHasFirstMessage: !!firstUserMessageRef.current,
+        refCurrentValue: firstUserMessageRef.current,
+        shouldCapture:
+          messages.length === 0 && input.trim() && !firstUserMessageRef.current,
+      });
+
+      // Capture the user input for title generation (only for new chats)
+      if (messages.length === 0 && input.trim()) {
+        console.log(
+          '✅ [ChatWrapper] Captured user input for title generation:',
+          input.trim(),
+        );
+
+        // Generate optimistic title from user input
+        const words = input.trim().split(' ');
+        let chatTitle = words.slice(0, 5).join(' ');
+        if (chatTitle.length > 50) chatTitle = `${chatTitle.slice(0, 47)}...`;
+
+        console.log('✅ [ChatWrapper] Creating optimistic chat:', {
+          chatTitle,
+          chatId: id,
+        });
+
+        // Add chat optimistically to sidebar
+        addChatOptimistically({
+          id,
+          title: chatTitle,
+          visibility: selectedVisibilityType,
+          bitContextId: effectiveActiveBitContextId,
+        }).catch((e) =>
+          console.error('❌ [ChatWrapper] optimistic add failed:', e),
+        );
+      } else {
+        console.log('❌ [ChatWrapper] NOT capturing user input because:', {
+          messagesLength: messages.length,
+          hasInput: !!input.trim(),
+        });
+      }
+
+      console.log('🔍 [DEBUG] handleSubmit wrapper called with:', {
+        messagesLength: messages.length,
+        inputValue: input,
+        inputTrimmed: input.trim(),
+        hasInput: !!input.trim(),
+        currentFirstUserMessage: firstUserMessageRef.current,
+        shouldStoreMessage:
+          messages.length === 0 && input.trim() && !firstUserMessageRef.current,
+      });
+
+      // Call the original handleSubmit
+      return originalHandleSubmit(event, chatRequestOptions);
+    },
+    // FIXED: Stabilize dependencies to prevent infinite re-renders
+    [
+      messages.length,
+      input,
+      originalHandleSubmit,
+      id,
+      selectedVisibilityType,
+      effectiveActiveBitContextId,
+      addChatOptimistically,
+    ],
+  );
 
   // Reduced render logging to prevent spam
   const renderLogRef = useRef('');

@@ -271,8 +271,8 @@ function PureChatHeader({
             variant="outline"
             className="md:px-2 px-2 md:h-fit"
             onClick={() => {
-              // When creating a new chat, set Echo Tango as the default specialist
-              setCurrentActiveSpecialistId(ECHO_TANGO_OPTION.id);
+              // When creating a new chat, keep the current specialist selection
+              // Don't force Echo Tango - let users choose their preferred specialist
 
               // Navigate to new chat - the cache will be invalidated when the first message is sent
               router.push('/');
