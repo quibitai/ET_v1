@@ -1,5 +1,10 @@
 import { dataAnalysisToolInstructions } from './data-analysis';
 import { availableTools } from '../../tools';
+// Enhanced tool instructions for modular architecture integration
+import {
+  enhancedToolInstructionMap,
+  getEnhancedToolPromptInstructions,
+} from './modular-architecture';
 // Document tool instructions removed as part of Echo Tango v1 simplification
 // Import instructions for other tools as they are created
 
@@ -80,17 +85,30 @@ BUDGET CREATION WORKFLOW: When users ask to create budgets or estimates:
  * Gathers unique instruction snippets for a given list of tool IDs.
  * This is used to provide context-relevant tool guidance within the main system prompt.
  * @param toolIds - Array of tool names available in the current context.
+ * @param useEnhanced - Whether to use enhanced modular architecture instructions (default: true)
  * @returns A single string containing relevant, unique instructions, or an empty string if none apply.
  */
 export function getToolPromptInstructions(
   // The toolIds parameter is now ignored to ensure we always use the single source of truth.
   toolIds: string[] = [],
+  useEnhanced = true,
 ): string {
+  // Use enhanced instructions for modular architecture by default
+  if (useEnhanced) {
+    const availableToolNames = availableTools.map((tool) => tool.name);
+    console.log(
+      '[ToolInstructions] Generating ENHANCED instructions for modular architecture.',
+      { toolCount: availableTools.length, enhancedMode: true },
+    );
+    return getEnhancedToolPromptInstructions(availableToolNames);
+  }
+
+  // Legacy instruction generation (fallback)
   const relevantInstructions = new Set<string>();
 
   console.log(
-    '[ToolInstructions] Generating instructions from dynamically loaded tools.',
-    { toolCount: availableTools.length },
+    '[ToolInstructions] Generating LEGACY instructions from dynamically loaded tools.',
+    { toolCount: availableTools.length, enhancedMode: false },
   );
 
   for (const tool of availableTools) {
@@ -105,4 +123,13 @@ export function getToolPromptInstructions(
   }
   // Join the unique instructions with double newlines for better separation
   return Array.from(relevantInstructions).join('\n\n');
+}
+
+/**
+ * Get enhanced tool instructions specifically for modular architecture
+ * @param toolIds - Array of tool names to get instructions for
+ * @returns Enhanced instructions optimized for service integration
+ */
+export function getEnhancedToolInstructions(toolIds: string[] = []): string {
+  return getEnhancedToolPromptInstructions(toolIds);
 }
