@@ -73,6 +73,24 @@ export interface ChatHistory {
 }
 
 /**
+ * Specialist information with their associated chats
+ */
+export interface SpecialistWithChats {
+  id: string;
+  name: string;
+  description?: string;
+  chats: ChatSummary[];
+}
+
+/**
+ * Grouped specialist chat history response
+ */
+export interface GroupedSpecialistHistory {
+  specialists: SpecialistWithChats[];
+  hasMore: boolean;
+}
+
+/**
  * Document history pagination response
  */
 export interface DocumentHistory {

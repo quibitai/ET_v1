@@ -7,10 +7,11 @@
 
 import type { ChatOpenAI } from '@langchain/openai';
 import {
-  type AIMessage,
+  AIMessage,
   type BaseMessage,
   HumanMessage,
   SystemMessage,
+  ToolMessage,
 } from '@langchain/core/messages';
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
 import type { RunnableConfig } from '@langchain/core/runnables';
@@ -109,6 +110,432 @@ export interface LangGraphWrapperConfig {
 }
 
 /**
+ * Tool Workflow Manager
+ * Orchestrates tool execution sequences and manages workflow state
+ */
+class ToolWorkflowManager {
+  private executedTools: Map<string, any> = new Map();
+  private workflowState: {
+    documentsListed: boolean;
+    documentsRetrieved: string[];
+    webSearchCompleted: boolean;
+    extractionCompleted: boolean;
+    multiDocAnalysisCompleted: boolean;
+  } = {
+    documentsListed: false,
+    documentsRetrieved: [],
+    webSearchCompleted: false,
+    extractionCompleted: false,
+    multiDocAnalysisCompleted: false,
+  };
+  private logger: RequestLogger;
+
+  constructor(logger: RequestLogger) {
+    this.logger = logger;
+  }
+
+  /**
+   * Analyze tool results and update workflow state
+   */
+  analyzeToolResults(toolName: string, toolResult: any, toolArgs: any): void {
+    this.executedTools.set(toolName, { result: toolResult, args: toolArgs });
+
+    switch (toolName) {
+      case 'listDocuments':
+        this.workflowState.documentsListed = true;
+        this.logger.info('[Workflow] Documents listed - ready for retrieval');
+        break;
+
+      case 'getDocumentContents': {
+        const docId = toolArgs?.id || toolArgs?.title || 'unknown';
+        if (!this.workflowState.documentsRetrieved.includes(docId)) {
+          this.workflowState.documentsRetrieved.push(docId);
+        }
+        this.logger.info('[Workflow] Document retrieved:', { docId });
+        break;
+      }
+
+      case 'tavilySearch':
+        this.workflowState.webSearchCompleted = true;
+        this.logger.info('[Workflow] Web search completed');
+        break;
+
+      case 'tavilyExtract':
+        this.workflowState.extractionCompleted = true;
+        this.logger.info('[Workflow] Content extraction completed');
+        break;
+
+      case 'multiDocumentRetrieval':
+        this.workflowState.multiDocAnalysisCompleted = true;
+        this.logger.info('[Workflow] Multi-document analysis completed');
+        break;
+    }
+  }
+
+  /**
+   * Get suggested next tools based on workflow state
+   */
+  getSuggestedNextTools(currentQuery: string): Array<{
+    toolName: string;
+    priority: 'high' | 'medium' | 'low';
+    reason: string;
+    forceCall?: boolean;
+    suggestedArgs?: any; // **ADDED**: Support for suggested arguments
+  }> {
+    const suggestions: Array<{
+      toolName: string;
+      priority: 'high' | 'medium' | 'low';
+      reason: string;
+      forceCall?: boolean;
+      suggestedArgs?: any; // **ADDED**: Support for suggested arguments
+    }> = [];
+
+    // **CRITICAL FIX**: Force getDocumentContents after listDocuments
+    if (
+      this.workflowState.documentsListed &&
+      this.workflowState.documentsRetrieved.length === 0
+    ) {
+      const listResult = this.executedTools.get('listDocuments');
+      if (listResult?.result) {
+        try {
+          const parsedResult =
+            typeof listResult.result === 'string'
+              ? JSON.parse(listResult.result)
+              : listResult.result;
+
+          if (parsedResult.available_documents?.length > 0) {
+            // Get the most relevant documents for the query
+            const relevantDocs = parsedResult.available_documents
+              .filter((doc: any) => {
+                const title = doc.title?.toLowerCase() || '';
+                const query = currentQuery.toLowerCase();
+                return (
+                  title.includes('ideal') ||
+                  title.includes('client') ||
+                  title.includes('research') ||
+                  title.includes('example') ||
+                  query.includes(title.split('_')[0]) ||
+                  query.includes(title.split('.')[0])
+                );
+              })
+              .slice(0, 3); // Limit to 3 most relevant
+
+            if (relevantDocs.length > 0) {
+              suggestions.push({
+                toolName: 'getDocumentContents',
+                priority: 'high',
+                reason: `Documents were listed but content not retrieved. Found ${relevantDocs.length} relevant documents for analysis.`,
+                forceCall: true, // **FORCE** this call
+              });
+            }
+          }
+        } catch (e) {
+          this.logger.warn('[Workflow] Could not parse listDocuments result');
+        }
+      }
+    }
+
+    // **ENHANCED**: Force tavilyExtract after tavilySearch for deeper analysis
+    if (
+      this.workflowState.webSearchCompleted &&
+      !this.workflowState.extractionCompleted
+    ) {
+      suggestions.push({
+        toolName: 'tavilyExtract',
+        priority: 'high', // Upgraded to high priority
+        reason:
+          'Web search completed - extract detailed content for comprehensive analysis',
+        forceCall: true, // **FORCE** this call for better content
+      });
+    }
+
+    // **ENHANCED**: Suggest multiDocumentRetrieval for comparative analysis
+    const hasMultipleDocRefs =
+      currentQuery.toLowerCase().includes('compare') ||
+      currentQuery.toLowerCase().includes('align') ||
+      currentQuery.toLowerCase().includes('relationship') ||
+      currentQuery.toLowerCase().includes('vs') ||
+      this.workflowState.documentsRetrieved.length > 1;
+
+    if (hasMultipleDocRefs && !this.workflowState.multiDocAnalysisCompleted) {
+      suggestions.push({
+        toolName: 'multiDocumentRetrieval',
+        priority: 'high', // Upgraded to high priority
+        reason:
+          'Multiple documents referenced - comparative analysis recommended',
+        forceCall: false, // Don't force, but strongly suggest
+      });
+    }
+
+    // **NEW**: Query-based intelligent suggestions
+    const queryLower = currentQuery.toLowerCase();
+
+    // Research queries should prioritize document workflow
+    if (
+      (queryLower.includes('research') ||
+        queryLower.includes('report') ||
+        queryLower.includes('analysis')) &&
+      !this.workflowState.documentsListed
+    ) {
+      suggestions.push({
+        toolName: 'listDocuments',
+        priority: 'high',
+        reason:
+          'Research query detected - need to discover available documents first',
+        forceCall: false,
+      });
+    }
+
+    // Company/organization queries should use comprehensive web research
+    if (
+      (queryLower.includes('company') ||
+        queryLower.includes('organization') ||
+        queryLower.includes('business')) &&
+      !this.workflowState.webSearchCompleted
+    ) {
+      suggestions.push({
+        toolName: 'tavilySearch',
+        priority: 'high',
+        reason: 'Company research query detected - need external information',
+        forceCall: false,
+      });
+    }
+
+    // **ENHANCED**: Suggest comprehensive web search instead of multiple narrow ones
+    if (
+      !this.workflowState.webSearchCompleted &&
+      this.isWebSearchNeeded(currentQuery)
+    ) {
+      // Extract company/entity names for comprehensive search
+      const entities = this.extractEntitiesFromQuery(currentQuery);
+      const searchAspects = this.determineSearchAspects(currentQuery);
+
+      if (entities.length > 0) {
+        const comprehensiveQuery = this.buildComprehensiveSearchQuery(
+          entities[0],
+          searchAspects,
+        );
+
+        suggestions.push({
+          toolName: 'tavilySearch',
+          reason: `Comprehensive web search needed for ${entities[0]} covering: ${searchAspects.join(', ')}`,
+          forceCall: true,
+          priority: 'high',
+          suggestedArgs: { query: comprehensiveQuery },
+        });
+      } else {
+        suggestions.push({
+          toolName: 'tavilySearch',
+          reason: 'Web search needed for external information',
+          forceCall: false,
+          priority: 'medium',
+        });
+      }
+    }
+
+    this.logger.info('[Workflow] Generated tool suggestions:', {
+      suggestionsCount: suggestions.length,
+      suggestions: suggestions.map((s) => ({
+        tool: s.toolName,
+        priority: s.priority,
+        force: s.forceCall,
+        reason: `${s.reason.substring(0, 50)}...`,
+      })),
+      workflowState: this.workflowState,
+    });
+
+    return suggestions;
+  }
+
+  /**
+   * Get executed tools for validation
+   */
+  getExecutedTools(): Array<{
+    name: string;
+    success: boolean;
+    result?: any;
+    args?: any;
+  }> {
+    const tools: Array<{
+      name: string;
+      success: boolean;
+      result?: any;
+      args?: any;
+    }> = [];
+
+    for (const [toolName, toolData] of this.executedTools.entries()) {
+      tools.push({
+        name: toolName,
+        success: toolData.result !== null && toolData.result !== undefined,
+        result: toolData.result,
+        args: toolData.args,
+      });
+    }
+
+    return tools;
+  }
+
+  /**
+   * Check if workflow is complete enough for synthesis
+   */
+  isWorkflowReadyForSynthesis(currentQuery: string): boolean {
+    // For research queries, ensure we have both external and internal data
+    const isResearchQuery =
+      currentQuery.toLowerCase().includes('research') ||
+      currentQuery.toLowerCase().includes('report') ||
+      currentQuery.toLowerCase().includes('analysis');
+
+    if (isResearchQuery) {
+      const hasInternalData = this.workflowState.documentsRetrieved.length > 0;
+      const hasExternalData = this.workflowState.webSearchCompleted;
+
+      if (!hasInternalData || !hasExternalData) {
+        this.logger.info('[Workflow] Research workflow incomplete:', {
+          hasInternalData,
+          hasExternalData,
+          documentsRetrieved: this.workflowState.documentsRetrieved.length,
+        });
+        return false;
+      }
+    }
+
+    // For document queries, ensure documents are actually retrieved
+    if (
+      this.workflowState.documentsListed &&
+      this.workflowState.documentsRetrieved.length === 0
+    ) {
+      this.logger.info('[Workflow] Documents listed but not retrieved');
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Reset workflow state for new conversation
+   */
+  reset(): void {
+    this.executedTools.clear();
+    this.workflowState = {
+      documentsListed: false,
+      documentsRetrieved: [],
+      webSearchCompleted: false,
+      extractionCompleted: false,
+      multiDocAnalysisCompleted: false,
+    };
+    this.logger.info('[Workflow] State reset for new conversation');
+  }
+
+  /**
+   * Get workflow status for debugging
+   */
+  getWorkflowStatus() {
+    return {
+      documentsListed: this.workflowState.documentsListed,
+      documentsRetrieved: this.workflowState.documentsRetrieved.length,
+      webSearchCompleted: this.workflowState.webSearchCompleted,
+      extractionCompleted: this.workflowState.extractionCompleted,
+      multiDocAnalysisCompleted: this.workflowState.multiDocAnalysisCompleted,
+      executedTools: Array.from(this.executedTools.keys()),
+    };
+  }
+
+  /**
+   * Helper methods for comprehensive search query building
+   */
+  private isWebSearchNeeded(query: string): boolean {
+    const webSearchKeywords = [
+      'company',
+      'organization',
+      'business',
+      'profile',
+      'mission',
+      'values',
+      'leadership',
+      'news',
+      'recent',
+      'current',
+      'industry',
+      'market',
+      'competitors',
+      'financial',
+      'revenue',
+      'services',
+      'products',
+    ];
+
+    const lowerQuery = query.toLowerCase();
+    return webSearchKeywords.some((keyword) => lowerQuery.includes(keyword));
+  }
+
+  private extractEntitiesFromQuery(query: string): string[] {
+    // Simple entity extraction - look for capitalized words that might be company names
+    const entities: string[] = [];
+
+    // Common company patterns
+    const companyPatterns = [
+      /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:\s+(?:Inc|LLC|Corp|Company|Corporation|Ltd|Limited))?)\b/g,
+      /\b(LWCC)\b/g, // Specific pattern for LWCC
+    ];
+
+    companyPatterns.forEach((pattern) => {
+      const matches = query.match(pattern);
+      if (matches) {
+        entities.push(...matches);
+      }
+    });
+
+    return Array.from(new Set(entities)); // Remove duplicates
+  }
+
+  private determineSearchAspects(query: string): string[] {
+    const aspects: string[] = [];
+    const lowerQuery = query.toLowerCase();
+
+    const aspectMap = {
+      'company profile': ['profile', 'about', 'overview', 'company'],
+      mission: ['mission', 'purpose', 'goal'],
+      values: ['values', 'culture', 'principles'],
+      leadership: [
+        'leadership',
+        'management',
+        'executives',
+        'ceo',
+        'president',
+      ],
+      'recent news': ['news', 'recent', 'latest', 'updates', 'announcements'],
+      services: ['services', 'products', 'offerings', 'solutions'],
+      industry: ['industry', 'sector', 'market', 'business'],
+      financial: ['financial', 'revenue', 'earnings', 'performance'],
+    };
+
+    Object.entries(aspectMap).forEach(([aspect, keywords]) => {
+      if (keywords.some((keyword) => lowerQuery.includes(keyword))) {
+        aspects.push(aspect);
+      }
+    });
+
+    // Default aspects if none detected
+    if (aspects.length === 0) {
+      aspects.push('company profile', 'recent news');
+    }
+
+    return aspects;
+  }
+
+  private buildComprehensiveSearchQuery(
+    entity: string,
+    aspects: string[],
+  ): string {
+    // Build a comprehensive search query that captures multiple aspects
+    const baseQuery = entity;
+    const aspectTerms = aspects.join(' ');
+
+    return `${baseQuery} ${aspectTerms}`.trim();
+  }
+}
+
+/**
  * SimpleLangGraphWrapper - Proper LangGraph Implementation
  */
 export class SimpleLangGraphWrapper {
@@ -124,28 +551,39 @@ export class SimpleLangGraphWrapper {
   private progressIndicator: ProgressIndicatorManager;
   private routingDisplay: ResponseRoutingDisplay;
   private qualityValidator: ContentQualityValidator;
+  // ADD: Track shown progress indicators to prevent duplicates
+  private shownProgressIndicators: Set<string> = new Set();
+  // ADD: Tool result caching to prevent redundant calls
+  private toolResultCache: Map<string, any> = new Map();
+  // ADD: Tool workflow manager for orchestrating tool sequences
+  private workflowManager: ToolWorkflowManager;
 
   constructor(config: LangGraphWrapperConfig) {
     this.config = config;
     this.llm = config.llm;
     this.tools = config.tools;
     this.logger = config.logger;
-    this.contextManager = new ContextWindowManager(config.logger, {
+
+    // Initialize components
+    this.contextManager = new ContextWindowManager(this.logger, {
       enableAutoUpgrade: true,
     });
     this.streamingCoordinator = new StreamingCoordinator();
-    this.documentOrchestrator = new DocumentOrchestrator(config.logger);
-    this.synthesisValidator = new SynthesisValidator(config.logger);
+    this.documentOrchestrator = new DocumentOrchestrator(this.logger);
+    this.synthesisValidator = new SynthesisValidator(this.logger);
     this.progressIndicator = new ProgressIndicatorManager();
-    this.routingDisplay = new ResponseRoutingDisplay(config.logger);
-    this.qualityValidator = new ContentQualityValidator(config.logger);
+    this.routingDisplay = new ResponseRoutingDisplay(this.logger);
+    this.qualityValidator = new ContentQualityValidator(this.logger);
 
     // Fix memory leak warnings by increasing max listeners
     if (typeof process !== 'undefined' && process.setMaxListeners) {
       process.setMaxListeners(20);
     }
 
-    // Initialize and compile the LangGraph immediately
+    // Initialize workflow manager
+    this.workflowManager = new ToolWorkflowManager(this.logger);
+
+    // Initialize the graph
     this.graph = this.initializeAndCompileGraph();
   }
 
@@ -464,6 +902,40 @@ export class SimpleLangGraphWrapper {
             '[LangGraph Agent] Forcing any tool call (required)',
           );
           toolChoiceOption = 'required';
+        }
+
+        // 🔧 NEW: Workflow-based tool forcing
+        if (!toolChoiceOption) {
+          const userMessages = state.messages.filter(
+            (msg) => msg._getType() === 'human',
+          );
+          const currentQuery =
+            userMessages.length > 0
+              ? typeof userMessages[0].content === 'string'
+                ? userMessages[0].content
+                : JSON.stringify(userMessages[0].content)
+              : state.input || '';
+
+          const suggestedTools =
+            this.workflowManager.getSuggestedNextTools(currentQuery);
+          const forceToolCall = suggestedTools.find((tool) => tool.forceCall);
+
+          if (forceToolCall) {
+            const targetTool = this.tools.find(
+              (t) => t.name === forceToolCall.toolName,
+            );
+            if (targetTool) {
+              this.logger.info(
+                '[LangGraph Agent] 🔧 Workflow suggests forcing tool call:',
+                {
+                  toolName: forceToolCall.toolName,
+                  reason: forceToolCall.reason,
+                  priority: forceToolCall.priority,
+                },
+              );
+              toolChoiceOption = forceToolCall.toolName;
+            }
+          }
         }
 
         if (toolChoiceOption) {
@@ -1256,6 +1728,236 @@ Create the ${responseType} now.`,
   }
 
   /**
+   * Generate cache key for tool calls to detect redundancy
+   * ENHANCED with aggressive semantic similarity detection
+   */
+  private generateToolCacheKey(toolCall: any): string {
+    const toolName = toolCall.name;
+    const args = toolCall.args || {};
+
+    // DEBUG: Log tool name detection
+    this.logger.info('[Tool Cache] Generating cache key', {
+      toolName,
+      args,
+      toolCallStructure: Object.keys(toolCall),
+    });
+
+    // **AGGRESSIVE FIX**: All listDocuments calls are identical regardless of parameters
+    if (toolName === 'listDocuments') {
+      return `${toolName}:all`; // Force all listDocuments to same cache key
+    }
+
+    // **ENHANCED**: Normalize tavilySearch queries for comprehensive searches
+    if (toolName === 'tavilySearch' && args.query) {
+      const query = args.query.toLowerCase();
+
+      // **COMPREHENSIVE LWCC NORMALIZATION**: All LWCC searches map to same cache key
+      if (query.includes('lwcc')) {
+        // Extract search aspects to create more specific cache keys
+        const aspects = [];
+        if (
+          query.includes('profile') ||
+          query.includes('about') ||
+          query.includes('overview') ||
+          query.includes('company')
+        )
+          aspects.push('profile');
+        if (query.includes('mission') || query.includes('purpose'))
+          aspects.push('mission');
+        if (query.includes('values') || query.includes('culture'))
+          aspects.push('values');
+        if (
+          query.includes('leadership') ||
+          query.includes('management') ||
+          query.includes('executives')
+        )
+          aspects.push('leadership');
+        if (
+          query.includes('news') ||
+          query.includes('recent') ||
+          query.includes('latest')
+        )
+          aspects.push('news');
+        if (query.includes('services') || query.includes('products'))
+          aspects.push('services');
+        if (query.includes('industry') || query.includes('sector'))
+          aspects.push('industry');
+
+        // If comprehensive search (3+ aspects), use comprehensive cache key
+        if (aspects.length >= 3) {
+          return `${toolName}:lwcc_comprehensive_search`;
+        }
+
+        // Otherwise, use specific aspect-based cache key
+        return `${toolName}:lwcc_${aspects.sort().join('_') || 'general'}`;
+      }
+
+      // **GENERAL COMPANY NORMALIZATION**: Handle other company searches
+      const companyMatch = query.match(
+        /\b([a-z]+(?:\s+[a-z]+)*)\s+(?:company|corp|inc|llc|corporation|limited)/,
+      );
+      if (companyMatch) {
+        const companyName = companyMatch[1].replace(/\s+/g, '_');
+        return `${toolName}:${companyName}_company_comprehensive`;
+      }
+    }
+
+    // **AGGRESSIVE FIX**: Normalize searchInternalKnowledgeBase queries
+    if (toolName === 'searchInternalKnowledgeBase' && args.query) {
+      const query = args.query.toLowerCase();
+
+      // Normalize client research queries
+      if (query.includes('client research') || query.includes('ideal client')) {
+        return `${toolName}:client_research_examples`;
+      }
+
+      // Normalize Echo Tango queries
+      if (query.includes('echo tango')) {
+        return `${toolName}:echo_tango_info`;
+      }
+    }
+
+    // **AGGRESSIVE FIX**: Normalize getDocumentContents by document type
+    if (toolName === 'getDocumentContents' && (args.id || args.title)) {
+      const identifier = (args.id || args.title || '').toLowerCase();
+
+      // Group similar document types
+      if (
+        identifier.includes('ideal_client') ||
+        identifier.includes('ideal client')
+      ) {
+        return `${toolName}:ideal_client_profile`;
+      }
+
+      if (
+        identifier.includes('core_values') ||
+        identifier.includes('core values')
+      ) {
+        return `${toolName}:echo_tango_values`;
+      }
+
+      if (
+        identifier.includes('client_research') ||
+        identifier.includes('client research')
+      ) {
+        return `${toolName}:client_research_template`;
+      }
+    }
+
+    // Fallback: Use exact parameters for other tools
+    const sortedArgs = Object.keys(args)
+      .sort()
+      .reduce((result, key) => {
+        result[key] = args[key];
+        return result;
+      }, {} as any);
+
+    return `${toolName}:${JSON.stringify(sortedArgs)}`;
+  }
+
+  /**
+   * Check if any tool call results are cached
+   */
+  private getCachedToolResults(toolCalls: any[]): {
+    cached: any[];
+    toExecute: any[];
+  } {
+    const cached: any[] = [];
+    const toExecute: any[] = [];
+
+    for (const toolCall of toolCalls) {
+      const cacheKey = this.generateToolCacheKey(toolCall);
+
+      if (this.toolResultCache.has(cacheKey)) {
+        const cachedResult = this.toolResultCache.get(cacheKey);
+        this.logger.info(
+          `[Tool Cache] 🎯 Using cached result for ${toolCall.name}`,
+          {
+            toolId: toolCall.id,
+            cacheKey,
+            cachedContent:
+              typeof cachedResult === 'string'
+                ? `${cachedResult.substring(0, 100)}...`
+                : 'object',
+          },
+        );
+
+        // Create a tool message with the cached result
+        const toolMessage = new ToolMessage({
+          content:
+            typeof cachedResult === 'string'
+              ? cachedResult
+              : JSON.stringify(cachedResult),
+          tool_call_id: toolCall.id,
+          name: toolCall.name, // IMPORTANT: Add the tool name for proper identification
+        });
+        cached.push(toolMessage);
+      } else {
+        toExecute.push(toolCall);
+      }
+    }
+
+    return { cached, toExecute };
+  }
+
+  /**
+   * Cache tool results for future use
+   */
+  private cacheToolResults(toolCalls: any[], toolMessages: any[]): void {
+    // Match tool calls with their results
+    const toolCallsById = new Map(toolCalls.map((tc) => [tc.id, tc]));
+
+    for (const toolMessage of toolMessages) {
+      if (toolMessage.tool_call_id) {
+        const toolCall = toolCallsById.get(toolMessage.tool_call_id);
+        if (toolCall) {
+          const cacheKey = this.generateToolCacheKey(toolCall);
+          this.toolResultCache.set(cacheKey, toolMessage.content);
+          this.logger.info(`[Tool Cache] Cached result for ${toolCall.name}`, {
+            toolId: toolCall.id,
+            cacheKey,
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * CRITICAL FIX: Deduplicate tool calls within the same LLM response
+   * This prevents the LLM from making multiple identical calls in a single response
+   */
+  private deduplicateToolCalls(toolCalls: any[]): any[] {
+    const seen = new Set<string>();
+    const deduplicated: any[] = [];
+
+    for (const toolCall of toolCalls) {
+      // Create a deduplication key based on tool name and normalized arguments
+      const dedupKey = this.generateToolCacheKey(toolCall);
+
+      if (!seen.has(dedupKey)) {
+        seen.add(dedupKey);
+        deduplicated.push(toolCall);
+
+        this.logger.info(`[Tool Deduplication] ✅ Keeping: ${toolCall.name}`, {
+          toolId: toolCall.id,
+          dedupKey,
+        });
+      } else {
+        this.logger.info(
+          `[Tool Deduplication] 🚫 Removing duplicate: ${toolCall.name}`,
+          {
+            toolId: toolCall.id,
+            dedupKey,
+            reason: 'Identical tool call already in this batch',
+          },
+        );
+      }
+    }
+
+    return deduplicated;
+  }
+
+  /**
    * Tool Execution Node
    * Handles execution of tools called by the LLM and captures artifact events.
    */
@@ -1279,26 +1981,98 @@ Create the ${responseType} now.`,
       return {};
     }
 
-    this.logger.info('[LangGraph Tools] Found tool calls:', {
-      tool_calls: lastMessage.tool_calls.map((tc) => ({
+    // CRITICAL FIX: Deduplicate tool calls within the same LLM response
+    const deduplicatedToolCalls = this.deduplicateToolCalls(
+      lastMessage.tool_calls,
+    );
+
+    this.logger.info('[LangGraph Tools] Tool call analysis:', {
+      originalCount: lastMessage.tool_calls.length,
+      deduplicatedCount: deduplicatedToolCalls.length,
+      duplicatesRemoved:
+        lastMessage.tool_calls.length - deduplicatedToolCalls.length,
+      toolCalls: deduplicatedToolCalls.map((tc) => ({
         name: tc.name,
-        args: tc.args,
         id: tc.id,
       })),
     });
 
     try {
-      const toolNode = new ToolNode(this.tools);
-      // ToolNode.invoke expects the messages array directly
-      const toolMessages = await toolNode.invoke(state.messages, config);
+      // Check cache for existing results using deduplicated calls
+      const { cached, toExecute } = this.getCachedToolResults(
+        deduplicatedToolCalls,
+      );
+
+      let newToolMessages: any[] = [];
+
+      // Execute only tools that aren't cached
+      if (toExecute.length > 0) {
+        this.logger.info('[LangGraph Tools] Executing uncached tools:', {
+          uncachedTools: toExecute.map((tc) => tc.name),
+          cachedCount: cached.length,
+        });
+
+        // Create a modified state with only the tools that need execution
+        const modifiedMessage = new AIMessage({
+          content: lastMessage.content,
+          tool_calls: toExecute,
+        });
+
+        const modifiedMessages = [
+          ...state.messages.slice(0, -1),
+          modifiedMessage,
+        ];
+
+        const toolNode = new ToolNode(this.tools);
+        const executedToolMessages = await toolNode.invoke(
+          modifiedMessages,
+          config,
+        );
+
+        newToolMessages = Array.isArray(executedToolMessages)
+          ? executedToolMessages
+          : [executedToolMessages];
+
+        // DEBUG: Log tool message structure to understand name detection issue
+        this.logger.info('[Tool Cache] Tool messages received:', {
+          messageCount: newToolMessages.length,
+          messageSample: newToolMessages.map((msg) => ({
+            type: msg._getType(),
+            name: (msg as any)?.name,
+            tool_call_id: (msg as any)?.tool_call_id,
+            keys: Object.keys(msg),
+          })),
+        });
+
+        // Cache the new results
+        this.cacheToolResults(toExecute, newToolMessages);
+
+        // 📊 Analyze tool results for workflow management
+        for (let i = 0; i < toExecute.length; i++) {
+          const toolCall = toExecute[i];
+          const toolMessage = newToolMessages[i];
+          if (toolMessage) {
+            this.workflowManager.analyzeToolResults(
+              toolCall.name,
+              toolMessage.content,
+              toolCall.args,
+            );
+          }
+        }
+      }
+
+      // Combine cached and newly executed results
+      const allToolMessages = [...cached, ...newToolMessages];
 
       this.logger.info('[LangGraph Tools] Tool execution completed', {
-        toolMessageCount: Array.isArray(toolMessages) ? toolMessages.length : 1,
+        totalToolMessages: allToolMessages.length,
+        cachedCount: cached.length,
+        executedCount: newToolMessages.length,
       });
 
       // Return the tool messages to be added to the state
       return {
-        messages: Array.isArray(toolMessages) ? toolMessages : [toolMessages],
+        messages: allToolMessages,
       };
     } catch (error) {
       this.logger.error('[LangGraph Tools] Error executing tools', { error });
@@ -1535,7 +2309,7 @@ Create the ${responseType} now.`,
 
     const lastMessage = state.messages[state.messages.length - 1];
     const currentIterationCount = state.iterationCount || 0;
-    const MAX_ITERATIONS = 5;
+    const MAX_ITERATIONS = 3; // **REDUCED from 5 to 3 for more aggressive circuit breaking**
 
     // 🚨 CRITICAL: Check circuit breaker FIRST before any tool routing
     if (currentIterationCount > MAX_ITERATIONS) {
@@ -1557,13 +2331,177 @@ Create the ${responseType} now.`,
       return 'synthesis';
     }
 
-    // 1. If the last AI message has tool calls, route to the tool executor
+    // 🔄 NEW: Workflow Management Integration
+    const userMessages = state.messages.filter(
+      (msg) => msg._getType() === 'human',
+    );
+    const currentQuery =
+      userMessages.length > 0
+        ? typeof userMessages[0].content === 'string'
+          ? userMessages[0].content
+          : JSON.stringify(userMessages[0].content)
+        : state.input || '';
+
+    // **AGGRESSIVE CHECK**: If we have both web search results AND document listings, force synthesis
+    const hasWebSearchResults = state.messages.some(
+      (msg) =>
+        msg._getType() === 'tool' &&
+        'name' in msg &&
+        msg.name === 'tavilySearch',
+    );
+
+    const hasDocumentListings = state.messages.some(
+      (msg) =>
+        msg._getType() === 'tool' &&
+        'name' in msg &&
+        msg.name === 'listDocuments',
+    );
+
+    if (
+      hasWebSearchResults &&
+      hasDocumentListings &&
+      currentIterationCount >= 2
+    ) {
+      this.logger.info(
+        '[LangGraph Router] 🎯 AGGRESSIVE SYNTHESIS: Have web search + document listings, forcing synthesis',
+        {
+          hasWebSearchResults,
+          hasDocumentListings,
+          currentIterationCount,
+        },
+      );
+      return 'synthesis';
+    }
+
+    // Check if workflow is ready for synthesis
+    const isWorkflowReady =
+      this.workflowManager.isWorkflowReadyForSynthesis(currentQuery);
+    const workflowStatus = this.workflowManager.getWorkflowStatus();
+
+    this.logger.info('[LangGraph Router] Workflow status check:', {
+      isWorkflowReady,
+      workflowStatus,
+      currentQuery: currentQuery.substring(0, 100),
+    });
+
+    // Get suggested tools from workflow manager
+    const suggestedTools =
+      this.workflowManager.getSuggestedNextTools(currentQuery);
+    const hasHighPriorityTools = suggestedTools.some(
+      (tool) => tool.priority === 'high',
+    );
+
+    this.logger.info('[LangGraph Router] Tool suggestions:', {
+      suggestedToolCount: suggestedTools.length,
+      hasHighPriorityTools,
+      suggestions: suggestedTools.map((s) => ({
+        toolName: s.toolName,
+        priority: s.priority,
+        reason: `${s.reason.substring(0, 50)}...`,
+      })),
+    });
+
+    // **ENHANCED REDUNDANCY CHECK**: Check for redundant tool call patterns
     if (
       lastMessage &&
       'tool_calls' in lastMessage &&
       Array.isArray(lastMessage.tool_calls) &&
       lastMessage.tool_calls.length > 0
     ) {
+      const redundancyCheck = this.detectToolCallRedundancy(
+        state,
+        lastMessage.tool_calls,
+      );
+
+      this.logger.info('[LangGraph Router] Redundancy check result:', {
+        isRedundant: redundancyCheck.isRedundant,
+        reason: redundancyCheck.reason,
+        redundantToolCount: redundancyCheck.redundantToolCount,
+      });
+
+      if (redundancyCheck.isRedundant) {
+        this.logger.warn(
+          '[LangGraph Router] 🛑 REDUNDANCY DETECTED: Forcing synthesis to break redundant loop',
+          {
+            reason: redundancyCheck.reason,
+            redundantToolCount: redundancyCheck.redundantToolCount,
+            currentIterationCount,
+          },
+        );
+
+        // Force synthesis to break the redundant loop
+        return 'synthesis';
+      }
+    }
+
+    // Continue with workflow-aware routing logic
+    if (!isWorkflowReady && hasHighPriorityTools) {
+      this.logger.info(
+        '[LangGraph Router] 🔄 Workflow incomplete - suggesting tools before synthesis:',
+        {
+          suggestedTools: suggestedTools.map((t) => ({
+            name: t.toolName,
+            priority: t.priority,
+            reason: t.reason,
+          })),
+          workflowStatus,
+        },
+      );
+
+      // If we have tool calls in the last message, continue with them
+      // Otherwise, we need to force tool calls (this would require modifying the LLM call)
+      if (
+        lastMessage &&
+        'tool_calls' in lastMessage &&
+        Array.isArray(lastMessage.tool_calls) &&
+        lastMessage.tool_calls.length > 0
+      ) {
+        return 'use_tools';
+      }
+    }
+
+    // 1. If the last AI message has tool calls, route to the tool executor
+    // BUT FIRST: Apply document listing circuit breaker
+    if (
+      lastMessage &&
+      'tool_calls' in lastMessage &&
+      Array.isArray(lastMessage.tool_calls) &&
+      lastMessage.tool_calls.length > 0
+    ) {
+      // Check if this is a document listing request with existing results
+      const userMessages = state.messages.filter(
+        (msg) => msg._getType() === 'human',
+      );
+      const lastUserMessage = userMessages[userMessages.length - 1];
+      const userQuery =
+        typeof lastUserMessage?.content === 'string'
+          ? lastUserMessage.content
+          : JSON.stringify(lastUserMessage?.content) || '';
+
+      const isDocumentListingRequest =
+        /(?:list|show|display|enumerate)\s+(?:all\s+)?(?:the\s+)?(?:available\s+)?(?:documents|files)/i.test(
+          userQuery,
+        );
+      const hasListDocumentsResult = state.messages.some(
+        (msg) =>
+          msg._getType() === 'tool' &&
+          typeof msg.content === 'string' &&
+          msg.content.includes('available_documents'),
+      );
+
+      // Circuit breaker: If this is a document listing request and we already have results, skip tools
+      if (isDocumentListingRequest && hasListDocumentsResult) {
+        this.logger.info(
+          '[LangGraph Router] 🛑 CIRCUIT BREAKER: Document listing request with existing results - skipping tools and routing to synthesis',
+          {
+            userQuery: userQuery.substring(0, 100),
+            hasListDocumentsResult,
+            toolCallsCount: lastMessage.tool_calls.length,
+          },
+        );
+        return 'synthesis';
+      }
+
       this.logger.info('[LangGraph Router] Decision: Route to tools node.');
       return 'use_tools';
     }
@@ -1788,13 +2726,27 @@ Create the ${responseType} now.`,
     config?: RunnableConfig,
     needsSynthesis = true,
   ): AsyncGenerator<Uint8Array> {
+    // Reset workflow manager for new conversations
+    this.workflowManager.reset();
+
+    // Clear tool result cache for new conversations
+    this.toolResultCache.clear();
+
+    this.logger.info('[LangGraph] Starting stream with workflow management', {
+      messageCount: inputMessages.length,
+      needsSynthesis,
+      workflowReset: true,
+    });
+
     // PHASE 8 TRUE REAL-TIME STREAMING: Direct token capture during LangGraph execution
     this.logger.info(
       'Using Phase 8 True Real-Time Streaming: Token capture during LangGraph execution',
     );
 
-    // Reset streaming coordinator for new request
+    // Reset streaming coordinator, progress indicators, and tool cache for new request
     this.streamingCoordinator.reset();
+    this.shownProgressIndicators.clear();
+    this.toolResultCache.clear();
 
     const encoder = new TextEncoder();
 
@@ -1980,6 +2932,9 @@ Create the ${responseType} now.`,
     try {
       console.log('[Phase 8 Real-Time] Starting true real-time streaming...');
 
+      // Reset progress indicators for new request
+      this.shownProgressIndicators.clear();
+
       // Stream events during LangGraph execution
       const eventStream = this.graph.streamEvents(
         { messages: inputMessages },
@@ -2021,12 +2976,25 @@ Create the ${responseType} now.`,
           yield encoder.encode(token);
         }
 
-        // Handle progress updates during tool execution
+        // Handle progress updates during tool execution - WITH DEDUPLICATION
         if (event.event === 'on_tool_start') {
           const toolName = event.name;
-          const progressMessage = this.getToolProgressMessage(toolName);
-          if (progressMessage) {
-            yield encoder.encode(progressMessage);
+          const progressKey = `${toolName}_progress`;
+
+          // Only show progress indicator once per tool per request
+          if (!this.shownProgressIndicators.has(progressKey)) {
+            const progressMessage = this.getToolProgressMessage(toolName);
+            if (progressMessage) {
+              this.shownProgressIndicators.add(progressKey);
+              console.log(
+                `[Phase 8 Real-Time] Showing progress for ${toolName} (first time only)`,
+              );
+              yield encoder.encode(progressMessage);
+            }
+          } else {
+            console.log(
+              `[Phase 8 Real-Time] Skipping duplicate progress indicator for ${toolName}`,
+            );
           }
         }
       }
@@ -2172,6 +3140,474 @@ The user has attached the above document. Please analyze and respond based on th
         '⚠️ An error occurred while processing your request. Please try again.',
       );
     }
+  }
+
+  /**
+   * ENHANCED: Workflow-aware tool call redundancy detection
+   * This helps prevent the LLM from making repetitive calls with slight variations
+   * while allowing legitimate tool sequences like listDocuments → getDocumentContents
+   */
+  private detectToolCallRedundancy(
+    state: GraphState,
+    currentToolCalls: any[],
+  ): {
+    isRedundant: boolean;
+    reason: string;
+    redundantToolCount: number;
+  } {
+    // Get all previous AI messages with tool calls
+    const aiMessagesWithTools = state.messages.filter(
+      (msg) =>
+        msg._getType() === 'ai' &&
+        'tool_calls' in msg &&
+        Array.isArray((msg as any).tool_calls) &&
+        (msg as any).tool_calls.length > 0,
+    );
+
+    if (aiMessagesWithTools.length < 2) {
+      // Not enough history to detect redundancy
+      return {
+        isRedundant: false,
+        reason: 'Insufficient history',
+        redundantToolCount: 0,
+      };
+    }
+
+    // **CRITICAL FIX**: Don't flag as redundant if we have mixed tool types
+    // Common valid patterns:
+    // - listDocuments + getDocumentContents (discovery + retrieval)
+    // - tavilySearch + tavilyExtract (search + extraction)
+    // - searchInternalKnowledgeBase + getDocumentContents (search + retrieval)
+
+    const currentToolTypes = Array.from(
+      new Set(currentToolCalls.map((call: any) => call.name)),
+    );
+    const hasMultipleToolTypes = currentToolTypes.length > 1;
+
+    // **WORKFLOW PATTERNS**: Define legitimate tool sequences
+    const workflowPatterns = [
+      ['listDocuments', 'getDocumentContents'],
+      ['tavilySearch', 'tavilyExtract'],
+      ['searchInternalKnowledgeBase', 'getDocumentContents'],
+      ['listDocuments', 'multiDocumentRetrieval'],
+    ];
+
+    // Check if current tools match a valid workflow pattern
+    const isValidWorkflowSequence = workflowPatterns.some((pattern) =>
+      pattern.every((toolName) => currentToolTypes.includes(toolName)),
+    );
+
+    if (hasMultipleToolTypes && isValidWorkflowSequence) {
+      this.logger.info('[Tool Redundancy] Valid workflow sequence detected:', {
+        toolTypes: currentToolTypes,
+        reason: 'Legitimate tool workflow pattern',
+      });
+      return {
+        isRedundant: false,
+        reason: 'Valid workflow sequence',
+        redundantToolCount: 0,
+      };
+    }
+
+    // Check for actual redundancy: identical tool calls with same parameters
+    let redundantCount = 0;
+    const recentToolCalls = aiMessagesWithTools
+      .slice(-3) // Look at last 3 iterations
+      .flatMap((msg: any) => msg.tool_calls || []);
+
+    for (const currentCall of currentToolCalls) {
+      const currentKey = this.generateToolCacheKey(currentCall);
+
+      const duplicateCount = recentToolCalls.filter((prevCall: any) => {
+        const prevKey = this.generateToolCacheKey(prevCall);
+        return currentKey === prevKey;
+      }).length;
+
+      if (duplicateCount >= 2) {
+        // Same call appeared 2+ times recently
+        redundantCount++;
+        this.logger.warn('[Tool Redundancy] Detected redundant tool call:', {
+          toolName: currentCall.name,
+          cacheKey: currentKey,
+          duplicateCount,
+        });
+      }
+    }
+
+    // Only flag as redundant if we have significant redundancy
+    const redundancyThreshold = Math.max(
+      1,
+      Math.floor(currentToolCalls.length * 0.5),
+    );
+    const isRedundant = redundantCount >= redundancyThreshold;
+
+    if (isRedundant) {
+      return {
+        isRedundant: true,
+        reason: `${redundantCount} redundant tool calls detected in recent iterations`,
+        redundantToolCount: redundantCount,
+      };
+    }
+
+    return {
+      isRedundant: false,
+      reason: 'No significant redundancy detected',
+      redundantToolCount: redundantCount,
+    };
+  }
+
+  // Enhanced redundancy detection with workflow awareness
+  private detectRedundantToolCalls(toolCalls: any[], state: any): boolean {
+    if (!toolCalls || toolCalls.length === 0) return false;
+
+    const currentIteration = state.iterationCount || 0;
+    // Skip recent tool history check for now - focus on cache-based redundancy
+
+    // Don't trigger redundancy on first few iterations to allow workflow establishment
+    if (currentIteration <= 1) {
+      console.log(
+        `[Circuit Breaker] Skipping redundancy check - early iteration ${currentIteration}`,
+      );
+      return false;
+    }
+
+    let redundantCount = 0;
+    const toolCallsInThisResponse = new Map<string, number>();
+
+    // Check for multiple identical calls within the same LLM response
+    for (const toolCall of toolCalls) {
+      const cacheKey = this.generateToolCacheKey(toolCall);
+      const count = toolCallsInThisResponse.get(cacheKey) || 0;
+      toolCallsInThisResponse.set(cacheKey, count + 1);
+
+      if (count > 0) {
+        console.warn(
+          `[Tool Redundancy] Multiple identical calls in same response: ${toolCall.name}`,
+        );
+        redundantCount++;
+      }
+    }
+
+    // Check against recent history, but be more lenient for workflow tools
+    for (const toolCall of toolCalls) {
+      const cacheKey = this.generateToolCacheKey(toolCall);
+
+      // Special handling for workflow-critical tools
+      if (this.isWorkflowCriticalTool(toolCall.name)) {
+        // Only flag as redundant if we have it cached (meaning it was called recently)
+        if (this.toolResultCache.has(cacheKey)) {
+          console.warn(
+            `[Tool Redundancy] Workflow tool called too frequently: ${toolCall.name}`,
+          );
+          redundantCount++;
+        }
+      } else {
+        // Standard redundancy check for non-workflow tools
+        if (this.toolResultCache.has(cacheKey)) {
+          console.warn(
+            `[Tool Redundancy] Detected redundant tool call: ${JSON.stringify({
+              toolName: toolCall.name,
+              cacheKey,
+              duplicateCount: redundantCount + 1,
+            })}`,
+          );
+          redundantCount++;
+        }
+      }
+    }
+
+    // More lenient threshold - only trigger if significant redundancy
+    const redundancyThreshold = Math.max(1, Math.floor(toolCalls.length * 0.6));
+    return redundantCount >= redundancyThreshold;
+  }
+
+  private isWorkflowCriticalTool(toolName: string): boolean {
+    const workflowTools = [
+      'listDocuments',
+      'getDocumentContents',
+      'tavilySearch',
+      'searchInternalKnowledgeBase',
+      'multiDocumentRetrieval',
+    ];
+    return workflowTools.includes(toolName);
+  }
+
+  private shouldForceSynthesis(state: any): boolean {
+    const currentIteration = state.iterationCount || 0;
+    const hasToolCalls = state.messages?.some(
+      (msg: any) => msg.additional_kwargs?.tool_calls?.length > 0,
+    );
+
+    // Don't force synthesis too early
+    if (currentIteration < 2) {
+      return false;
+    }
+
+    // Check if we have the minimum required tools for the user's request
+    const userMessage =
+      state.messages?.find((msg: any) => msg._getType() === 'human')?.content ||
+      '';
+    const requiredWebSearch = this.requiresWebSearch(userMessage);
+    const requiredDocuments = this.requiresDocuments(userMessage);
+
+    const executedTools = this.workflowManager.getExecutedTools();
+    const hasWebSearch = executedTools.some((t) => t.name === 'tavilySearch');
+    const hasDocuments = executedTools.some(
+      (t) => t.name === 'listDocuments' || t.name === 'getDocumentContents',
+    );
+
+    // If user explicitly requested web search but we haven't done it, don't force synthesis yet
+    if (requiredWebSearch && !hasWebSearch && currentIteration < 4) {
+      console.log(
+        `[Circuit Breaker] Web search required but not executed - continuing workflow`,
+      );
+      return false;
+    }
+
+    // If user requested documents but we haven't retrieved content, don't force synthesis yet
+    if (requiredDocuments && !hasDocuments && currentIteration < 4) {
+      console.log(
+        `[Circuit Breaker] Document retrieval required but not executed - continuing workflow`,
+      );
+      return false;
+    }
+
+    // Standard conditions for forcing synthesis
+    const MAX_ITERATIONS = 5; // Define locally since it's not a class property
+    return (
+      currentIteration >= MAX_ITERATIONS ||
+      !hasToolCalls ||
+      this.hasMinimumDataForSynthesis(state)
+    );
+  }
+
+  private requiresWebSearch(userMessage: string): boolean {
+    const webSearchIndicators = [
+      'search the web',
+      'web search',
+      'online search',
+      'current information',
+      'latest news',
+      'recent developments',
+    ];
+    return webSearchIndicators.some((indicator) =>
+      userMessage.toLowerCase().includes(indicator.toLowerCase()),
+    );
+  }
+
+  private requiresDocuments(userMessage: string): boolean {
+    const documentIndicators = [
+      'knowledge base',
+      'documents',
+      'examples',
+      'templates',
+      'using the',
+      'based on',
+    ];
+    return documentIndicators.some((indicator) =>
+      userMessage.toLowerCase().includes(indicator.toLowerCase()),
+    );
+  }
+
+  private hasMinimumDataForSynthesis(state: any): boolean {
+    // Implement your logic to determine if there's enough data for synthesis
+    // This is a placeholder implementation
+    return state.messages.some((msg: any) => msg._getType() === 'tool');
+  }
+
+  private async synthesizeResponse(state: any): Promise<any> {
+    console.log('[LangGraph Synthesis] 🎬 Starting final synthesis node.');
+
+    // Validate that required tools were actually executed
+    const userMessage =
+      state.messages?.find((msg: any) => msg._getType() === 'human')?.content ||
+      '';
+    const executedTools = this.workflowManager.getExecutedTools();
+    const toolValidation = this.validateRequiredToolsExecuted(
+      userMessage,
+      executedTools,
+    );
+
+    const synthesisPrompt = `You are an expert research analyst creating comprehensive research reports. Your task is to synthesize information from multiple sources into a coherent, well-structured analysis.
+
+CRITICAL TOOL VALIDATION:
+${
+  toolValidation.warnings.length > 0
+    ? `⚠️ WARNING: The following required tools were NOT executed:\n${toolValidation.warnings.map((w) => `- ${w}`).join('\n')}\n\nYou MUST NOT claim to have used these tools or reference their results. Only use information from tools that were actually executed.\n`
+    : '✅ All required tools were properly executed.\n'
+}
+
+EXECUTED TOOLS SUMMARY:
+${executedTools.map((tool) => `- ${tool.name}: ${tool.success ? 'SUCCESS' : 'FAILED'}`).join('\n')}
+
+RESPONSE FORMATTING REQUIREMENTS:
+- Use clear markdown formatting with proper headers (##, ###)
+- Create well-organized sections with logical flow
+- Use bullet points (-) for most lists, numbered lists (1. 2. 3.) only for sequential steps or rankings
+- Make all document and source names clickable links using [Name](URL) format
+- Use **bold** for key terms and emphasis
+- Include specific examples and quotes from sources when relevant
+- CRITICAL: NEVER mix numbered lists within numbered lists - this creates confusing double numbering
+- For References sections, ALWAYS use bullet points (-), NEVER numbered lists
+
+DOCUMENT LINKING REQUIREMENTS:
+- For knowledge base documents: [Document Name](URL) - use exact URLs provided below
+- For web sources: [Article Title](URL) - use exact URLs provided below  
+- For calendar events: [Event Name](URL) when URLs are provided
+- NEVER show raw URLs - always format as clickable links
+- When referencing any document in your content, make it a clickable link
+
+CONTENT STRUCTURE REQUIREMENTS:
+- Start with an executive summary or overview
+- Use clear section headers (##, ###) to organize content
+- Include specific data points, quotes, and examples from sources
+- Provide actionable insights and recommendations
+- End with a comprehensive References section
+
+CRITICAL FORMATTING RULES:
+- **NO TABLES** for alignment analysis, comparison analysis, or criteria evaluation
+- For any analysis involving "alignment", "comparison", "criteria", or "vs" - use structured lists instead
+- Tables are ONLY for simple factual data (contact info, dates, basic stats)
+- Use structured lists with clear headers and bullet points for complex analysis
+
+DOCUMENT LISTING FORMAT (when listing available documents):
+- Use simple markdown list format: - [Document Name](URL)
+- Do NOT add descriptions or bullet points before document names
+- Keep it clean and simple
+
+CALENDAR EVENT FORMAT:
+- **Event Name**: [Event Title](link-if-available)
+- **Date & Time**: Clear date/time format
+- **Location**: Address or venue
+- **Attendees**: [Name](email-link), [Name](email-link)
+- For calendar events: ALWAYS make event names clickable links when URLs are provided
+- For web results: ALWAYS make titles clickable links: [Article Title](URL)
+- For knowledge base documents: ALWAYS make document names clickable links: [Document Name](URL)
+- Use **bold** for emphasis, not ALL CAPS
+
+CRITICAL LINKING INSTRUCTIONS:
+- When mentioning ANY document or source in your content, check the "Knowledge Base Documents Used" and "Web Sources Used" sections below
+- ALWAYS use the exact URLs provided in those sections to create clickable links
+- NEVER mention a document name without making it a clickable link if a URL is available
+- Example: If you see "Ideal Client Profile.txt" in Knowledge Base Documents Used with a URL, write [Ideal Client Profile](URL) everywhere you mention it
+
+CRITICAL SOURCE CATEGORIZATION:
+- Knowledge Base Documents: ONLY sources that came from internal document retrieval (getDocumentContents tool)
+- Web Sources: ONLY sources that came from web search (webSearch tool)
+- NEVER categorize web search results as knowledge base documents
+- NEVER categorize internal documents as web sources
+- If unsure about source type, check which tool provided the information
+
+CRITICAL: NO TABLES FOR ALIGNMENT/COMPARISON ANALYSIS
+- NEVER use tables for alignment analysis, comparison analysis, or criteria evaluation
+- For any analysis involving "alignment", "comparison", "criteria", or "vs" - ALWAYS use structured lists
+- Tables are ONLY acceptable for simple data like contact info, dates, or basic facts
+
+SIMPLE TABLE GUIDELINES (for basic data only):
+- Only use tables for simple factual data (contact info, dates, basic stats)
+- Keep content very brief - single words or short phrases only
+- Never use tables when content requires explanation or analysis
+
+CONTENT STRUCTURE:
+- Create a comprehensive research report that synthesizes all the information gathered. Structure your response with clear sections, actionable insights, and specific recommendations.
+
+## References Section Requirements:
+- ALWAYS include a "References" section at the end of your response
+- List all sources used in the analysis
+- CRITICAL: Only list sources under "Knowledge Base Documents" if they came from getDocumentContents tool
+- CRITICAL: Only list sources under "Web Sources" if they came from webSearch tool
+- Format knowledge base documents as: [Document Name](URL) if URL available
+- Format web sources as: [Article Title](URL)
+- Group by source type: "Knowledge Base Documents" and "Web Sources"
+- DO NOT duplicate sources - if you mention a source in the body, do not repeat the full citation in references
+- In references, only provide the source name and link, no descriptions
+- NEVER show raw URLs - ALWAYS format as clickable markdown links [Title](URL)
+- CRITICAL: Use BULLET POINTS (- ) for references, NOT numbered lists (1. 2. 3.)
+- Example format: - [Sharks of the Gulf of Mexico](https://www.sharksider.com/sharks-gulf-mexico/)
+- NEVER use numbered lists within numbered lists - this creates confusing double numbering
+- DO NOT include "End of Report", "End of Document", or any closing statements after the References section.
+- Ensure all links are properly formatted as [Text](URL) - NEVER show raw URLs
+- In the References section specifically, ALWAYS use markdown links: [Source Title](URL)
+- Example reference format: [Sharks of the Gulf of Mexico](https://www.sharksider.com/sharks-gulf-mexico/)
+
+ALIGNMENT ANALYSIS OVERRIDE:
+- If creating alignment analysis, comparison analysis, or criteria evaluation: IGNORE any impulse to use tables
+- MANDATORY: Use the structured list format shown above for all alignment/comparison content
+- This applies to ANY content comparing two or more items, criteria, or concepts
+
+Current date: ${new Date().toISOString()}`;
+
+    console.log('[LangGraph Synthesis] Invoking LLM for synthesis.');
+
+    // Use the existing LLM from config
+    const response = await this.llm.invoke([
+      new SystemMessage(synthesisPrompt),
+      new HumanMessage(
+        `User Request: "${userMessage}"\n\nTool Results Available:\n${ContentFormatter.formatToolResults(state.messages.filter((msg: any) => msg._getType() === 'tool'))}\n\nIMPORTANT FORMATTING INSTRUCTIONS:\n- When writing your response, use the URLs provided above to make ALL document and source names clickable links\n- Do not mention any document name as plain text if a URL is available\n- If the tool results include a "formatted_list" field (from listDocuments), use that exact formatted list with clickable links\n- For document listings, present the formatted_list exactly as provided - do not modify the format or add extra text\n- CRITICAL: Never display the same hyperlink more than once in your response - if you need to reference the same source again, use plain text instead of a duplicate link\n- CRITICAL: Only categorize sources as "Knowledge Base Documents" if they came from getDocumentContents or searchInternalKnowledgeBase tools\n- CRITICAL: Only categorize sources as "Web Sources" if they came from tavilySearch or webSearch tools\n\nCreate the comprehensive research report now.`,
+      ),
+    ]);
+
+    console.log(
+      '[LangGraph Synthesis] Synthesis completed, returning AI message in state.',
+    );
+
+    return {
+      ...state,
+      messages: [...state.messages, response],
+    };
+  }
+
+  private validateRequiredToolsExecuted(
+    userMessage: string,
+    executedTools: any[],
+  ): { warnings: string[] } {
+    const warnings: string[] = [];
+
+    // Check for web search requirement
+    if (this.requiresWebSearch(userMessage)) {
+      const hasWebSearch = executedTools.some(
+        (t) => t.name === 'tavilySearch' && t.success,
+      );
+      if (!hasWebSearch) {
+        warnings.push(
+          'Web search was requested but tavilySearch was never executed',
+        );
+      }
+    }
+
+    // Check for document requirement
+    if (this.requiresDocuments(userMessage)) {
+      const hasDocuments = executedTools.some(
+        (t) =>
+          (t.name === 'listDocuments' || t.name === 'getDocumentContents') &&
+          t.success,
+      );
+      if (!hasDocuments) {
+        warnings.push(
+          'Document access was requested but document tools were never executed',
+        );
+      }
+    }
+
+    return { warnings };
+  }
+
+  /**
+   * Deduplicate links in response content to avoid redundancy
+   */
+  private deduplicateLinks(content: string): string {
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const seen = new Set<string>();
+
+    return content.replace(linkRegex, (match, text: string, url: string) => {
+      const normalizedUrl = url.toLowerCase().trim();
+      if (seen.has(normalizedUrl)) {
+        // Already linked earlier – return plain text
+        return text;
+      }
+      seen.add(normalizedUrl);
+      return match; // Keep the first hyperlink as-is
+    });
   }
 }
 
