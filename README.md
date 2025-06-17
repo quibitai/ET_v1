@@ -1,38 +1,39 @@
-# Echo Tango v4.8.0 - Production-Ready RAG System
+# Echo Tango v5.1.0 - Production-Ready RAG System
 
-🎉 **v4.8.0 Release - Critical Sidebar History Fix** 🎉
+🎉 **v5.1.0 Release - Major LangGraph Architecture Refactoring** 🎉
 
 A production-ready, hybrid RAG (Retrieval-Augmented Generation) system with sophisticated AI orchestration, featuring intelligent routing between LangChain and LangGraph execution paths, dynamic specialist personas, comprehensive tool integration, **enterprise-grade admin interface**, and **advanced streaming capabilities**.
 
-## 🚀 **What's New in v4.8.0**
+## 🚀 **What's New in v5.1.0**
 
-### **🐛 Critical Sidebar History Refresh Fix**
+### **🏗️ Major LangGraph Architecture Refactoring & Modularization**
 
-This release resolves a critical user experience issue where new chats weren't appearing in the sidebar until manual page refresh, along with comprehensive code cleanup and performance improvements.
+This release delivers a complete architectural transformation of the LangGraph system, decomposing a monolithic 3,622-line file into a clean, modular architecture following the 200 LOC principle while maintaining full backward compatibility.
 
-#### **🎯 Critical Bug Fixes**
-- **RESOLVED**: Sidebar history refresh issue - New chats now appear immediately after streaming completion
-- **FIXED**: Cache invalidation timing - Direct SWR mutate calls with proper database synchronization
-- **ELIMINATED**: Manual refresh requirement for new chat visibility
+#### **🎯 Architectural Transformation**
+- **DECOMPOSED**: Monolithic `SimpleLangGraphWrapper.ts` (3,622 lines) into focused, modular components
+- **CREATED**: Clean separation of concerns with dedicated nodes, services, and utilities
+- **IMPLEMENTED**: Comprehensive dependency injection pattern for enhanced testability
+- **ESTABLISHED**: Production-ready observability and performance monitoring
 
-#### **🔧 Technical Implementation**
-- **REPLACED**: Complex `invalidateCache()` abstraction with direct `mutateChatHistory()` calls
-- **ADDED**: 100ms timing delay to ensure database operations complete before cache refresh
-- **MAINTAINED**: Optimistic updates during chat creation for immediate UI feedback
-- **PRESERVED**: Sophisticated streaming architecture while fixing cache consistency
+#### **🔧 Core Node Implementation**
+- **NEW**: `agent.ts` (191 LOC) - Decision-making with auto-response mode detection and workflow state tracking
+- **NEW**: `tools.ts` (188 LOC) - Tool execution with 30s timeout, parallel execution, and individual error handling
+- **NEW**: `generateResponse.ts` (199 LOC) - Unified response generation with auto-detection and citation building
+- **NEW**: `graph.ts` (190 LOC) - Complete system integration with dependency injection and execution tracing
+- **NEW**: `router.ts` - Corrected ReAct pattern where tools ALWAYS return to agent
 
-#### **🧹 Code Quality & Performance**
-- **REMOVED**: Debugging UI elements (test chat button, manual refresh buttons, cache invalidation controls)
-- **ELIMINATED**: 75+ lines of test functionality and debugging code
-- **CLEANED**: 50+ excessive console.log statements and diagnostic callbacks
-- **OPTIMIZED**: Chat grouping logic by removing verbose pagination logging
-- **SIMPLIFIED**: Import statements by removing unused dependencies
+#### **🧠 Business Logic Services**
+- **NEW**: `DocumentAnalysisService.ts` (196 LOC) - Multi-document scenario detection and response strategy determination
+- **NEW**: `ContextService.ts` (195 LOC) - Message window optimization with multiple strategies and token management
+- **NEW**: `QueryAnalysisService.ts` (198 LOC) - Query complexity assessment and intent classification
+- **NEW**: `ObservabilityService.ts` - Production-grade monitoring with real-time performance analytics
 
-#### **🚀 Performance Improvements**
-- **REDUCED**: Re-render overhead by eliminating unnecessary diagnostic callbacks
-- **IMPROVED**: Load times through reduced logging overhead
-- **ENHANCED**: Developer experience with cleaner console output
-- **MAINTAINED**: Zero impact on streaming or core chat functionality
+#### **🚀 System Benefits**
+- **MAINTAINABILITY**: Focused, single-responsibility modules under 200 LOC
+- **TESTABILITY**: Enhanced dependency injection and isolated components
+- **OBSERVABILITY**: Comprehensive monitoring and performance tracking
+- **SCALABILITY**: Clean architecture supporting future enhancements
 
 ### **🎯 Previous Major Features (v4.6.0 & Earlier)**
 
