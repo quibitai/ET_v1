@@ -16,6 +16,9 @@ import {
 } from './nodes/generateResponse';
 import type { ChatOpenAI } from '@langchain/openai';
 import type { RequestLogger } from '../../services/observabilityService';
+import { DocumentAnalysisService } from './services/DocumentAnalysisService';
+import { ContextService } from './services/ContextService';
+import { QueryAnalysisService } from './services/QueryAnalysisService';
 
 /**
  * Complete set of dependencies for the graph
@@ -88,13 +91,22 @@ export function createGraph(
     }
   }
 
-  // Prepare node dependencies
+  // Create services for business logic extraction
+  const documentService = new DocumentAnalysisService(logger);
+  const contextService = new ContextService(logger);
+  const queryService = new QueryAnalysisService(logger);
+
+  // Prepare node dependencies with services
   const agentDeps: AgentNodeDependencies = {
     llm,
     tools,
     logger,
     currentDateTime,
     clientConfig,
+    // NEW: Inject services for business logic
+    documentService,
+    contextService,
+    queryService,
   };
 
   const toolsDeps: ToolsNodeDependencies = {

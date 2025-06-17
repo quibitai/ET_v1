@@ -18,6 +18,9 @@ import type { RequestLogger } from '../../../services/observabilityService';
 import type { GraphState } from '../state';
 import { getLastHumanMessage, hasToolCalls } from '../state';
 import { loadGraphPrompt } from '../prompts/loader';
+import type { DocumentAnalysisService } from '../services/DocumentAnalysisService';
+import type { ContextService } from '../services/ContextService';
+import type { QueryAnalysisService } from '../services/QueryAnalysisService';
 
 /**
  * Dependencies injected into the agent node
@@ -31,6 +34,10 @@ export interface AgentNodeDependencies {
     client_display_name?: string;
     client_core_mission?: string;
   };
+  // NEW: Service dependencies for business logic
+  documentService?: DocumentAnalysisService;
+  contextService?: ContextService;
+  queryService?: QueryAnalysisService;
 }
 
 /**
@@ -40,7 +47,16 @@ export async function agentNode(
   state: GraphState,
   dependencies: AgentNodeDependencies,
 ): Promise<Partial<GraphState>> {
-  const { llm, tools, logger, currentDateTime, clientConfig } = dependencies;
+  const {
+    llm,
+    tools,
+    logger,
+    currentDateTime,
+    clientConfig,
+    documentService,
+    contextService,
+    queryService,
+  } = dependencies;
 
   const startTime = Date.now();
   logger.info('[Agent] Node execution started', {
@@ -51,21 +67,56 @@ export async function agentNode(
   });
 
   try {
-    // Determine response mode based on conversation context
-    const responseMode = determineAgentResponseMode(state);
+    // USE SERVICES: Optimize context if service available
+    let optimizedMessages = state.messages;
+    if (contextService) {
+      const optimization = contextService.optimizeContext(state);
+      optimizedMessages = optimization.optimizedMessages;
 
-    // Load the appropriate agent prompt
+      logger.info('[Agent] Context optimized by service', {
+        originalMessages: optimization.optimization.originalMessageCount,
+        optimizedMessages: optimization.optimization.optimizedMessageCount,
+        strategiesApplied: optimization.optimization.strategiesApplied,
+      });
+    }
+
+    // USE SERVICES: Analyze query for better decision making
+    let responseMode = state.response_mode;
+    if (queryService && !responseMode) {
+      const queryAnalysis = queryService.analyzeQuery(state);
+
+      if (queryAnalysis.intent.suggestedResponseStyle === 'analytical') {
+        responseMode = 'synthesis';
+      } else if (
+        queryAnalysis.intent.suggestedResponseStyle === 'conversational'
+      ) {
+        responseMode = 'conversational';
+      } else {
+        responseMode = 'simple';
+      }
+
+      logger.info('[Agent] Query analyzed by service', {
+        complexity: queryAnalysis.complexity.level,
+        intent: queryAnalysis.intent.primary,
+        responseMode,
+      });
+    } else {
+      // Fallback to original logic if no service or mode already set
+      responseMode = responseMode || determineAgentResponseMode(state);
+    }
+
+    // Load the appropriate agent prompt with enhanced context
     const agentPrompt = await loadGraphPrompt({
       nodeType: 'agent',
-      state,
+      state: { ...state, messages: optimizedMessages },
       currentDateTime: currentDateTime || new Date().toISOString(),
       responseMode,
       availableTools: tools.map((tool) => tool.name),
       clientConfig,
     });
 
-    // Prepare the conversation with system prompt
-    const messages = [new SystemMessage(agentPrompt), ...state.messages];
+    // Prepare the conversation with system prompt and optimized messages
+    const messages = [new SystemMessage(agentPrompt), ...optimizedMessages];
 
     // Bind tools to the model for tool calling capability
     const modelWithTools = llm.bindTools(tools);
@@ -226,6 +277,47 @@ function updateWorkflowState(
         break;
     }
   });
+
+  return updatedState;
+}
+
+/**
+ * Enhanced workflow state update with service data
+ */
+function updateWorkflowStateWithServices(
+  currentWorkflowState: any,
+  agentResponse: AIMessage,
+  serviceData: {
+    queryAnalysis?: any;
+    documentScenario?: any;
+    contextOptimization?: any;
+  },
+): any {
+  // Start with base workflow update
+  const updatedState = updateWorkflowState(currentWorkflowState, agentResponse);
+
+  // Add service insights
+  if (serviceData.queryAnalysis) {
+    updatedState.queryComplexity = serviceData.queryAnalysis.complexity.level;
+    updatedState.detectedIntent = serviceData.queryAnalysis.intent.primary;
+    updatedState.recommendedTools = serviceData.queryAnalysis.toolsToUse;
+  }
+
+  if (serviceData.documentScenario) {
+    updatedState.isMultiDocumentScenario =
+      serviceData.documentScenario.isMultiDocument;
+    updatedState.documentsFound = serviceData.documentScenario.documentsFound;
+    updatedState.requiresSpecialHandling =
+      serviceData.documentScenario.requiresSpecialHandling;
+  }
+
+  if (serviceData.contextOptimization) {
+    updatedState.contextOptimized = true;
+    updatedState.optimizationStrategies =
+      serviceData.contextOptimization.strategiesApplied;
+    updatedState.tokensSaved =
+      serviceData.contextOptimization.tokensEstimate.saved;
+  }
 
   return updatedState;
 }
