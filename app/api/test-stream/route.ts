@@ -9,7 +9,7 @@ export async function POST() {
     console.log('[test-stream] Starting minimal streaming test');
 
     const result = streamText({
-      model: openai('gpt-4o-mini'), // Use the same model as your main system
+      model: openai('gpt-4.1-mini'), // Use the same model as your main system
       prompt:
         'Count from 1 to 10 slowly, inserting "..." between each number. Make it take about 10 seconds by adding some explanation for each number.',
     });

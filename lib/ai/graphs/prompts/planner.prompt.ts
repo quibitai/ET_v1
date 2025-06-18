@@ -3,7 +3,7 @@ import { ChatPromptTemplate } from '@langchain/core/prompts';
 /**
  * Planner Prompt Template - Intelligent task planning for RAG system
  *
- * This prompt instructs a fast LLM (GPT-4o-mini) to act as an intelligent task planner,
+ * This prompt instructs a fast LLM (GPT-4.1-mini) to act as an intelligent task planner,
  * analyzing user queries and creating structured execution plans that guide the agent
  * in making optimal strategic decisions about tool usage and research approaches.
  *

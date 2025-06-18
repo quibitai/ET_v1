@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
     // Test 1: Explicit function call instruction with toolChoice required
     const explicitResult = await generateText({
-      model: openai('gpt-4o'),
+      model: openai('gpt-4.1'),
       prompt:
         'Use the createDocument function to create a document with title "Test Doc" and content "Hello world"',
       tools: {
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     // Test 2: Implicit function call
     const implicitResult = await generateText({
-      model: openai('gpt-4o'),
+      model: openai('gpt-4.1'),
       prompt: 'Create a document about artificial intelligence',
       tools: {
         createDocument: {

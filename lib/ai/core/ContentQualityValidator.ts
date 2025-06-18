@@ -350,7 +350,7 @@ export class ContentQualityValidator {
         const docWords = result.content.toLowerCase().split(/\s+/);
         totalDocumentWords += docWords.length;
 
-        docWords.forEach((word) => {
+        docWords.forEach((word: string) => {
           if (word.length > 3 && responseWords.includes(word)) {
             matchingWords++;
           }

@@ -17,7 +17,12 @@ const mockLogger = {
     console.error(`[ERROR] ${message}`, data || ''),
   warn: (message: string, data?: any) =>
     console.warn(`[WARN] ${message}`, data || ''),
-};
+  correlationId: 'test-correlation-id',
+  startTime: Date.now(),
+  logTokenUsage: () => {},
+  logPerformanceMetrics: () => {},
+  finalize: () => {},
+} as any;
 
 async function validatePlanExecuteImplementation() {
   console.log('🧪 Plan-and-Execute Intelligence Validation\n');

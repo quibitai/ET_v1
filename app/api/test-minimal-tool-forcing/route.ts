@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     // Test multiple models
     const modelsToTest = [model]; // Start with requested model
     if (model === 'gpt-4.1-mini') {
-      modelsToTest.push('gpt-4', 'gpt-3.5-turbo-1106', 'gpt-4o');
+      modelsToTest.push('gpt-4.1');
     }
 
     const results = [];

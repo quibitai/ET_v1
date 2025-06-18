@@ -82,7 +82,7 @@ export class BaseLangGraphFactory {
       };
 
       // Use the modern tool service to select relevant tools
-      const selectedTools = await selectRelevantTools(toolContext, 10);
+      const selectedTools = await selectRelevantTools(toolContext, null, 10);
 
       this.logger.info('Selected tools for LangGraph', {
         toolCount: selectedTools.length,

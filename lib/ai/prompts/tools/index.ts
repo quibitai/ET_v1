@@ -64,14 +64,10 @@ BUDGET CREATION WORKFLOW: When users ask to create budgets or estimates:
   // Content Processing Instructions
   createBudget: `Use this tool to structure and calculate detailed budgets for video production projects. Pass project scope from uploaded content, rate card information from knowledge base searches, and additional project details. Always use this for budget creation requests.`,
 
-  // Asana Function Calling Tools
-  asana_get_project_details: `Use this tool to get detailed information about a specific Asana project including description, status, milestones, and tasks. Use when users ask for project details, project overview, or project information. Provide the project name or GID as project_id.`,
-  asana_list_projects: `Use this tool to list and discover projects in the Asana workspace. Use when users want to see available projects or find a project by name. Can filter by team or include archived projects.`,
-  asana_create_task: `Use this tool to create new tasks in Asana. Provide task name, optional description, project, assignee, and due date. The tool handles semantic resolution of project and user names.`,
-  asana_list_tasks: `Use this tool to list tasks from Asana with optional filtering by project, assignee, or completion status. Use when users want to see their tasks or tasks in a specific project.`,
-  asana_update_task: `Use this tool to update an existing task in Asana. Provide the task GID or name and the fields to update (e.g., description, assignee, due date, completion status).`,
-  asana_create_comment: `Use this tool to add comments to Asana tasks or projects. Provide the GID of the task/project and the comment text.`,
-  asana_search_tasks: `Use this tool to perform a semantic search for tasks across all projects in Asana. Use when you need to find tasks related to a specific topic, keyword, or user.`,
+  // MCP Tools (Dynamic Discovery)
+  // NOTE: MCP tools are discovered dynamically from connected servers
+  // Tool-specific instructions are generated based on actual available tools
+  // This eliminates hardcoded tool name mismatches
 
   // Other tools
   getMessagesFromOtherChat: `When retrieving messages from other chats, summarize the key points relevant to the user's current query. Note the source chat (e.g., "In the Echo Tango chat...").`,

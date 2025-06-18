@@ -17,7 +17,8 @@ Model selection is dynamic and context-aware. The system chooses the OpenAI mode
     'chat-model': 'gpt-4.1-mini',
     'global-orchestrator': 'gpt-4.1',
     'echo-tango-specialist': 'gpt-4.1-mini',
-    'document-editor': 'gpt-4.1',
+    'text-model': 'gpt-4.1',
+    'summary-model': 'gpt-4.1',
     default: 'gpt-4.1',
   };
   ```
@@ -48,10 +49,11 @@ Model selection is dynamic and context-aware. The system chooses the OpenAI mode
 
 Each Bit has a specific ID that corresponds to a model:
 
-- `chat-model`: Echo Tango Bit (uses gpt-4.1-mini)
-- `global-orchestrator`: Orchestrator (uses gpt-4.1)
+- `chat-model`: General Chat Bit (uses gpt-4.1-mini for speed)
+- `global-orchestrator`: Quibit Orchestrator (uses gpt-4.1 for complex reasoning)
 - `echo-tango-specialist`: Echo Tango Specialist (uses gpt-4.1-mini)
-- `document-editor`: Document Editor (uses gpt-4.1)
+- `text-model`: Text Model (uses gpt-4.1)
+- `summary-model`: Summary Model (uses gpt-4.1)
 - Any other Bit ID: Uses the default model (gpt-4.1) or the environment variable if set
 
 ## Testing
@@ -69,7 +71,7 @@ node test-model-selection.js
 
 The test script checks the following scenarios:
 
-1. **Known Bit IDs**: Verifies that 'chat-model', 'global-orchestrator', 'echo-tango-specialist', and 'document-editor' correctly map to 'gpt-4.1-mini', 'gpt-4.1', 'gpt-4.1-mini', and 'gpt-4.1' respectively
+1. **Known Bit IDs**: Verifies that 'chat-model', 'global-orchestrator', and 'echo-tango-specialist' correctly map to 'gpt-4.1-mini', 'gpt-4.1', and 'gpt-4.1-mini' respectively
 2. **Unknown Bit ID with Environment Variable**: Verifies that when an unknown Bit ID is provided, it falls back to the `DEFAULT_MODEL_NAME` environment variable ('gpt-4-from-env' in the test)
 3. **Missing Bit ID with Environment Variable**: Verifies that when no Bit ID is provided, it falls back to the environment variable
 4. **Unknown Bit ID without Environment Variable**: Verifies that when an unknown Bit ID is provided and no environment variable is set, it uses the default model ('gpt-4.1' in the mapping)
@@ -97,7 +99,7 @@ Test Case 5: Without DEFAULT_MODEL_NAME env var
 [Test] Model selected for bitId "unknown-bit": gpt-4.1
 
 ===== TEST SUMMARY =====
-1. Known Bit IDs (chat-model, global-orchestrator, echo-tango-specialist, document-editor): uses gpt-4.1-mini, gpt-4.1, gpt-4.1-mini, gpt-4.1
+1. Known Bit IDs (chat-model, global-orchestrator, echo-tango-specialist): uses gpt-4.1-mini, gpt-4.1, gpt-4.1-mini
 2. Unknown Bit ID with env var set: uses env var value (gpt-4-from-env)
 3. No Bit ID with env var set: uses env var value (gpt-4-from-env)
 4. Unknown Bit ID without env var: falls back to default from mapping (gpt-4.1)

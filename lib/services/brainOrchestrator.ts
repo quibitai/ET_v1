@@ -38,16 +38,16 @@ export class BrainOrchestrator {
     this.contextService = new ContextService(logger);
     this.chatRepository = new ChatRepository();
 
-    const planningLLM = this.createPlanningLLM();
+    const planningLLM = this.getLowLatencyLLM();
     this.plannerService = new PlannerService(logger, planningLLM);
   }
 
   /**
    * Creates a fast, low-latency LLM optimized for planning tasks
    */
-  private createPlanningLLM(): ChatOpenAI {
+  private getLowLatencyLLM(): ChatOpenAI {
     return new ChatOpenAI({
-      modelName: 'gpt-4o-mini',
+      modelName: 'gpt-4.1-mini',
       temperature: 0,
       maxTokens: 500,
       maxRetries: 2,
@@ -72,11 +72,11 @@ export class BrainOrchestrator {
   ): Promise<AsyncGenerator<Uint8Array>> {
     this.logger.info('Brain orchestrator processing starting...');
 
-    await this.prepareChatHistory(request);
-
     const userInput = this.messageService.extractUserInput(request);
 
     const executionPlan = await this.createExecutionPlan(userInput, request);
+
+    await this.prepareChatHistory(request);
 
     this.logger.info('Strategic execution plan created', {
       taskType: executionPlan.task_type,
@@ -110,7 +110,7 @@ export class BrainOrchestrator {
         request,
       );
       const baseSystemPrompt = await loadPrompt({
-        modelId: request.selectedChatModel || 'gpt-4o',
+        modelId: request.selectedChatModel || 'gpt-4.1',
         contextId: request.activeBitContextId || null,
         clientConfig: config,
       });

@@ -29,7 +29,7 @@ The **Plan-and-Execute Intelligence** system has been successfully implemented t
 ### **Core Components Delivered**
 
 #### **1. PlannerService (`lib/ai/graphs/services/PlannerService.ts`)**
-- **LLM-Powered Planning**: Uses GPT-4o-mini for fast strategic analysis
+- **LLM-Powered Planning**: Uses GPT-4.1-mini for fast strategic analysis
 - **Zod Schema Validation**: Ensures reliable JSON output structure
 - **Error Resilience**: Graceful fallback to default plans when LLM fails
 - **Performance Tracking**: Metrics for success rate, duration, and accuracy
@@ -125,7 +125,7 @@ export interface ExecutionPlan {
 - ✅ **Type Safety**: Full TypeScript implementation with Zod validation
 - ✅ **Backward Compatibility**: Existing functionality preserved
 - ✅ **Observability**: Enhanced logging with execution plan context
-- ✅ **Resource Efficiency**: Fast LLM (GPT-4o-mini) for planning to minimize latency
+- ✅ **Resource Efficiency**: Fast LLM (GPT-4.1-mini) for planning to minimize latency
 
 ---
 

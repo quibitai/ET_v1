@@ -40,7 +40,7 @@ This foundational layer establishes the client's identity and overarching operat
         * **Usage:** Injected into the Orchestrator's prompt to provide detailed client-specific operational awareness.
     * **`available_bit_ids` (ARRAY of TEXT key within JSON):**
         * **Purpose:** An explicit list of `contextId`s for all Bits (Specialists, tools, or functional modules) that are active and available for this client.
-        * **Example:** `["echo-tango-specialist", "production-planning-bit", "chat-model", "document-editor-bit"]`
+        * **Example:** `["echo-tango-specialist", "production-planning-bit", "chat-model", "text-model"]`
         * **Usage:** Informs the Orchestrator about the resources it can delegate tasks to or guide users towards.
     * **`specialist_personas` (OBJECT key within JSON):**
         * **Purpose:** Maps a `specialist_id` (which is a `contextId`) to a client-specific persona string. This string *overrides or significantly augments* the default persona defined in the specialist's code.

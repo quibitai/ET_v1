@@ -49,7 +49,7 @@ describe('LangGraph Integration', () => {
     beforeEach(() => {
       config = {
         systemPrompt: 'Test system prompt',
-        selectedChatModel: 'gpt-4o-mini',
+        selectedChatModel: 'gpt-4.1-mini',
         contextId: 'test-context',
         enableToolExecution: true,
         maxIterations: 5,
@@ -69,7 +69,7 @@ describe('LangGraph Integration', () => {
       const retrievedConfig = wrapper.getConfig();
 
       expect(retrievedConfig.systemPrompt).toBe('Test system prompt');
-      expect(retrievedConfig.selectedChatModel).toBe('gpt-4o-mini');
+      expect(retrievedConfig.selectedChatModel).toBe('gpt-4.1-mini');
       expect(retrievedConfig.contextId).toBe('test-context');
       expect(retrievedConfig.enableToolExecution).toBe(true);
     });
@@ -80,7 +80,7 @@ describe('LangGraph Integration', () => {
       expect(mockLogger.info).toHaveBeenCalledWith(
         'LangGraph wrapper initialized without tools',
         expect.objectContaining({
-          model: 'gpt-4o-mini',
+          model: 'gpt-4.1-mini',
           contextId: 'test-context',
         }),
       );

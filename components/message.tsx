@@ -5,7 +5,6 @@ import cx from 'classnames';
 import { AnimatePresence, motion } from 'framer-motion';
 import { memo, useState } from 'react';
 import type { Vote } from '@/lib/db/schema';
-import { DocumentToolResult } from './document';
 import { PencilEditIcon, SparklesIcon } from './icons';
 import { Markdown } from './markdown';
 import { MessageActions } from './message-actions';
@@ -121,39 +120,7 @@ const PurePreviewMessage = ({
     }
   }
 
-  // Find the conclusive 'artifact-end' event from the message data, if it exists.
-  // This will be the single source of truth for rendering a document preview.
-  let artifactPreviewProps = null;
-  if (data && Array.isArray(data)) {
-    // Find the 'end' event specifically. It should have the final, correct metadata.
-    const conclusiveArtifactEvent = data.find(
-      (item: any) =>
-        item?.type === 'artifact' && item?.props?.eventType === 'artifact-end',
-    );
-
-    if (conclusiveArtifactEvent?.props) {
-      // Ensure the props contain valid id and title before setting
-      if (
-        conclusiveArtifactEvent.props.documentId &&
-        conclusiveArtifactEvent.props.title
-      ) {
-        artifactPreviewProps = {
-          id: conclusiveArtifactEvent.props.documentId,
-          title: conclusiveArtifactEvent.props.title,
-          kind: conclusiveArtifactEvent.props.kind || 'text',
-        };
-        console.log(
-          '[PreviewMessage] Preparing to render DocumentToolResult with props:',
-          artifactPreviewProps,
-        );
-      } else {
-        console.warn(
-          '[PreviewMessage] Found artifact-end event but it is missing documentId or title.',
-          conclusiveArtifactEvent.props,
-        );
-      }
-    }
-  }
+  // Document artifacts functionality removed
 
   return (
     <AnimatePresence>
@@ -355,19 +322,7 @@ const PurePreviewMessage = ({
               />
             )}
 
-            {/* 
-              Render the conclusive artifact preview here, outside the parts loop.
-              This ensures it's rendered only once for the entire message, based on
-              the 'artifact-end' event found in the message.data stream.
-            */}
-            {artifactPreviewProps && (
-              <DocumentToolResult
-                isReadonly={isReadonly}
-                type="create"
-                result={artifactPreviewProps}
-                onArtifactExpand={onArtifactExpand}
-              />
-            )}
+            {/* Document artifacts functionality removed */}
 
             {!isReadonly && (
               <MessageActions

@@ -329,7 +329,7 @@ export class ModularLangGraphWrapper {
    * Get graph metadata and statistics
    */
   getMetadata(): {
-    compilation: typeof this.compiledGraph.metadata;
+    compilation: CompiledGraph['metadata'];
     configuration: GraphConfig;
     dependencies: {
       toolCount: number;
@@ -382,10 +382,7 @@ export class ModularLangGraphWrapper {
   /**
    * Determine if synthesis is needed based on input
    */
-  private determineIfSynthesisNeeded(
-    this: ModularLangGraphWrapper,
-    input: string,
-  ): boolean {
+  private determineIfSynthesisNeeded(input: string): boolean {
     const synthesisKeywords = [
       'analyze',
       'research',

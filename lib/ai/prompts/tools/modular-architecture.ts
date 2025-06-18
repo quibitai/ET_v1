@@ -285,10 +285,10 @@ export const enhancedToolInstructionMap: Record<string, string> = {
       'asana_get_project_details',
       'asana_list_projects',
       'asana_create_task',
-      'asana_list_tasks',
+      'asana_search_tasks', // Primary MCP tool for listing/searching tasks
+      'asana_list_tasks', // Deprecated - kept for compatibility
       'asana_update_task',
       'asana_create_comment',
-      'asana_search_tasks',
     ].map((tool) => [tool, enhancedIntegrationInstructions.asana_tools]),
   ),
 

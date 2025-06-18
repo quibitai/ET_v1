@@ -17,6 +17,7 @@ import type { RequestLogger } from './observabilityService';
 import type { ClientConfig } from '@/lib/db/queries';
 // NEW: Import ExecutionPlan type for enhanced classification
 import type { ExecutionPlan } from '@/lib/ai/graphs/services/PlannerService';
+// AsanaToolMapper removed - using direct MCP tool names
 
 /**
  * Query classification result
@@ -360,10 +361,9 @@ export class QueryClassifier {
 
       // OVERRIDE: If any tool forcing is detected, always use LangChain
       // This ensures web search, knowledge base, etc. go through the proper tool system
-      // NOTE: Asana intent temporarily disabled until MCP integration is working
       if (
         webSearchIntent.hasIntent ||
-        // asanaIntent.hasIntent || // Temporarily disabled
+        asanaIntent.hasIntent ||
         knowledgeBaseIntent.hasIntent ||
         documentListingIntent.hasIntent ||
         documentContentIntent.hasIntent ||
@@ -374,7 +374,7 @@ export class QueryClassifier {
           'Overriding routing decision: tool intent detected, forcing LangChain',
           {
             webSearchIntent: webSearchIntent.hasIntent,
-            // asanaIntent: asanaIntent.hasIntent, // Temporarily disabled
+            asanaIntent: asanaIntent.hasIntent,
             knowledgeBaseIntent: knowledgeBaseIntent.hasIntent,
             documentListingIntent: documentListingIntent.hasIntent,
             documentContentIntent: documentContentIntent.hasIntent,
@@ -383,17 +383,8 @@ export class QueryClassifier {
         );
       }
 
-      // Use LangChain for all queries as it provides the most comprehensive functionality
-      if (!shouldUseLangChain) {
-        this.logger.info(
-          'Overriding routing decision: forcing LangChain as it is the only implemented path',
-          {
-            originalDecision: 'Vercel AI SDK',
-            reason: 'No Vercel AI SDK implementation available',
-          },
-        );
-        shouldUseLangChain = true;
-      }
+      // Always use LangChain - simplified architecture
+      shouldUseLangChain = true;
 
       // 6. Calculate confidence
       const confidence = this.calculateConfidence(
@@ -504,12 +495,12 @@ export class QueryClassifier {
         // Prioritize tool forcing by confidence level
         const toolIntents = [
           { name: 'tavilySearch', intent: webSearchIntent },
-          // NOTE: Asana tools temporarily disabled until MCP integration is working
-          // { name: 'asana_list_tasks', intent: asanaIntent }, // Use most common Asana tool
-          { name: 'getDocumentContents', intent: documentContentIntent }, // Highest priority for specific content
           { name: 'listDocuments', intent: documentListingIntent }, // Prioritize listing over searching
           { name: 'listDocuments', intent: companyInfoIntent }, // Company info should also list documents first
+          { name: 'getDocumentContents', intent: documentContentIntent }, // Highest priority for specific content
           { name: 'searchInternalKnowledgeBase', intent: knowledgeBaseIntent },
+          // NOTE: MCP tools (like Asana) are discovered dynamically
+          // No hardcoded tool names to avoid mismatches with actual MCP server tools
         ];
 
         // Sort by confidence descending
@@ -546,6 +537,24 @@ export class QueryClassifier {
             '[QueryClassifier] No high-confidence tool intents detected, no forcing applied.',
           );
         }
+      }
+
+      // Detection: Direct Asana tool usage (no mapping layer)
+      if (asanaIntent.hasIntent && asanaIntent.confidence > 0.4) {
+        return {
+          shouldUseLangChain: true,
+          confidence: Math.max(0.85, asanaIntent.confidence),
+          reasoning: `Asana intent detected - using direct MCP tool`,
+          complexityScore,
+          detectedPatterns,
+          forceToolCall: { name: 'asana_search_tasks' }, // Use real MCP tool name
+          executionPlanContext: {
+            taskType: 'LangChain',
+            externalResearchNeeded: webSearchIntent.hasIntent,
+            internalDocsNeeded: knowledgeBaseIntent.hasIntent,
+            planConfidence: confidence,
+          },
+        };
       }
 
       const result: QueryClassificationResult = {
