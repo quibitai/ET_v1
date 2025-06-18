@@ -14,7 +14,8 @@ import {
   ToolMessage,
 } from '@langchain/core/messages';
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
-import type { RunnableConfig } from '@langchain/core/runnables';
+import { RunnableSequence, RunnableLambda } from '@langchain/core/runnables';
+import type { RunnableConfig, Runnable } from '@langchain/core/runnables';
 import type { RequestLogger } from '../../services/observabilityService';
 import { ContextWindowManager } from '../core/contextWindowManager';
 import {
@@ -31,11 +32,6 @@ import { ContentQualityValidator } from '../core/ContentQualityValidator';
 import type { DocumentRetrievalPlan } from '../core/DocumentOrchestrator';
 import type { ValidationContext } from '../core/SynthesisValidator';
 
-import {
-  RunnableSequence,
-  RunnableLambda,
-  type Runnable,
-} from '@langchain/core/runnables';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 
 // UI message type with proper metadata

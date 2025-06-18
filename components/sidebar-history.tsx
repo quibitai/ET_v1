@@ -73,9 +73,9 @@ const DaySection = memo(function DaySection({
       >
         <span className="flex items-center gap-1">
           {isExpanded ? (
-            <ChevronDown className="h-3 w-3" />
+            <ChevronDown className="size-3" />
           ) : (
-            <ChevronRight className="h-3 w-3" />
+            <ChevronRight className="size-3" />
           )}
           {title} ({chats.length})
         </span>
@@ -164,7 +164,7 @@ const SpecialistSection = memo(function SpecialistSection({
 
   return (
     <div className="mb-3">
-      <div className="px-2 py-2 text-sm font-semibold text-foreground border-b border-border/50">
+      <div className="p-2 text-sm font-semibold text-foreground border-b border-border/50">
         {specialistName} ({totalChats})
       </div>
 
@@ -344,7 +344,7 @@ export const SidebarHistory = memo(function SidebarHistory({
   if (isLoadingChatHistory) {
     return (
       <div className="p-8 text-center">
-        <Loader className="h-4 w-4 animate-spin mx-auto" />
+        <Loader className="size-4 animate-spin mx-auto" />
       </div>
     );
   }
@@ -521,12 +521,12 @@ export const SidebarHistory = memo(function SidebarHistory({
             >
               {isPending ? (
                 <>
-                  <Loader className="h-4 w-4 animate-spin mr-2" />
+                  <Loader className="size-4 animate-spin mr-2" />
                   Deleting...
                 </>
               ) : (
                 <>
-                  <Trash className="h-4 w-4 mr-2" />
+                  <Trash className="size-4 mr-2" />
                   Delete
                 </>
               )}

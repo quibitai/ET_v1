@@ -6,6 +6,11 @@
  * - Deciding when to use tools
  * - Processing tool results
  * - Making final response decisions
+ *
+ * NOW ENHANCED WITH EXECUTION PLAN INTEGRATION:
+ * - Extracts execution plan from graph state metadata
+ * - Guides tool usage based on strategic planning
+ * - Implements Plan-and-Execute pattern for improved efficiency
  */
 
 import type { ChatOpenAI } from '@langchain/openai';
@@ -21,6 +26,8 @@ import { loadGraphPrompt } from '../prompts/loader';
 import type { DocumentAnalysisService } from '../services/DocumentAnalysisService';
 import type { ContextService } from '../services/ContextService';
 import type { QueryAnalysisService } from '../services/QueryAnalysisService';
+// NEW: Import ExecutionPlan type for strategic planning
+import type { ExecutionPlan } from '../services/PlannerService';
 
 /**
  * Dependencies injected into the agent node
@@ -42,6 +49,7 @@ export interface AgentNodeDependencies {
 
 /**
  * Agent node function - core decision-making logic
+ * NOW ENHANCED WITH EXECUTION PLAN INTEGRATION
  */
 export async function agentNode(
   state: GraphState,
@@ -59,12 +67,30 @@ export async function agentNode(
   } = dependencies;
 
   const startTime = Date.now();
-  logger.info('[Agent] Node execution started', {
+
+  // NEW: Extract execution plan from state metadata
+  const executionPlan = extractExecutionPlan(state);
+
+  logger.info('[Agent] Node execution started with strategic context', {
     messageCount: state.messages.length,
     toolsAvailable: tools.length,
     currentIteration: state.iterationCount || 0,
     hasExistingTrace: !!state.node_execution_trace?.length,
+    hasExecutionPlan: !!executionPlan,
+    planType: executionPlan?.task_type || 'none',
+    externalTopics: executionPlan?.external_research_topics?.length || 0,
+    internalDocs: executionPlan?.required_internal_documents?.length || 0,
   });
+
+  // NEW: Log execution plan guidance if available
+  if (executionPlan && state.iterationCount === 1) {
+    logger.info('[Agent] Strategic execution plan guidance', {
+      taskType: executionPlan.task_type,
+      requiredDocs: executionPlan.required_internal_documents,
+      externalResearch: executionPlan.external_research_topics,
+      outputFormat: executionPlan.final_output_format,
+    });
+  }
 
   try {
     // USE SERVICES: Optimize context if service available
@@ -105,7 +131,7 @@ export async function agentNode(
       responseMode = responseMode || determineAgentResponseMode(state);
     }
 
-    // Load the appropriate agent prompt with enhanced context
+    // NEW: Load the appropriate agent prompt with execution plan context
     const agentPrompt = await loadGraphPrompt({
       nodeType: 'agent',
       state: { ...state, messages: optimizedMessages },
@@ -113,6 +139,7 @@ export async function agentNode(
       responseMode,
       availableTools: tools.map((tool) => tool.name),
       clientConfig,
+      executionPlan, // NEW: Pass execution plan to prompt loading
     });
 
     // Prepare the conversation with system prompt and optimized messages
@@ -121,10 +148,14 @@ export async function agentNode(
     // Bind tools to the model for tool calling capability
     const modelWithTools = llm.bindTools(tools);
 
-    logger.info('[Agent] Invoking LLM with tools', {
+    logger.info('[Agent] Invoking LLM with strategic guidance', {
       toolCount: tools.length,
       messageCount: messages.length,
       responseMode,
+      hasExecutionPlan: !!executionPlan,
+      planGuidance: executionPlan
+        ? `${executionPlan.task_type} task with ${executionPlan.external_research_topics.length} external topics`
+        : 'no plan available',
     });
 
     // Get the agent's response
@@ -134,11 +165,14 @@ export async function agentNode(
 
     // Log the agent's decision
     const hasToolCallsInResponse = !!(response as AIMessage).tool_calls?.length;
-    logger.info('[Agent] Response generated', {
+    logger.info('[Agent] Response generated with strategic context', {
       hasToolCalls: hasToolCallsInResponse,
       toolCallCount: (response as AIMessage).tool_calls?.length || 0,
       duration,
       responseMode,
+      planAlignment: executionPlan
+        ? assessPlanAlignment(response as AIMessage, executionPlan)
+        : 'no plan',
     });
 
     // Update workflow state based on tool calls
@@ -180,6 +214,69 @@ export async function agentNode(
       iterationCount: (state.iterationCount || 0) + 1,
     };
   }
+}
+
+/**
+ * NEW: Extract execution plan from graph state metadata
+ */
+function extractExecutionPlan(state: GraphState): ExecutionPlan | undefined {
+  // The execution plan is passed through the RunnableConfig metadata
+  // This is set in the langchainBridge when streaming starts
+  if (state.metadata?.executionPlan) {
+    return state.metadata.executionPlan as ExecutionPlan;
+  }
+
+  // Fallback: check if it's in the state directly (for testing)
+  if ((state as any).executionPlan) {
+    return (state as any).executionPlan as ExecutionPlan;
+  }
+
+  return undefined;
+}
+
+/**
+ * NEW: Assess how well the agent's response aligns with the execution plan
+ */
+function assessPlanAlignment(response: AIMessage, plan: ExecutionPlan): string {
+  const toolCalls = response.tool_calls || [];
+  const toolNames = toolCalls.map((call) => call.name);
+
+  let alignment = 'good';
+  const issues: string[] = [];
+
+  // Check if external research is needed but not requested
+  if (
+    plan.external_research_topics.length > 0 &&
+    !toolNames.includes('tavilySearch')
+  ) {
+    issues.push('missing_external_research');
+    alignment = 'partial';
+  }
+
+  // Check if internal documents are needed but not requested
+  if (
+    plan.required_internal_documents.length > 0 &&
+    !toolNames.some((name) =>
+      ['listDocuments', 'getDocumentContents', 'getMultipleDocuments'].includes(
+        name,
+      ),
+    )
+  ) {
+    issues.push('missing_internal_docs');
+    alignment = 'partial';
+  }
+
+  // Check for unnecessary tools based on plan
+  if (plan.task_type === 'simple_qa' && toolCalls.length > 0) {
+    issues.push('unnecessary_tools');
+    alignment = 'partial';
+  }
+
+  if (issues.length > 2) {
+    alignment = 'poor';
+  }
+
+  return issues.length > 0 ? `${alignment} (${issues.join(', ')})` : alignment;
 }
 
 /**

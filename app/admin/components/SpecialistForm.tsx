@@ -391,7 +391,7 @@ Make it more professional and tool-focused.`;
                             onChange={(e) =>
                               handleCategoryToggle(category, e.target.checked)
                             }
-                            className="h-4 w-4"
+                            className="size-4"
                           />
                           <div>
                             <CardTitle className="text-base">
@@ -433,7 +433,7 @@ Make it more professional and tool-focused.`;
                               onChange={(e) =>
                                 handleToolToggle(tool.name, e.target.checked)
                               }
-                              className="h-4 w-4 mt-0.5"
+                              className="size-4 mt-0.5"
                             />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
@@ -459,7 +459,7 @@ Make it more professional and tool-focused.`;
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Info className="h-4 w-4" />
+                  <Info className="size-4" />
                   Generated Tools Configuration
                 </CardTitle>
                 <CardDescription>
@@ -503,9 +503,9 @@ Make it more professional and tool-focused.`;
                 className="flex items-center gap-2"
               >
                 {isRefiningPrompt ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Wand2 className="h-4 w-4" />
+                  <Wand2 className="size-4" />
                 )}
                 AI Enhance
               </Button>
@@ -587,7 +587,7 @@ Make it more professional and tool-focused.`;
           Cancel
         </Button>
         <Button type="submit" disabled={isPending}>
-          {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
           {specialist ? 'Update Specialist' : 'Create Specialist'}
         </Button>
       </div>

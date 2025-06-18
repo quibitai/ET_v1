@@ -56,7 +56,7 @@ export function ClientEditor({ clients }: ClientEditorProps) {
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="mr-2 size-4" />
               Add Client
             </Button>
           </DialogTrigger>
@@ -105,7 +105,7 @@ export function ClientEditor({ clients }: ClientEditorProps) {
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button variant="outline" size="sm">
-                        <Edit className="mr-2 h-4 w-4" />
+                        <Edit className="mr-2 size-4" />
                         Edit
                       </Button>
                     </DialogTrigger>

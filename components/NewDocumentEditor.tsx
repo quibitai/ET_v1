@@ -106,7 +106,7 @@ const NewDocumentEditor: React.FC = () => {
       </div>
 
       {/* Editor container */}
-      <div className="flex-grow p-4 overflow-auto">
+      <div className="grow p-4 overflow-auto">
         <textarea
           value={content}
           onChange={(e) => handleContentChange(e.target.value)}

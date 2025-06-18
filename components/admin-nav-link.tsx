@@ -26,7 +26,7 @@ export function AdminNavLink() {
         size="sm"
         className="text-sm font-medium transition-colors hover:text-primary"
       >
-        <Shield className="w-4 h-4 mr-2" />
+        <Shield className="size-4 mr-2" />
         Admin
       </Button>
     </Link>
@@ -48,7 +48,7 @@ export function AdminQuickStatus() {
   return (
     <Link href="/admin">
       <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium hover:bg-green-200 transition-colors">
-        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+        <div className="size-2 bg-green-500 rounded-full animate-pulse" />
         System Operational
       </div>
     </Link>

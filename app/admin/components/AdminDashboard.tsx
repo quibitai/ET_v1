@@ -47,10 +47,10 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
   return (
     <div className="space-y-6 h-full">
       {/* Dashboard Header */}
-      <div className="border-b pb-6 flex-shrink-0">
+      <div className="border-b pb-6 shrink-0">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <Settings className="h-5 w-5 text-white" />
+          <div className="size-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+            <Settings className="size-5 text-white" />
           </div>
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
@@ -65,11 +65,11 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
       </div>
 
       {/* Quick Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 flex-shrink-0">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 shrink-0">
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Clients</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <Users className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalClients}</div>
@@ -82,7 +82,7 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Specialists</CardTitle>
-            <Settings className="h-4 w-4 text-muted-foreground" />
+            <Settings className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalSpecialists}</div>
@@ -95,7 +95,7 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">System Health</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+            <Activity className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -115,7 +115,7 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Database</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
+            <Database className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -140,23 +140,23 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
           onValueChange={setActiveTab}
           className="h-full flex flex-col"
         >
-          <TabsList className="grid w-full grid-cols-3 flex-shrink-0">
+          <TabsList className="grid w-full grid-cols-3 shrink-0">
             <TabsTrigger value="overview" className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4" />
+              <BarChart3 className="size-4" />
               Overview
             </TabsTrigger>
             <TabsTrigger
               value="configuration"
               className="flex items-center gap-2"
             >
-              <Settings className="h-4 w-4" />
+              <Settings className="size-4" />
               Configuration
             </TabsTrigger>
             <TabsTrigger
               value="observability"
               className="flex items-center gap-2"
             >
-              <Activity className="h-4 w-4" />
+              <Activity className="size-4" />
               Observability
             </TabsTrigger>
           </TabsList>
@@ -170,7 +170,7 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
+                    <Users className="size-5" />
                     Recent Activity
                   </CardTitle>
                   <CardDescription>
@@ -180,7 +180,7 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
                 <CardContent>
                   <div className="space-y-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 bg-green-500 rounded-full" />
+                      <div className="size-2 bg-green-500 rounded-full" />
                       <div className="flex-1">
                         <p className="text-sm font-medium">
                           Database optimized
@@ -190,12 +190,12 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
                         </p>
                       </div>
                       <div className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
+                        <Clock className="size-3" />
                         Today
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                      <div className="size-2 bg-blue-500 rounded-full" />
                       <div className="flex-1">
                         <p className="text-sm font-medium">
                           LangSmith integration added
@@ -205,12 +205,12 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
                         </p>
                       </div>
                       <div className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
+                        <Clock className="size-3" />
                         Today
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 bg-purple-500 rounded-full" />
+                      <div className="size-2 bg-purple-500 rounded-full" />
                       <div className="flex-1">
                         <p className="text-sm font-medium">
                           Admin interface deployed
@@ -220,7 +220,7 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
                         </p>
                       </div>
                       <div className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
+                        <Clock className="size-3" />
                         Today
                       </div>
                     </div>
@@ -231,7 +231,7 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5" />
+                    <BarChart3 className="size-5" />
                     Performance Metrics
                   </CardTitle>
                   <CardDescription>
@@ -297,7 +297,7 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
               <section>
                 <div className="mb-6">
                   <h2 className="text-2xl font-semibold flex items-center gap-2">
-                    <Users className="h-6 w-6" />
+                    <Users className="size-6" />
                     Client Management
                   </h2>
                   <p className="text-muted-foreground mt-1">
@@ -311,7 +311,7 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
               <section>
                 <div className="mb-6">
                   <h2 className="text-2xl font-semibold flex items-center gap-2">
-                    <Settings className="h-6 w-6" />
+                    <Settings className="size-6" />
                     Specialist Management
                   </h2>
                   <p className="text-muted-foreground mt-1">
@@ -332,7 +332,7 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Activity className="h-5 w-5" />
+                    <Activity className="size-5" />
                     System Monitoring
                   </CardTitle>
                   <CardDescription>
@@ -341,7 +341,7 @@ export function AdminDashboard({ clients, specialists }: AdminDashboardProps) {
                 </CardHeader>
                 <CardContent>
                   <div className="text-center py-8">
-                    <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <Activity className="size-12 text-muted-foreground mx-auto mb-4" />
                     <h3 className="text-lg font-semibold mb-2">
                       LangSmith Integration Active
                     </h3>

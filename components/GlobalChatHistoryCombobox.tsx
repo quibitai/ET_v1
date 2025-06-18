@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Check, History } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn , fetcher } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -17,7 +17,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { fetcher } from '@/lib/utils';
 import useSWR, { useSWRConfig } from 'swr';
 // TODO: Refactor to not use context - temporarily disabled
 // import { useChatPane } from '@/context/ChatPaneContext';
@@ -209,12 +208,12 @@ export function GlobalChatHistoryCombobox() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 relative"
+              className="size-8 relative"
               aria-label="View chat history"
             >
-              <History className="h-4 w-4" />
+              <History className="size-4" />
               {chatOptions.length > 0 && (
-                <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-blue-500" />
+                <span className="absolute top-0 right-0 size-2 rounded-full bg-blue-500" />
               )}
             </Button>
           </PopoverTrigger>
@@ -254,7 +253,7 @@ export function GlobalChatHistoryCombobox() {
                 </CommandItem>
               ))}
               {chatOptions.length === 0 && !isLoading && (
-                <div className="py-2 px-2 text-xs text-muted-foreground">
+                <div className="p-2 text-xs text-muted-foreground">
                   No Quibit conversations found
                 </div>
               )}

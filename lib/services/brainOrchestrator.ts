@@ -17,6 +17,11 @@ import type { ProcessedContext } from './contextService';
 import type { DBMessage } from '@/lib/db/schema';
 import type { ConversationalMemorySnippet } from '@/lib/contextUtils';
 import type { BaseMessage } from '@langchain/core/messages';
+import {
+  PlannerService,
+  type ExecutionPlan,
+} from '@/lib/ai/graphs/services/PlannerService';
+import { ChatOpenAI } from '@langchain/openai';
 
 export class BrainOrchestrator {
   private logger: RequestLogger;
@@ -24,6 +29,7 @@ export class BrainOrchestrator {
   private messageService: MessageService;
   private contextService: ContextService;
   private chatRepository: ChatRepository;
+  private plannerService: PlannerService;
 
   constructor(logger: RequestLogger) {
     this.logger = logger;
@@ -31,12 +37,34 @@ export class BrainOrchestrator {
     this.messageService = new MessageService(logger);
     this.contextService = new ContextService(logger);
     this.chatRepository = new ChatRepository();
+
+    const planningLLM = this.createPlanningLLM();
+    this.plannerService = new PlannerService(logger, planningLLM);
+  }
+
+  /**
+   * Creates a fast, low-latency LLM optimized for planning tasks
+   */
+  private createPlanningLLM(): ChatOpenAI {
+    return new ChatOpenAI({
+      modelName: 'gpt-4o-mini',
+      temperature: 0,
+      maxTokens: 500,
+      maxRetries: 2,
+      verbose: false,
+      streaming: false,
+    });
   }
 
   /**
    * New, simplified entry point for processing a request.
    * It determines the execution path and returns the raw, ready-to-use stream
    * from the underlying service. All manual stream plumbing is removed.
+   *
+   * NOW ENHANCED WITH STRATEGIC PLANNING:
+   * - Creates execution plan before agent execution
+   * - Provides strategic context to guide agent decisions
+   * - Improves tool usage efficiency and research completeness
    */
   public async stream(
     request: BrainRequest,
@@ -44,21 +72,32 @@ export class BrainOrchestrator {
   ): Promise<AsyncGenerator<Uint8Array>> {
     this.logger.info('Brain orchestrator processing starting...');
 
-    // 1. Ensure chat and user messages are saved before processing
     await this.prepareChatHistory(request);
 
-    // 2. Classify the query to determine the execution path
     const userInput = this.messageService.extractUserInput(request);
-    const classification = await this.queryClassifier.classifyQuery(userInput);
+
+    const executionPlan = await this.createExecutionPlan(userInput, request);
+
+    this.logger.info('Strategic execution plan created', {
+      taskType: executionPlan.task_type,
+      internalDocs: executionPlan.required_internal_documents.length,
+      externalTopics: executionPlan.external_research_topics.length,
+      outputFormat: executionPlan.final_output_format,
+    });
+
+    const classification = await this.queryClassifier.classifyQuery(userInput, {
+      executionPlan: executionPlan,
+    });
 
     this.logger.info('Query classification completed', {
       ...classification,
+      planGuidance: `${executionPlan.task_type} task with ${executionPlan.external_research_topics.length} external topics`,
     });
 
-    // For now, we always route to LangGraph as it's our primary execution engine.
-    // This can be expanded later to support different routing decisions.
     if (classification.shouldUseLangChain) {
-      this.logger.info('Routing to LangChain/LangGraph path');
+      this.logger.info(
+        'Routing to LangChain/LangGraph path with execution plan',
+      );
 
       const context = await this.contextService.processContext(request);
       this.logger.info('Context processed', {
@@ -76,7 +115,6 @@ export class BrainOrchestrator {
         clientConfig: config,
       });
 
-      // Enhance system prompt with context (including file context)
       const contextAdditions =
         this.contextService.createContextPromptAdditions(context);
       const systemPrompt = baseSystemPrompt + contextAdditions;
@@ -93,16 +131,16 @@ export class BrainOrchestrator {
         forceToolCall: classification.forceToolCall,
         maxIterations: 10,
         verbose: true,
+        executionPlan: executionPlan,
       };
 
-      // Get session for MCP tool loading
       const session = await auth();
 
       const agent = await createLangChainAgent(
         systemPrompt,
         langChainConfig,
         this.logger,
-        session, // Pass session for MCP tool loading
+        session,
       );
 
       return streamLangChainAgent(
@@ -112,32 +150,23 @@ export class BrainOrchestrator {
         this.logger,
         request,
         classification,
+        executionPlan,
       );
     }
 
-    // Fallback for non-LangChain routes if ever needed in the future
     this.logger.warn(
       'No suitable execution path found. Returning empty stream.',
     );
 
-    // Return an empty async generator
     return this.createEmptyStream();
   }
 
-  /**
-   * Creates an empty async generator stream
-   */
   private async *createEmptyStream(): AsyncGenerator<Uint8Array> {
-    // This generator completes immediately without yielding anything
-    // The empty body satisfies the generator requirement
     for (const _ of []) {
       yield new Uint8Array();
     }
   }
 
-  /**
-   * Ensures the chat exists and user messages are saved.
-   */
   private async prepareChatHistory(request: BrainRequest): Promise<void> {
     const session = await auth();
     const userId = session?.user?.id;
@@ -166,20 +195,14 @@ export class BrainOrchestrator {
         },
         [],
       );
-
-      // Note: Cache invalidation is now handled client-side when new chats are created
-      // Server-side cache invalidation has been removed as it was incorrectly
-      // attempting to call client-side functions from the server
     }
 
-    // Save user messages with memory
     if (request.messages && request.messages.length > 0) {
       const userMessages = request.messages.filter(
         (msg) => msg.role === 'user',
       );
       const clientId = session?.user?.clientId || 'default';
 
-      // Save the most recent user message with memory storage
       const latestUserMessage = userMessages[userMessages.length - 1];
       if (latestUserMessage && request.chatId) {
         await this.messageService.saveUserMessage(
@@ -195,7 +218,6 @@ export class BrainOrchestrator {
     processedContext: ProcessedContext,
     brainRequest: BrainRequest,
   ): Promise<any[]> {
-    // MEMORY INTEGRATION: Use processed history from ContextService if available
     if (
       processedContext.processedHistory &&
       processedContext.processedHistory.length > 0
@@ -204,7 +226,6 @@ export class BrainOrchestrator {
         historyLength: processedContext.processedHistory.length,
       });
 
-      // Convert LangChain messages back to conversation format for consistency
       return processedContext.processedHistory.map((message) => {
         if (message._getType() === 'human') {
           return { role: 'user', content: message.content };
@@ -216,7 +237,6 @@ export class BrainOrchestrator {
       });
     }
 
-    // Fallback to original message processing if no processed history available
     if (!brainRequest.messages || brainRequest.messages.length === 0) {
       return [];
     }
@@ -229,5 +249,50 @@ export class BrainOrchestrator {
     );
 
     return this.messageService.convertToLangChainFormat(brainRequest.messages);
+  }
+
+  private async createExecutionPlan(
+    userInput: string,
+    request: BrainRequest,
+  ): Promise<ExecutionPlan> {
+    try {
+      const context = {
+        conversationHistory:
+          request.messages?.map((msg) => `${msg.role}: ${msg.content}`) || [],
+        availableDocuments: await this.getAvailableDocuments(request),
+      };
+
+      const plan = await this.plannerService.createPlan(userInput, context);
+
+      this.logger.info('Execution plan created successfully', {
+        plannerMetrics: this.plannerService.getPerformanceMetrics(),
+      });
+
+      return plan;
+    } catch (error) {
+      this.logger.error('Failed to create execution plan, using fallback', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      return {
+        task_type: 'simple_qa',
+        required_internal_documents: [],
+        external_research_topics: [],
+        final_output_format: 'direct answer',
+      };
+    }
+  }
+
+  private async getAvailableDocuments(
+    request: BrainRequest,
+  ): Promise<string[]> {
+    return [
+      'ideal client profile',
+      'client research example',
+      'proposal template',
+      'brand guidelines',
+      'company overview',
+      'service offerings',
+    ];
   }
 }

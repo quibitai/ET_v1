@@ -3,10 +3,17 @@
  *
  * This module contains all state management definitions for the modular LangGraph implementation.
  * Extracted from SimpleLangGraphWrapper for better organization and maintainability.
+ *
+ * NOW ENHANCED WITH EXECUTION PLAN INTEGRATION:
+ * - Added metadata field for execution plan storage
+ * - Support for strategic planning context in graph state
+ * - Enables Plan-and-Execute pattern implementation
  */
 
 import { Annotation } from '@langchain/langgraph';
 import type { BaseMessage, AIMessage } from '@langchain/core/messages';
+// NEW: Import ExecutionPlan type for strategic planning
+import type { ExecutionPlan } from './services/PlannerService';
 
 // UI message type with proper metadata
 export interface UIMessage {
@@ -21,7 +28,7 @@ export interface UIMessage {
 }
 
 /**
- * Enhanced Graph State Annotation with improved observability
+ * Enhanced Graph State Annotation with improved observability and execution plan support
  */
 export const GraphStateAnnotation = Annotation.Root({
   // Core message flow
@@ -76,7 +83,7 @@ export const GraphStateAnnotation = Annotation.Root({
     default: () => true,
   }),
 
-  // NEW: Enhanced observability fields
+  // Enhanced observability fields
   response_mode: Annotation<'synthesis' | 'simple' | 'conversational'>({
     reducer: (x, y) => y ?? x,
     default: () => 'synthesis',
@@ -87,7 +94,7 @@ export const GraphStateAnnotation = Annotation.Root({
     default: () => [],
   }),
 
-  // NEW: Tool workflow state tracking
+  // Tool workflow state tracking
   tool_workflow_state: Annotation<{
     documentsListed: boolean;
     documentsRetrieved: string[];
@@ -103,6 +110,21 @@ export const GraphStateAnnotation = Annotation.Root({
       extractionCompleted: false,
       multiDocAnalysisCompleted: false,
     }),
+  }),
+
+  // NEW: Metadata field for execution plan and other contextual information
+  metadata: Annotation<{
+    executionPlan?: ExecutionPlan;
+    fileContext?: any;
+    brainRequest?: any;
+    planningMetrics?: {
+      planCreatedAt: number;
+      planDuration: number;
+      planAccuracy?: number;
+    };
+  }>({
+    reducer: (x, y) => ({ ...x, ...y }),
+    default: () => ({}),
   }),
 });
 
