@@ -69,7 +69,7 @@ export function SidebarUserNav({ user }: { user: User }) {
                       href="/admin"
                       className="cursor-pointer flex items-center gap-2"
                     >
-                      <Settings className="h-4 w-4" />
+                      <Settings className="size-4" />
                       Admin Dashboard
                     </Link>
                   </DropdownMenuItem>
@@ -145,7 +145,7 @@ export function SidebarUserNav({ user }: { user: User }) {
                     href="/admin"
                     className="cursor-pointer flex items-center gap-2"
                   >
-                    <Settings className="h-4 w-4" />
+                    <Settings className="size-4" />
                     Admin Dashboard
                   </Link>
                 </DropdownMenuItem>

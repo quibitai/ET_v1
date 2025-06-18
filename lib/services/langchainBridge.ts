@@ -32,6 +32,8 @@ import type { ClientConfig } from '@/lib/db/queries';
 import type { LangChainToolConfig } from './langchainToolService';
 import type { LangGraphWrapperConfig } from '@/lib/ai/graphs';
 import type { BrainRequest } from '@/lib/validation/brainValidation';
+// NEW: Import ExecutionPlan type for strategic planning integration
+import type { ExecutionPlan } from '@/lib/ai/graphs/services/PlannerService';
 
 /**
  * Configuration for LangChain bridge
@@ -45,6 +47,8 @@ export interface LangChainBridgeConfig {
   maxIterations?: number;
   verbose?: boolean;
   forceToolCall?: { name: string } | 'required' | null;
+  // NEW: Strategic execution plan to guide agent behavior
+  executionPlan?: ExecutionPlan;
 }
 
 /**
@@ -127,6 +131,11 @@ export async function createLangChainAgent(
  * Simplified stream function for the new architecture.
  * It sets up the conversation and returns the raw stream from the LangGraph wrapper.
  * The responsibility of creating a Response object is now delegated to the API route.
+ *
+ * NOW ENHANCED WITH EXECUTION PLAN:
+ * - Accepts execution plan to guide agent strategic decisions
+ * - Passes plan context to LangGraph wrapper for informed tool usage
+ * - Enables Plan-and-Execute pattern for improved efficiency
  */
 export async function streamLangChainAgent(
   agent: LangChainAgent,
@@ -135,10 +144,16 @@ export async function streamLangChainAgent(
   logger: RequestLogger,
   brainRequest?: BrainRequest,
   queryClassification?: any,
+  executionPlan?: ExecutionPlan, // NEW: Strategic execution plan parameter
 ): Promise<AsyncGenerator<Uint8Array>> {
   logger.info(
-    '[LangGraph] LangGraph raw streaming path selected in streamLangChainAgent',
-    { input: input.substring(0, 100) },
+    '[LangGraph] LangGraph raw streaming path selected with execution plan',
+    {
+      input: input.substring(0, 100),
+      planType: executionPlan?.task_type || 'no plan',
+      externalTopics: executionPlan?.external_research_topics?.length || 0,
+      internalDocs: executionPlan?.required_internal_documents?.length || 0,
+    },
   );
 
   const messages = chatHistory.map((msg) => {
@@ -154,25 +169,27 @@ export async function streamLangChainAgent(
     new HumanMessage(input),
   ];
 
-  // Determine if synthesis is needed based on query classification
+  // Determine if synthesis is needed based on query classification and execution plan
   const needsSynthesis = determineIfSynthesisNeeded(
     input,
     queryClassification,
     logger,
+    executionPlan, // NEW: Consider execution plan for synthesis decision
   );
 
-  // Create RunnableConfig with fileContext in metadata
+  // Create RunnableConfig with fileContext and execution plan in metadata
   const runnableConfig: any = {
     metadata: {
       fileContext: brainRequest?.fileContext,
       brainRequest: brainRequest,
+      executionPlan: executionPlan, // NEW: Pass execution plan to graph
     },
   };
 
-  // Directly return the raw stream from the graph with synthesis preference
+  // Directly return the raw stream from the graph with synthesis preference and strategic context
   const stream = agent.langGraphWrapper.stream(
     fullConversation,
-    runnableConfig, // ← Pass the config containing fileContext
+    runnableConfig, // ← Pass the config containing fileContext and executionPlan
     needsSynthesis,
   );
 
@@ -191,6 +208,7 @@ function determineIfSynthesisNeeded(
   input: string,
   queryClassification?: any,
   logger?: RequestLogger,
+  executionPlan?: ExecutionPlan,
 ): boolean {
   logger?.info('[Query Classification] Analyzing query for synthesis need', {
     input: input.substring(0, 200),

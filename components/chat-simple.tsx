@@ -56,7 +56,7 @@ export function ChatSimple() {
                     className="my-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
                   >
                     <div className="flex items-center gap-2">
-                      <div className="animate-spin h-4 w-4 border-2 border-yellow-600 border-t-transparent rounded-full" />
+                      <div className="animate-spin size-4 border-2 border-yellow-600 border-t-transparent rounded-full" />
                       <span>Running tool: {toolName}...</span>
                     </div>
                   </div>

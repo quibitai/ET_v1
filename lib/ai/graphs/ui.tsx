@@ -10,7 +10,7 @@ const DocumentComponent = (props: {
   return (
     <div className="border rounded-lg p-4 bg-blue-50">
       <div className="flex items-center gap-2 mb-2">
-        <div className="w-3 h-3 bg-blue-500 rounded-full" />
+        <div className="size-3 bg-blue-500 rounded-full" />
         <h3 className="font-semibold text-blue-900">
           {props.title || 'Document'}
         </h3>
@@ -44,7 +44,7 @@ const ResearchComponent = (props: {
   return (
     <div className="border rounded-lg p-4 bg-green-50">
       <div className="flex items-center gap-2 mb-2">
-        <div className="w-3 h-3 bg-green-500 rounded-full" />
+        <div className="size-3 bg-green-500 rounded-full" />
         <h3 className="font-semibold text-green-900">{props.title}</h3>
         {props.status && (
           <span className="text-xs px-2 py-1 rounded bg-green-200 text-green-800">
@@ -102,7 +102,7 @@ const ToolStatusComponent = (props: {
   return (
     <div className={`border rounded-lg p-3 ${getStatusColor()}`}>
       <div className="flex items-center gap-2">
-        <div className="w-2 h-2 rounded-full bg-current animate-pulse" />
+        <div className="size-2 rounded-full bg-current animate-pulse" />
         <span className="font-medium text-sm">{props.toolName}</span>
         <span className="text-xs capitalize">{props.status}</span>
       </div>

@@ -4,6 +4,11 @@
  * This service handles loading and formatting of LangGraph-specific prompts.
  * It works alongside the existing specialist prompt system but focuses on
  * graph node execution prompts rather than specialist personas.
+ *
+ * NOW ENHANCED WITH EXECUTION PLAN INTEGRATION:
+ * - Supports execution plan context in prompt loading
+ * - Passes strategic planning information to agent prompts
+ * - Enables Plan-and-Execute pattern for improved agent performance
  */
 
 import { formatAgentPrompt } from './agent.prompt';
@@ -12,6 +17,8 @@ import { formatSimpleResponsePrompt } from './simpleResponse.prompt';
 import { formatConversationalPrompt } from './conversational.prompt';
 import type { GraphState } from '../state';
 import { getLastHumanMessage, getToolMessages } from '../state';
+// NEW: Import ExecutionPlan type for strategic planning
+import type { ExecutionPlan } from '../services/PlannerService';
 
 /**
  * Enhanced parameters for graph prompt loading
@@ -26,10 +33,13 @@ export interface GraphPromptParams {
     client_display_name?: string;
     client_core_mission?: string;
   };
+  // NEW: Execution plan for strategic guidance
+  executionPlan?: ExecutionPlan;
 }
 
 /**
  * Load a graph-specific prompt for a given node type
+ * NOW ENHANCED WITH EXECUTION PLAN SUPPORT
  */
 export async function loadGraphPrompt({
   nodeType,
@@ -38,8 +48,12 @@ export async function loadGraphPrompt({
   responseMode = 'synthesis',
   availableTools = [],
   clientConfig,
+  executionPlan, // NEW: Accept execution plan parameter
 }: GraphPromptParams): Promise<string> {
-  console.log(`[GraphPromptLoader] Loading prompt for node type: ${nodeType}`);
+  console.log(`[GraphPromptLoader] Loading prompt for node type: ${nodeType}`, {
+    hasExecutionPlan: !!executionPlan,
+    planType: executionPlan?.task_type || 'none',
+  });
 
   // Prepare common context
   const userQuery = state ? getLastHumanMessage(state) : '';
@@ -56,6 +70,7 @@ export async function loadGraphPrompt({
           current_date: currentDateTime,
           available_tools: availableToolsString,
           response_mode: responseMode,
+          execution_plan: executionPlan, // NEW: Pass execution plan to agent prompt
         });
 
       case 'synthesis':

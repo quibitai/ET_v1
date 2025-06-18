@@ -152,7 +152,7 @@ export function DocumentDebugPanel({ documentId }: { documentId: string }) {
               variant="ghost"
               size="sm"
               onClick={() => setIsOpen(false)}
-              className="h-6 w-6 p-0"
+              className="size-6 p-0"
             >
               ✕
             </Button>

@@ -100,7 +100,7 @@ export function MessageThinking({
   }
 
   return (
-    <div className="flex flex-col mt-1 mb-1">
+    <div className="flex flex-col my-1">
       <div className="flex flex-col gap-1">
         <button
           data-testid="message-thinking-toggle"

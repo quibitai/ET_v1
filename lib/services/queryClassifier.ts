@@ -6,10 +6,17 @@
  * (simple responses). Ports logic from EnhancedAgentExecutor with enhanced
  * complexity scoring algorithm.
  * Target: ~140 lines as per roadmap specifications.
+ *
+ * NOW ENHANCED WITH EXECUTION PLAN INTEGRATION:
+ * - Accepts execution plan context for improved classification
+ * - Uses strategic planning information to guide routing decisions
+ * - Supports Plan-and-Execute pattern for better agent performance
  */
 
 import type { RequestLogger } from './observabilityService';
 import type { ClientConfig } from '@/lib/db/queries';
+// NEW: Import ExecutionPlan type for enhanced classification
+import type { ExecutionPlan } from '@/lib/ai/graphs/services/PlannerService';
 
 /**
  * Query classification result
@@ -23,6 +30,13 @@ export interface QueryClassificationResult {
   recommendedModel?: string;
   estimatedTokens?: number;
   forceToolCall?: { name: string } | 'required' | null;
+  // NEW: Include execution plan context in results
+  executionPlanContext?: {
+    taskType: string;
+    externalResearchNeeded: boolean;
+    internalDocsNeeded: boolean;
+    planConfidence: number;
+  };
 }
 
 /**
@@ -35,6 +49,8 @@ export interface QueryClassifierConfig {
   complexityThreshold?: number;
   confidenceThreshold?: number;
   verbose?: boolean;
+  // NEW: Execution plan for enhanced classification
+  executionPlan?: ExecutionPlan;
 }
 
 /**
@@ -268,34 +284,64 @@ export class QueryClassifier {
 
   /**
    * Classify a query and determine execution path
+   * NOW ENHANCED WITH EXECUTION PLAN INTEGRATION:
+   * - Accepts execution plan context for improved classification
+   * - Uses strategic planning information to guide routing decisions
+   * - Supports Plan-and-Execute pattern for better agent performance
    */
   public async classifyQuery(
     userInput: string,
-    conversationHistory: any[] = [],
+    contextOrHistory?: any[] | { executionPlan?: ExecutionPlan },
     systemPrompt?: string,
   ): Promise<QueryClassificationResult> {
     const startTime = performance.now();
 
-    this.logger.info('Classifying query', {
+    // Handle both old and new parameter formats for backward compatibility
+    let conversationHistory: any[] = [];
+    let executionPlan: ExecutionPlan | undefined;
+
+    if (Array.isArray(contextOrHistory)) {
+      // Old format: second parameter is conversation history
+      conversationHistory = contextOrHistory;
+    } else if (contextOrHistory && typeof contextOrHistory === 'object') {
+      // New format: second parameter is context object with execution plan
+      executionPlan = contextOrHistory.executionPlan;
+      conversationHistory = []; // No history in new format for now
+    }
+
+    this.logger.info('Classifying query with enhanced context', {
       inputLength: userInput.length,
       historyLength: conversationHistory.length,
       hasSystemPrompt: !!systemPrompt,
+      hasExecutionPlan: !!executionPlan,
+      planType: executionPlan?.task_type || 'none',
+      externalResearchNeeded:
+        executionPlan?.external_research_topics?.length || 0,
+      internalDocsNeeded:
+        executionPlan?.required_internal_documents?.length || 0,
     });
 
     try {
-      // 1. Calculate complexity score
+      // 1. Calculate complexity score (enhanced with execution plan context)
       const complexityScore = this.calculateComplexityScore(
         userInput,
         conversationHistory,
+        executionPlan,
       );
 
       // 2. Detect patterns
       const detectedPatterns = this.detectPatterns(userInput);
 
-      // 3. NEW: Detect multiple tool intents
-      const webSearchIntent = this.detectWebSearchIntent(userInput);
+      // 3. NEW: Detect multiple tool intents (enhanced with execution plan)
+      const webSearchIntent = this.detectWebSearchIntent(
+        userInput,
+        executionPlan,
+      );
       const asanaIntent = this.detectAsanaIntent(userInput);
-      const knowledgeBaseIntent = this.detectKnowledgeBaseIntent(userInput);
+      const knowledgeBaseIntent = this.detectKnowledgeBaseIntent(
+        userInput,
+        executionPlan,
+      );
       const documentListingIntent = this.detectDocumentListingIntent(userInput);
       const documentContentIntent = this.detectDocumentContentIntent(userInput);
       const companyInfoIntent = this.detectCompanyInfoIntent(userInput);
@@ -304,11 +350,12 @@ export class QueryClassifier {
       const contextComplexity =
         this.analyzeContextComplexity(conversationHistory);
 
-      // 5. Make routing decision
+      // 5. Make routing decision (enhanced with execution plan guidance)
       let shouldUseLangChain = this.determineRoutingDecision(
         complexityScore,
         detectedPatterns,
         contextComplexity,
+        executionPlan,
       );
 
       // OVERRIDE: If any tool forcing is detected, always use LangChain
@@ -513,6 +560,12 @@ export class QueryClassifier {
           conversationHistory,
         ),
         forceToolCall, // NEW: Include tool forcing directive
+        executionPlanContext: {
+          taskType: shouldUseLangChain ? 'LangChain' : 'Vercel AI SDK',
+          externalResearchNeeded: webSearchIntent.hasIntent,
+          internalDocsNeeded: knowledgeBaseIntent.hasIntent,
+          planConfidence: confidence,
+        },
       };
 
       const executionTime = performance.now() - startTime;
@@ -555,6 +608,12 @@ export class QueryClassifier {
         detectedPatterns: ['classification_error'],
         recommendedModel: 'gpt-4.1',
         forceToolCall: null, // No forcing on error
+        executionPlanContext: {
+          taskType: 'LangChain',
+          externalResearchNeeded: false,
+          internalDocsNeeded: false,
+          planConfidence: 0.5,
+        },
       };
     }
   }
@@ -565,6 +624,7 @@ export class QueryClassifier {
   private calculateComplexityScore(
     userInput: string,
     conversationHistory: any[],
+    executionPlan?: ExecutionPlan,
   ): number {
     let score = 0;
 
@@ -609,6 +669,18 @@ export class QueryClassifier {
     // Conversation history complexity
     if (conversationHistory.length > 3) {
       score += 0.2; // Context complexity
+    }
+
+    // Execution plan context
+    if (executionPlan) {
+      score += Math.min(
+        executionPlan.external_research_topics?.length || 0,
+        0.3,
+      );
+      score += Math.min(
+        executionPlan.required_internal_documents?.length || 0,
+        0.3,
+      );
     }
 
     return Math.min(score, 1.0);
@@ -700,7 +772,10 @@ export class QueryClassifier {
   /**
    * Detect web search intent in user input
    */
-  private detectWebSearchIntent(userInput: string): {
+  private detectWebSearchIntent(
+    userInput: string,
+    executionPlan?: ExecutionPlan,
+  ): {
     hasIntent: boolean;
     confidence: number;
   } {
@@ -738,6 +813,14 @@ export class QueryClassifier {
     // Boost for location-specific searches (like "LWCC in Baton Rouge")
     if (/\s+in\s+[A-Z][a-z]+/.test(userInput)) {
       adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.3);
+    }
+
+    // Execution plan context
+    if (executionPlan) {
+      adjustedConfidence += Math.min(
+        executionPlan.external_research_topics?.length || 0,
+        0.3,
+      );
     }
 
     return {
@@ -787,7 +870,10 @@ export class QueryClassifier {
   /**
    * Detect knowledge base search intent in user input
    */
-  private detectKnowledgeBaseIntent(userInput: string): {
+  private detectKnowledgeBaseIntent(
+    userInput: string,
+    executionPlan?: ExecutionPlan,
+  ): {
     hasIntent: boolean;
     confidence: number;
   } {
@@ -819,6 +905,14 @@ export class QueryClassifier {
       userInput.toLowerCase().includes('company')
     ) {
       adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.2);
+    }
+
+    // Execution plan context
+    if (executionPlan) {
+      adjustedConfidence += Math.min(
+        executionPlan.external_research_topics?.length || 0,
+        0.3,
+      );
     }
 
     return {
@@ -960,6 +1054,7 @@ export class QueryClassifier {
     complexityScore: number,
     detectedPatterns: string[],
     contextComplexity: number,
+    executionPlan?: ExecutionPlan,
   ): boolean {
     // Check for override patterns first
     const hasComplexPatterns = detectedPatterns.some((p) =>

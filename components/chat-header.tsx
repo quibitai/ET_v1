@@ -77,7 +77,7 @@ const SpecialistSelector = memo(
             {availableSpecialists.find(
               (s) => s.id === currentActiveSpecialistId,
             )?.name || 'General Chat'}
-            {!isCurrentChatCommitted && <ChevronDown className="h-3 w-3" />}
+            {!isCurrentChatCommitted && <ChevronDown className="size-3" />}
           </Button>
         </DropdownMenuTrigger>
         {!isCurrentChatCommitted && (
@@ -95,7 +95,7 @@ const SpecialistSelector = memo(
                   </span>
                 </div>
                 {currentActiveSpecialistId === specialist.id && (
-                  <CheckIcon className="h-4 w-4" />
+                  <CheckIcon className="size-4" />
                 )}
               </DropdownMenuItem>
             ))}
@@ -149,7 +149,7 @@ const MobileSpecialistSelector = memo(
                 )?.name || 'General Chat'}
               </span>
               {!isCurrentChatCommitted && (
-                <ChevronDown className="h-4 w-4 opacity-50" />
+                <ChevronDown className="size-4 opacity-50" />
               )}
             </Button>
           </DropdownMenuTrigger>
@@ -171,7 +171,7 @@ const MobileSpecialistSelector = memo(
                     </span>
                   </div>
                   {currentActiveSpecialistId === specialist.id && (
-                    <CheckIcon className="h-4 w-4" />
+                    <CheckIcon className="size-4" />
                   )}
                 </DropdownMenuItem>
               ))}

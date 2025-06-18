@@ -38,7 +38,7 @@ const SidebarToggleButton = memo(
           onClick={toggleSidebar}
           aria-label="Toggle Sidebar"
         >
-          <PanelLeft className="h-4 w-4" />
+          <PanelLeft className="size-4" />
         </Button>
       </TooltipTrigger>
       <TooltipContent align="end">Toggle Sidebar</TooltipContent>
@@ -93,9 +93,9 @@ const NavLink = memo(
               tooltip={label}
               isActive={isActive}
               variant="default"
-              className="w-8 h-8 flex items-center justify-center"
+              className="size-8 flex items-center justify-center"
             >
-              <Icon className="h-5 w-5" />
+              <Icon className="size-5" />
             </SidebarMenuButton>
           </div>
         )}

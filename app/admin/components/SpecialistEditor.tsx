@@ -55,12 +55,12 @@ export function SpecialistEditor({ specialists }: SpecialistEditorProps) {
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="mr-2 size-4" />
               Add Specialist
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-            <DialogHeader className="flex-shrink-0">
+            <DialogHeader className="shrink-0">
               <DialogTitle>Create New Specialist</DialogTitle>
               <DialogDescription>
                 Add a new specialist persona to the system.
@@ -116,12 +116,12 @@ export function SpecialistEditor({ specialists }: SpecialistEditorProps) {
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button variant="outline" size="sm">
-                        <Edit className="mr-2 h-4 w-4" />
+                        <Edit className="mr-2 size-4" />
                         Edit
                       </Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-                      <DialogHeader className="flex-shrink-0">
+                      <DialogHeader className="shrink-0">
                         <DialogTitle>
                           Edit Specialist: {specialist.name}
                         </DialogTitle>
