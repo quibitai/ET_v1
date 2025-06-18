@@ -1,10 +1,10 @@
-# Echo Tango v5.1.0 - Production-Ready RAG System
+# Echo Tango v5.0.0 - Production-Ready RAG System
 
-🎉 **v5.1.0 Release - Major LangGraph Architecture Refactoring** 🎉
+🎉 **v5.0.0 Release - Major LangGraph Architecture Refactoring** 🎉
 
 A production-ready, hybrid RAG (Retrieval-Augmented Generation) system with sophisticated AI orchestration, featuring intelligent routing between LangChain and LangGraph execution paths, dynamic specialist personas, comprehensive tool integration, **enterprise-grade admin interface**, and **advanced streaming capabilities**.
 
-## 🚀 **What's New in v5.1.0**
+## 🚀 **What's New in v5.0.0**
 
 ### **🏗️ Major LangGraph Architecture Refactoring & Modularization**
 

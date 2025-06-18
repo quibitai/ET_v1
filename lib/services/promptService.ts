@@ -120,6 +120,8 @@ function hashClientConfig(config?: ClientConfig | null): string {
   return btoa(JSON.stringify(relevant)).slice(0, 16);
 }
 
+const SUPPORTED_MODELS = ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4-turbo'];
+
 /**
  * Loads system prompt with caching and error handling
  */
@@ -250,7 +252,6 @@ export async function preloadCommonPrompts(
     'gpt-4.1',
     'gpt-4.1-mini',
     'gpt-4-turbo',
-    'gpt-3.5-turbo',
     'global-orchestrator',
   ];
 

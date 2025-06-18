@@ -33,8 +33,8 @@ export async function GET() {
 
     // Create a ChatOpenAI instance
     const llm = new ChatOpenAI({
-      modelName: 'gpt-4o-mini',
-      temperature: 0.7,
+      modelName: 'gpt-4.1-mini',
+      temperature: 0,
       apiKey: process.env.OPENAI_API_KEY || 'test-key',
       streaming: true,
     });

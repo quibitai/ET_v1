@@ -15,8 +15,6 @@ import type { RequestLogger } from '@/lib/services/observabilityService';
 export const MODEL_CONTEXT_LIMITS = {
   'gpt-4.1-mini': 16385,
   'gpt-4.1': 128000,
-  'gpt-4o': 128000,
-  'gpt-3.5-turbo': 16385,
 } as const;
 
 /**

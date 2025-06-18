@@ -45,6 +45,7 @@ This directory contains the comprehensive test suite for Echo Tango v1, updated 
 - ✅ Removed artifact-related test prompts and handlers
 - ✅ Created new `chat-wrapper.test.ts` for refactored chat architecture
 - ✅ Updated prompt loader tests to work with database-based specialists
+- ✅ Removed all references to `document-editor` since the document editor functionality has been removed
 
 ### New Feature Tests
 - ✅ Added comprehensive admin configuration tests
