@@ -7,6 +7,9 @@ const N8N_EXTRACT_AUTH_HEADER =
   process.env.N8N_EXTRACT_AUTH_HEADER || 'extractfilecontent'; // Default header name if not set
 const N8N_EXTRACT_AUTH_TOKEN = process.env.N8N_EXTRACT_AUTH_TOKEN || '';
 
+// Force Node.js runtime for this route to avoid Edge Runtime issues with auth
+export const runtime = 'nodejs';
+
 export async function POST(request: Request) {
   // Check authentication
   const session = await auth();

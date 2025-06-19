@@ -2,6 +2,9 @@ import { auth } from '@/app/(auth)/auth';
 import type { NextRequest } from 'next/server';
 // Document functionality removed - this endpoint is deprecated
 
+// Force Node.js runtime for this route to avoid Edge Runtime issues with auth
+export const runtime = 'nodejs';
+
 export async function GET(request: NextRequest) {
   console.log('[Documents History API] Starting request handling');
   const { searchParams } = request.nextUrl;

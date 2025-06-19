@@ -84,16 +84,36 @@ export class McpToolFactory {
         throw new Error(`MCP server '${this.config.serverName}' is disabled`);
       }
 
-      // Get user's access token
-      const accessToken =
-        await McpIntegrationRepository.getDecryptedAccessTokenByServerName(
-          this.config.userId,
-          this.config.serverName,
-        );
+      // Get user's access token - support both environment variables and database
+      let accessToken: string | null = null;
+
+      // DEVELOPMENT MODE: For community MCP servers (npm: URLs), try environment variables first
+      if (serverConfig.url.startsWith('npm:')) {
+        const envVarName = `${this.config.serverName.toUpperCase()}_ACCESS_TOKEN`;
+        accessToken = process.env[envVarName] || null;
+
+        if (accessToken) {
+          this.log.info(
+            `✅ Development mode: Using environment token for ${this.config.serverName}`,
+          );
+        } else {
+          // For community MCP in development, if no env token, fail immediately
+          throw new Error(
+            `❌ Development mode: No environment token found for ${this.config.serverName}. Set ${envVarName} environment variable to enable ${this.config.serverName} MCP. Get your token from: https://app.asana.com/0/my-apps`,
+          );
+        }
+      } else {
+        // PRODUCTION MODE: Use database-stored OAuth tokens for official MCP servers
+        accessToken =
+          await McpIntegrationRepository.getDecryptedAccessTokenByServerName(
+            this.config.userId,
+            this.config.serverName,
+          );
+      }
 
       if (!accessToken) {
         throw new Error(
-          `No access token found for user ${this.config.userId} and server ${this.config.serverName}`,
+          `No access token found for user ${this.config.userId} and server ${this.config.serverName}. For community MCP servers, set ${this.config.serverName.toUpperCase()}_ACCESS_TOKEN environment variable.`,
         );
       }
 
@@ -205,6 +225,30 @@ export class McpToolFactory {
         await McpIntegrationRepository.getMcpServerByName(serverName);
       if (!serverConfig?.isEnabled) return false;
 
+      // DEVELOPMENT MODE: For community MCP servers (npm: URLs), check environment variables first
+      if (serverConfig.url.startsWith('npm:')) {
+        // Community MCP servers use environment variables for PAT
+        const envVarName = `${serverName.toUpperCase()}_ACCESS_TOKEN`;
+        const envToken = process.env[envVarName];
+        if (envToken) {
+          console.log(
+            `[McpToolFactory] ✅ Development mode: Using environment token for ${serverName}`,
+          );
+          return true;
+        }
+
+        // For community MCP in development, if no env token, consider it unavailable
+        // This bypasses OAuth entirely for community servers
+        console.log(
+          `[McpToolFactory] ❌ Development mode: No environment token found for ${serverName}`,
+        );
+        console.log(
+          `[McpToolFactory] 💡 Set ${envVarName} environment variable to enable ${serverName} MCP`,
+        );
+        return false;
+      }
+
+      // PRODUCTION MODE: Fallback to database-stored OAuth tokens for official MCP servers
       const accessToken =
         await McpIntegrationRepository.getDecryptedAccessTokenByServerName(
           userId,
@@ -212,7 +256,11 @@ export class McpToolFactory {
         );
 
       return !!accessToken;
-    } catch {
+    } catch (error) {
+      console.error(
+        `[McpToolFactory] Error checking server availability for ${serverName}:`,
+        error,
+      );
       return false;
     }
   }

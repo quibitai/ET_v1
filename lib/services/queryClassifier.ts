@@ -17,6 +17,8 @@ import type { RequestLogger } from './observabilityService';
 import type { ClientConfig } from '@/lib/db/queries';
 // NEW: Import ExecutionPlan type for enhanced classification
 import type { ExecutionPlan } from '@/lib/ai/graphs/services/PlannerService';
+// NEW: Import WorkflowSystem for multi-step workflow detection
+import { WorkflowSystem } from '@/lib/ai/workflows';
 // AsanaToolMapper removed - using direct MCP tool names
 
 /**
@@ -37,6 +39,14 @@ export interface QueryClassificationResult {
     externalResearchNeeded: boolean;
     internalDocsNeeded: boolean;
     planConfidence: number;
+  };
+  // NEW: Workflow detection results
+  workflowDetection?: {
+    isWorkflow: boolean;
+    confidence: number;
+    complexity: string;
+    estimatedSteps: number;
+    reasoning: string;
   };
 }
 
@@ -151,6 +161,23 @@ const ASANA_PATTERNS = [
   // Task management
   /(?:complete|finish|mark|update)\s+(?:the\s+)?(?:task|project)/i,
   /(?:set|change|update)\s+(?:the\s+)?(?:due date|deadline|priority)/i,
+
+  // Expanded task management vocabulary
+  /(?:workspaces?|workspace)/i,
+  /(?:teams?|team)/i,
+  /(?:create|add|new|make)\s+(?:a\s+)?(?:task|project|item)/i,
+  /(?:update|edit|modify|change)\s+(?:task|project|item)/i,
+  /(?:list|show|display|view|get)\s+(?:active|current|my|all)\s+(?:tasks?|projects?|items?)/i,
+
+  // Work management language that often relates to Asana
+  /(?:work|todo|to-do|deliverables?|milestones?)/i,
+  /(?:assigned\s+to\s+me|my\s+assignments?)/i,
+  /(?:due\s+(?:today|tomorrow|soon|this\s+week))/i,
+  /(?:priority|urgent|important)/i,
+
+  // Project management vocabulary
+  /(?:active\s+projects?|current\s+projects?|ongoing\s+projects?)/i,
+  /(?:project\s+status|task\s+status)/i,
 ];
 
 // NEW: Company-specific information patterns that should trigger knowledge base search
@@ -265,6 +292,7 @@ const SIMPLE_PATTERNS = {
 export class QueryClassifier {
   private logger: RequestLogger;
   private config: QueryClassifierConfig;
+  private workflowSystem: WorkflowSystem;
 
   constructor(logger: RequestLogger, config: QueryClassifierConfig = {}) {
     this.logger = logger;
@@ -275,6 +303,7 @@ export class QueryClassifier {
       verbose: false,
       ...config,
     };
+    this.workflowSystem = new WorkflowSystem();
 
     this.logger.info('Initializing QueryClassifier', {
       complexityThreshold: this.config.complexityThreshold,
@@ -540,14 +569,25 @@ export class QueryClassifier {
       }
 
       // Detection: Direct Asana tool usage (no mapping layer)
-      if (asanaIntent.hasIntent && asanaIntent.confidence > 0.4) {
+      if (asanaIntent.hasIntent && asanaIntent.confidence > 0.2) {
+        const toolToForce = asanaIntent.suggestedTool || 'asana_search_tasks';
+
+        this.logger.info(
+          `[QueryClassifier] Asana intent detected - forcing tool: ${toolToForce}`,
+          {
+            confidence: asanaIntent.confidence,
+            suggestedTool: toolToForce,
+            query: `${userInput.substring(0, 100)}...`,
+          },
+        );
+
         return {
           shouldUseLangChain: true,
           confidence: Math.max(0.85, asanaIntent.confidence),
-          reasoning: `Asana intent detected - using direct MCP tool`,
+          reasoning: `Asana intent detected - using ${toolToForce} based on query analysis`,
           complexityScore,
           detectedPatterns,
-          forceToolCall: { name: 'asana_search_tasks' }, // Use real MCP tool name
+          forceToolCall: { name: toolToForce }, // Use intelligently selected tool
           executionPlanContext: {
             taskType: 'LangChain',
             externalResearchNeeded: webSearchIntent.hasIntent,
@@ -839,11 +879,12 @@ export class QueryClassifier {
   }
 
   /**
-   * Detect Asana tool intent in user input
+   * Detect Asana tool intent in user input and determine the most appropriate tool
    */
   private detectAsanaIntent(userInput: string): {
     hasIntent: boolean;
     confidence: number;
+    suggestedTool?: string;
   } {
     let matchCount = 0;
     const totalPatterns = ASANA_PATTERNS.length;
@@ -870,9 +911,132 @@ export class QueryClassifier {
       adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.3);
     }
 
+    // Boost for workspace/team management terms (these often don't match many patterns)
+    if (
+      userInput.toLowerCase().includes('workspace') ||
+      userInput.toLowerCase().includes('team') ||
+      userInput.toLowerCase().includes('available')
+    ) {
+      adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.2);
+    }
+
+    // Determine the most appropriate Asana tool based on query content
+    let suggestedTool = 'asana_search_tasks'; // Default fallback
+
+    const lowerInput = userInput.toLowerCase();
+
+    // PRIORITY 1: Update requests (check FIRST to avoid being caught by generic task patterns)
+    if (
+      /(?:update|edit|modify|change)\s+(?:my\s+|the\s+)?(?:task|project)/i.test(
+        userInput,
+      ) ||
+      /(?:mark|set)\s+(?:task|project)\s+as/i.test(userInput)
+    ) {
+      if (lowerInput.includes('project')) {
+        suggestedTool = 'asana_update_project';
+      } else {
+        suggestedTool = 'asana_update_task';
+      }
+      this.logger.info(
+        `[QueryClassifier] Detected update query - suggesting ${suggestedTool}`,
+      );
+    }
+    // PRIORITY 2: Creation requests
+    else if (
+      /(?:create|add|new|make)\s+(?:a\s+)?(?:task|project)/i.test(userInput)
+    ) {
+      if (lowerInput.includes('project')) {
+        suggestedTool = 'asana_create_project';
+      } else {
+        suggestedTool = 'asana_create_task';
+      }
+      this.logger.info(
+        `[QueryClassifier] Detected creation query - suggesting ${suggestedTool}`,
+      );
+    }
+    // PRIORITY 3: Workspace-related queries (boost confidence for these)
+    else if (
+      /(?:list|show|display|get|view)\s+(?:my\s+|all\s+)?workspaces?/i.test(
+        userInput,
+      ) ||
+      /(?:workspaces?\s+(?:in|on|from)\s+asana)/i.test(userInput) ||
+      /(?:what\s+workspaces?)/i.test(userInput) ||
+      lowerInput.includes('workspace')
+    ) {
+      suggestedTool = 'asana_list_workspaces';
+      // Boost confidence for workspace queries
+      adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.4);
+      this.logger.info(
+        '[QueryClassifier] Detected workspace query - suggesting asana_list_workspaces',
+      );
+    }
+    // PRIORITY 4: Team-related queries (boost confidence for these)
+    else if (
+      /(?:list|show|display|get|view)\s+(?:my\s+|all\s+)?teams?/i.test(
+        userInput,
+      ) ||
+      /(?:teams?\s+(?:in|on|from)\s+(?:asana|workspace))/i.test(userInput) ||
+      /(?:what\s+teams?\s+(?:are\s+)?(?:available|exist))/i.test(userInput) ||
+      /(?:teams?\s+available)/i.test(userInput)
+    ) {
+      suggestedTool = 'asana_get_teams_for_workspace';
+      // Boost confidence for team queries
+      adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.4);
+      this.logger.info(
+        '[QueryClassifier] Detected team query - suggesting asana_get_teams_for_workspace',
+      );
+    }
+    // PRIORITY 5: Specific task filtering (use search with filters)
+    else if (
+      /(?:incomplete|uncompleted|unfinished|pending)\s+tasks?/i.test(
+        userInput,
+      ) ||
+      /(?:tasks?\s+(?:that\s+are\s+)?(?:incomplete|uncompleted|unfinished|pending))/i.test(
+        userInput,
+      ) ||
+      /(?:due\s+(?:today|tomorrow|soon|this\s+week))/i.test(userInput) ||
+      /(?:assigned\s+to\s+me)/i.test(userInput) ||
+      /(?:high\s+priority|urgent)/i.test(userInput)
+    ) {
+      suggestedTool = 'asana_search_tasks';
+      this.logger.info(
+        '[QueryClassifier] Detected filtered task query - suggesting asana_search_tasks with filters',
+      );
+    }
+    // PRIORITY 6: General project listing (use search with empty pattern for listing)
+    else if (
+      /(?:list|show|display|view|see)\s+(?:my\s+|active\s+|current\s+|all\s+)?projects?/i.test(
+        userInput,
+      ) ||
+      /(?:projects?\s+(?:in|on|from)\s+asana)/i.test(userInput) ||
+      /(?:active\s+projects?)/i.test(userInput) ||
+      /(?:current\s+projects?)/i.test(userInput) ||
+      /(?:what\s+projects?)/i.test(userInput)
+    ) {
+      suggestedTool = 'asana_search_projects';
+      this.logger.info(
+        '[QueryClassifier] Detected general project listing - suggesting asana_search_projects',
+      );
+    }
+    // PRIORITY 7: General task listing (use search for general listing)
+    else if (
+      /(?:list|show|display|view|see)\s+(?:my\s+|active\s+|current\s+|all\s+)?tasks?/i.test(
+        userInput,
+      ) ||
+      /(?:tasks?\s+(?:in|on|from|for)\s+(?:asana|me))/i.test(userInput) ||
+      /(?:my\s+tasks?)/i.test(userInput) ||
+      /(?:what\s+tasks?)/i.test(userInput)
+    ) {
+      suggestedTool = 'asana_search_tasks';
+      this.logger.info(
+        '[QueryClassifier] Detected general task listing - suggesting asana_search_tasks',
+      );
+    }
+
     return {
       hasIntent: adjustedConfidence > 0.1,
       confidence: adjustedConfidence,
+      suggestedTool,
     };
   }
 

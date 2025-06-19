@@ -34,8 +34,8 @@ import {
   CHAT_BIT_CONTEXT_ID,
 } from '@/lib/constants';
 
-// Import conversational memory utilities
-import { storeConversationalMemory } from '@/lib/conversationalMemory';
+// Import conversational memory utilities - using dynamic import to avoid Edge Runtime issues
+// import { storeConversationalMemory } from '@/lib/conversationalMemory';
 
 // Optionally, if not using email/pass login, you can
 // use the Drizzle adapter for Auth.js / NextAuth
@@ -493,16 +493,26 @@ async function processConversationalMemory(messages: Array<DBMessage>) {
           const assistantText = extractTextFromMessage(msg);
 
           if (userText && assistantText) {
-            // Store the conversation turn with embeddings
-            const stored = await storeConversationalMemory(
-              chatId,
-              userText,
-              assistantText,
-              'turn',
-            );
+            // Store the conversation turn with embeddings - using dynamic import to avoid Edge Runtime issues
+            try {
+              const { storeConversationalMemory } = await import(
+                '@/lib/conversationalMemory'
+              );
+              const stored = await storeConversationalMemory(
+                chatId,
+                userText,
+                assistantText,
+                'turn',
+              );
 
-            if (stored) {
-              storedCount++;
+              if (stored) {
+                storedCount++;
+              }
+            } catch (error) {
+              console.warn(
+                '[DB] Failed to store conversational memory:',
+                error,
+              );
             }
           }
 

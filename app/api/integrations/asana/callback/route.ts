@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/app/(auth)/auth';
 import { McpIntegrationRepository } from '@/lib/db/repositories/mcpIntegrations';
 
+// Force Node.js runtime for this route to avoid Edge Runtime issues with auth
+export const runtime = 'nodejs';
+
 /**
  * Asana OAuth Callback Handler
  *
