@@ -4,6 +4,9 @@ import { z } from 'zod';
 
 import { auth } from '@/app/(auth)/auth';
 
+// Force Node.js runtime for this route to avoid Edge Runtime issues with auth
+export const runtime = 'nodejs';
+
 // Allowed file types for upload
 const ALLOWED_FILE_TYPES = [
   // Text and document formats

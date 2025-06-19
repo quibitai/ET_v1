@@ -32,7 +32,7 @@ const COMPLETE_TOOL_CONFIGS = {
   // Modern Asana Integration (using lib/ai/tools/asana/ modular tools)
   asana: {
     apiKey: process.env.ASANA_PAT || process.env.NATIVE_ASANA_PAT || null,
-    defaultWorkspaceGid: process.env.ASANA_DEFAULT_WORKSPACE_GID || null,
+    defaultWorkspaceGid: process.env.DEFAULT_WORKSPACE_ID || null,
     defaultTeamGid: process.env.ASANA_DEFAULT_TEAM_GID || null,
     timeoutMs: Number(process.env.NATIVE_ASANA_TIMEOUT_MS || '30000'),
   },
@@ -40,7 +40,7 @@ const COMPLETE_TOOL_CONFIGS = {
   // Backward compatibility (can be removed in future versions)
   nativeAsana: {
     apiKey: process.env.ASANA_PAT || process.env.NATIVE_ASANA_PAT || null,
-    defaultWorkspaceGid: process.env.ASANA_DEFAULT_WORKSPACE_GID || null,
+    defaultWorkspaceGid: process.env.DEFAULT_WORKSPACE_ID || null,
     defaultTeamGid: process.env.ASANA_DEFAULT_TEAM_GID || null,
     timeoutMs: Number(process.env.NATIVE_ASANA_TIMEOUT_MS || '30000'),
   },
@@ -207,7 +207,7 @@ function validateEnvironmentVariables(): void {
   const requiredEnvVars = [
     // Asana
     { name: 'ASANA_PAT', purpose: 'Asana Personal Access Token' },
-    { name: 'ASANA_DEFAULT_WORKSPACE_GID', purpose: 'Asana Workspace ID' },
+    { name: 'DEFAULT_WORKSPACE_ID', purpose: 'Asana Workspace ID' },
 
     // Google Calendar
     {

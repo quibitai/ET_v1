@@ -19,8 +19,8 @@ import { MessageService } from '@/lib/services/messageService';
 import { randomUUID } from 'node:crypto';
 import type { DBMessage } from '@/lib/db/schema';
 
-// Removed Edge Runtime - using Node.js runtime for database compatibility
-export const dynamic = 'force-dynamic';
+// Force Node.js runtime for this route to avoid Edge Runtime issues with auth
+export const runtime = 'nodejs';
 
 /**
  * Main POST handler - Clean hybrid implementation with assistant message saving

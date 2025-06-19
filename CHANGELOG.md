@@ -5,6 +5,75 @@ All notable changes to the Echo Tango RAG System will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v5.1.0] - 2024-12-XX
+
+### 🤖 **Multi-Step Workflow Intelligence System**
+
+This release introduces a groundbreaking Multi-Step Workflow Intelligence System that enables the AI to intelligently handle complex, multi-step instructions by decomposing them into sequential or parallel operations. This transforms how users interact with Asana through natural language, supporting sophisticated workflows like project creation with task assignment, bulk operations, and analysis workflows.
+
+#### **🚀 Major Features**
+- **NEW**: `WorkflowDetector` - Pattern-based detection of multi-step queries with confidence scoring
+- **NEW**: `WorkflowPlanner` - Intelligent decomposition of complex instructions into executable steps
+- **NEW**: `WorkflowContext` - State management and variable passing between workflow steps
+- **NEW**: `ToolOrchestrator` - Sequential and parallel execution engine with error recovery
+- **NEW**: `WorkflowSystem` - Main orchestration class integrating all workflow components
+
+#### **🎯 Supported Workflow Types**
+- **Project Creation Workflows**: "Create project 'Website Redesign', add 3 tasks, assign to John, set due dates"
+- **Bulk Task Management**: "Find overdue tasks assigned to me, extend due dates, add comments, notify owners"
+- **Analysis Workflows**: "Get all Marketing projects, calculate completion rates, identify bottlenecks"
+- **Maintenance Operations**: "Move completed tasks to Done section, archive old projects"
+
+#### **🔧 Technical Implementation**
+- **ADDED**: Complete workflow system in `lib/ai/workflows/` directory
+- **ENHANCED**: `QueryClassifier` with workflow detection integration
+- **CREATED**: Comprehensive TypeScript types and interfaces for workflow operations
+- **IMPLEMENTED**: 10+ workflow patterns covering common multi-step scenarios
+- **ADDED**: Context-aware parameter extraction from natural language
+- **BUILT**: Dependency analysis and execution graph building
+- **CREATED**: Variable substitution between workflow steps
+- **ADDED**: Automatic parameter injection and context management
+
+#### **🛡️ Robust Error Handling**
+- **IMPLEMENTED**: Comprehensive error recovery with retry mechanisms
+- **ADDED**: Checkpoint creation for rollback capabilities
+- **CREATED**: Graceful failure handling with partial completion support
+- **BUILT**: Progress reporting for long-running workflows
+- **ADDED**: Custom error types for workflow-specific failures
+
+#### **📊 Performance Optimization**
+- **DESIGNED**: Batch operation support for bulk Asana API calls
+- **PLANNED**: Smart field selection with `opt_fields` optimization
+- **ARCHITECTED**: Parallel execution where dependencies allow
+- **IMPLEMENTED**: Memory-efficient context management
+- **TARGETED**: 50%+ API call reduction through intelligent batching
+
+#### **🔄 Backward Compatibility**
+- **MAINTAINED**: Zero breaking changes - all existing functionality preserved
+- **IMPLEMENTED**: Automatic detection routing single-tool vs workflow queries
+- **PRESERVED**: Fallback support for non-workflow queries
+- **ENSURED**: Minimal performance overhead for single-step operations
+
+#### **📚 Documentation & Planning**
+- **CREATED**: `WORKFLOW_INTELLIGENCE_CHECKLIST.md` - Comprehensive implementation roadmap
+- **DOCUMENTED**: Phase 1 (Foundation), Phase 2 (Optimizations), Phase 3 (Advanced Features)
+- **OUTLINED**: Complete testing strategy and success metrics
+- **PLANNED**: Future roadmap with batch API integration and workflow templates
+
+#### **🎯 Expected Performance Improvements**
+- **API Call Reduction**: 50%+ through intelligent batching
+- **Execution Time**: <30 seconds for complex workflows  
+- **Success Rate**: >95% workflow completion rate
+- **Error Recovery**: >90% automatic recovery from failures
+- **Pattern Recognition**: >90% accuracy for multi-step queries
+
+#### **🏗️ Architecture Benefits**
+- **MAINTAINABILITY**: Modular components following single responsibility principle
+- **EXTENSIBILITY**: Easy addition of new workflow patterns and step types
+- **OBSERVABILITY**: Comprehensive logging and progress tracking
+- **SCALABILITY**: Designed for future cross-platform workflow integration
+- **RELIABILITY**: Production-ready error handling and recovery mechanisms
+
 ## [v5.0.0] - 2025-01-19
 
 ### 🏗️ **Major LangGraph Architecture Refactoring & Modularization**

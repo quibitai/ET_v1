@@ -7,6 +7,9 @@ import { logger } from '@/lib/logger';
 
 import { authConfig } from './auth.config';
 
+// Force Node.js runtime for auth to avoid Edge Runtime issues
+export const runtime = 'nodejs';
+
 // Add top-level log to check if this file is being loaded
 logger.debug('Auth', 'auth.ts file is being loaded');
 logger.debug('Auth', 'Checking for auth secrets');

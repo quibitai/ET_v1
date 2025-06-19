@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server';
 import { randomBytes } from 'node:crypto';
 import { auth } from '@/app/(auth)/auth';
 
+// Force Node.js runtime for this route to avoid Edge Runtime issues with auth
+export const runtime = 'nodejs';
+
 /**
  * Asana OAuth Connection Initiation
  *
@@ -10,6 +13,19 @@ import { auth } from '@/app/(auth)/auth';
  */
 export async function GET(request: NextRequest) {
   try {
+    // DEVELOPMENT MODE: If using environment token, skip OAuth
+    if (process.env.ASANA_ACCESS_TOKEN) {
+      console.log(
+        '[AsanaOAuth] Development mode detected - redirecting to info page',
+      );
+      return NextResponse.redirect(
+        new URL(
+          `/?info=asana_dev_mode_active&message=${encodeURIComponent('Asana MCP is running in development mode with environment variables. No OAuth setup needed.')}`,
+          request.url,
+        ),
+      );
+    }
+
     // Get user session for OAuth flow
     const session = await auth();
     if (!session?.user?.id) {

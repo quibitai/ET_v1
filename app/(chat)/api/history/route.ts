@@ -12,6 +12,9 @@ import {
 } from '@/lib/constants';
 import { getAvailableSpecialists } from '@/lib/ai/prompts/specialists';
 
+// Force Node.js runtime for this route to avoid Edge Runtime issues with auth
+export const runtime = 'nodejs';
+
 export async function GET(request: NextRequest) {
   console.log('[API History] Request received');
 

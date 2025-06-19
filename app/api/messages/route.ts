@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server';
 import { getMessagesByChatId } from '@/lib/db/queries';
 import { auth } from '@/app/(auth)/auth';
 
+// Force Node.js runtime for this route to avoid Edge Runtime issues with auth
+export const runtime = 'nodejs';
+
 export async function GET(request: NextRequest) {
   try {
     // Get authentication
