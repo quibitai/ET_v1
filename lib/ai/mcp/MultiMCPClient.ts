@@ -11,6 +11,8 @@ import type {
   BaseMCPClient,
 } from './BaseMCPClient';
 import { AsanaMCPClient } from './AsanaMCPClient';
+import { HealthMonitor } from './health/HealthMonitor';
+import type { HealthAlert } from './health/HealthMonitor';
 
 export interface ServiceRegistration {
   name: string;
@@ -49,7 +51,7 @@ export class MultiMCPClient {
   private services: Map<string, ServiceRegistration> = new Map();
   private toolRouting: Map<string, ToolRoutingInfo[]> = new Map();
   private serviceStatus: Map<string, ServiceStatus> = new Map();
-  private healthCheckInterval?: NodeJS.Timeout;
+  private healthMonitor: HealthMonitor;
   private config: Required<MultiMCPConfig>;
 
   constructor(config: MultiMCPConfig = {}) {
@@ -58,6 +60,23 @@ export class MultiMCPClient {
       healthCheckInterval: config.healthCheckInterval || 60000, // 1 minute
       autoDiscovery: config.autoDiscovery !== false,
     };
+
+    // Initialize health monitor
+    this.healthMonitor = new HealthMonitor({
+      checkInterval: this.config.healthCheckInterval,
+      alertThresholds: {
+        consecutiveFailures: 3,
+        responseTimeMs: 5000,
+        uptimePercentage: 95,
+      },
+    });
+
+    // Register alert handler
+    this.healthMonitor.onAlert((alert: HealthAlert) => {
+      console.warn(
+        `[MultiMCPClient] Health Alert: ${alert.severity} - ${alert.message}`,
+      );
+    });
 
     // Initialize default services if auto-discovery is enabled
     if (this.config.autoDiscovery) {
@@ -137,6 +156,13 @@ export class MultiMCPClient {
     // Update tool routing
     this.updateToolRouting(name, client, priority);
 
+    // Register with health monitor
+    this.healthMonitor.startMonitoring(
+      name,
+      () => client.healthCheck(),
+      this.config.healthCheckInterval,
+    );
+
     // Initial status check
     this.checkServiceHealth(name).catch(console.error);
   }
@@ -147,6 +173,9 @@ export class MultiMCPClient {
   unregisterService(name: string): void {
     this.services.delete(name);
     this.serviceStatus.delete(name);
+
+    // Stop health monitoring
+    this.healthMonitor.stopMonitoring(name);
 
     // Remove from tool routing
     for (const [toolName, routes] of this.toolRouting.entries()) {
@@ -350,23 +379,21 @@ export class MultiMCPClient {
   private startHealthMonitoring(): void {
     if (this.config.healthCheckInterval <= 0) return;
 
-    // Initial health check
-    this.checkAllServicesHealth().catch(console.error);
-
-    // Periodic health checks
-    this.healthCheckInterval = setInterval(() => {
-      this.checkAllServicesHealth().catch(console.error);
-    }, this.config.healthCheckInterval);
+    // Register all services with the health monitor
+    for (const [name, registration] of this.services.entries()) {
+      this.healthMonitor.startMonitoring(
+        name,
+        () => registration.client.healthCheck(),
+        this.config.healthCheckInterval,
+      );
+    }
   }
 
   /**
    * Stop health monitoring
    */
   stopHealthMonitoring(): void {
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-      this.healthCheckInterval = undefined;
-    }
+    this.healthMonitor.stopAll();
   }
 
   /**
@@ -424,6 +451,34 @@ export class MultiMCPClient {
     }
 
     return stats;
+  }
+
+  /**
+   * Get health monitoring summary
+   */
+  getHealthSummary() {
+    return this.healthMonitor.getHealthSummary();
+  }
+
+  /**
+   * Get health history for a service
+   */
+  getHealthHistory(serviceName: string) {
+    return this.healthMonitor.getHealthHistory(serviceName);
+  }
+
+  /**
+   * Get active health alerts
+   */
+  getHealthAlerts(serviceName?: string) {
+    return this.healthMonitor.getActiveAlerts(serviceName);
+  }
+
+  /**
+   * Register health alert handler
+   */
+  onHealthAlert(handler: (alert: HealthAlert) => void) {
+    this.healthMonitor.onAlert(handler);
   }
 
   /**
