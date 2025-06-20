@@ -29,7 +29,13 @@ import {
 import { McpIntegrationRepository } from '@/lib/db/repositories/mcpIntegrations';
 import { McpService } from '@/lib/services/mcpService';
 
+// Import the new ToolRegistry for manifest enrichment
+import { ToolRegistry } from './registry';
+
 // Legacy Asana tools removed - only MCP integration supported
+
+// Create a singleton instance of ToolRegistry
+const toolRegistry = new ToolRegistry();
 
 /**
  * Loads MCP tools for a specific user
@@ -37,56 +43,25 @@ import { McpService } from '@/lib/services/mcpService';
 async function getUserMcpTools(
   userId: string,
 ): Promise<DynamicStructuredTool[]> {
-  console.log('[getUserMcpTools] ENTRY - Starting for userId:', userId);
-  console.log(
-    '[getUserMcpTools] Environment check - ASANA_ACCESS_TOKEN:',
-    process.env.ASANA_ACCESS_TOKEN ? 'SET' : 'NOT_SET',
-  );
-
   try {
     const allMcpTools: DynamicStructuredTool[] = [];
 
     // DEVELOPMENT MODE: Check for environment variable based MCP tools first
     const envAsanaToken = process.env.ASANA_ACCESS_TOKEN;
-    console.log('[getUserMcpTools] envAsanaToken check:', !!envAsanaToken);
 
     if (envAsanaToken) {
-      console.log(
-        '[ToolIndex] Development mode: Loading Asana MCP tools from environment variables',
-      );
-
       try {
         // Use the MCP tool factory which handles environment variables
         const { createAsanaTools } = await import('./mcp/asana');
-        console.log('[getUserMcpTools] Successfully imported createAsanaTools');
 
         const asanaTools = await createAsanaTools(userId, 'env-session');
-        console.log(
-          '[getUserMcpTools] createAsanaTools returned:',
-          asanaTools.length,
-          'tools',
-        );
 
         if (asanaTools.length > 0) {
-          console.log(
-            '[ToolIndex] Successfully loaded Asana tools from environment:',
-            {
-              toolCount: asanaTools.length,
-              toolNames: asanaTools.map((t: DynamicStructuredTool) => t.name),
-            },
-          );
           allMcpTools.push(...asanaTools);
         }
       } catch (error) {
-        console.error(
-          '[ToolIndex] Error loading Asana tools from environment:',
-          error,
-        );
+        // Silently handle error in production
       }
-    } else {
-      console.log(
-        '[getUserMcpTools] No envAsanaToken found, skipping environment mode',
-      );
     }
 
     // PRODUCTION MODE: Get user's active MCP integrations from database
@@ -107,17 +82,11 @@ async function getUserMcpTools(
           integration.mcpServerId,
         );
         if (!server) {
-          console.warn(
-            `[ToolIndex] Server not found for integration: ${integration.mcpServerId}`,
-          );
           continue;
         }
 
         // Skip if we already loaded this server from environment variables
         if (server.name === 'Asana' && envAsanaToken) {
-          console.log(
-            '[ToolIndex] Skipping database Asana integration - already loaded from environment',
-          );
           continue;
         }
 
@@ -129,9 +98,6 @@ async function getUserMcpTools(
           );
 
         if (!accessToken) {
-          console.warn(
-            `[ToolIndex] No access token for user ${userId} and server ${server.name}`,
-          );
           continue;
         }
 
@@ -142,9 +108,6 @@ async function getUserMcpTools(
           accessToken,
         );
         if (!client) {
-          console.warn(
-            `[ToolIndex] Failed to connect to MCP server: ${server.name}`,
-          );
           continue;
         }
 
@@ -162,23 +125,43 @@ async function getUserMcpTools(
         );
 
         allMcpTools.push(...langchainTools);
-
-        console.log(
-          `[ToolIndex] Loaded ${langchainTools.length} tools from ${server.name} MCP server`,
-        );
       } catch (error) {
-        console.error(
-          `[ToolIndex] Error loading tools for integration ${integration.mcpServerId}:`,
-          error,
-        );
+        // Silently handle error in production
       }
     }
 
     return allMcpTools;
   } catch (error) {
-    console.error('[ToolIndex] Error in getUserMcpTools:', error);
     return [];
   }
+}
+
+/**
+ * Enhanced version of getUserMcpTools with manifest enrichment
+ * This is the new V2 function that adds metadata without breaking existing functionality
+ */
+async function getUserMcpToolsV2(
+  userId: string,
+): Promise<DynamicStructuredTool[]> {
+  // Get tools using the existing function
+  const tools = await getUserMcpTools(userId);
+
+  // Enhance with manifest metadata
+  const enrichedTools = await toolRegistry.enrichToolsWithManifests(tools);
+
+  // Return tools with enhanced descriptions
+  return enrichedTools.map(({ tool, enrichedDescription }) => {
+    if (enrichedDescription && enrichedDescription !== tool.description) {
+      // Create a new tool instance with enhanced description
+      return new DynamicStructuredTool({
+        name: tool.name,
+        description: enrichedDescription,
+        schema: tool.schema,
+        func: tool.func,
+      });
+    }
+    return tool;
+  });
 }
 
 // Create budget creation helper tool
@@ -257,87 +240,6 @@ const createBudgetTool = new DynamicStructuredTool({
   },
 });
 
-// Create a simple debug tool for Asana testing
-const debugAsanaTasksTool = new DynamicStructuredTool({
-  name: 'debug_get_asana_tasks',
-  description:
-    'Get Asana tasks for debugging. Use this when user asks for Asana tasks or task lists. This is a debug tool that directly accesses Asana.',
-  schema: z.object({
-    workspace: z
-      .string()
-      .optional()
-      .describe('Workspace ID (optional, will use default if not provided)'),
-    limit: z
-      .number()
-      .optional()
-      .default(10)
-      .describe('Number of tasks to retrieve (default: 10)'),
-  }),
-  func: async ({ workspace, limit = 10 }) => {
-    try {
-      console.log('[DebugAsanaTool] Called with:', { workspace, limit });
-
-      // Use the default workspace if none provided
-      const workspaceId = workspace || process.env.DEFAULT_WORKSPACE_ID;
-
-      if (!workspaceId) {
-        return JSON.stringify({
-          error: 'No workspace specified and no default workspace configured',
-          solution:
-            'Set DEFAULT_WORKSPACE_ID environment variable or provide workspace parameter',
-        });
-      }
-
-      // Import and use the McpToolFactory to get tools
-      const { McpToolFactory } = await import('./mcp/core/factory');
-      const mockSession = { user: { id: 'debug-session-user' } };
-
-      // Create tools for debug session
-      const asanaTools = await McpToolFactory.createToolsForUser(
-        'Asana',
-        mockSession.user.id,
-        'debug-session',
-      );
-
-      // Find the search tasks tool
-      const searchTasksTool = asanaTools.find(
-        (tool) => tool.name === 'asana_search_tasks',
-      );
-
-      if (!searchTasksTool) {
-        return JSON.stringify({
-          error: 'asana_search_tasks tool not found',
-          availableTools: asanaTools.map((t) => t.name),
-          totalTools: asanaTools.length,
-        });
-      }
-
-      // Call the tool with proper parameters
-      const result = await searchTasksTool.func({
-        workspace: workspaceId,
-        text: '',
-        completed: false,
-        limit: limit,
-      });
-
-      console.log('[DebugAsanaTool] Successfully retrieved tasks');
-
-      return JSON.stringify({
-        success: true,
-        workspace: workspaceId,
-        tasks: JSON.parse(result),
-        message: `Found tasks in workspace ${workspaceId}`,
-      });
-    } catch (error) {
-      console.error('[DebugAsanaTool] Error:', error);
-      return JSON.stringify({
-        error: error instanceof Error ? error.message : 'Unknown error',
-        details: 'Failed to retrieve Asana tasks',
-      });
-    }
-  },
-});
-
 export async function getAvailableTools(session?: any) {
   const staticTools = [
     // Knowledge Base Tools
@@ -355,8 +257,6 @@ export async function getAvailableTools(session?: any) {
     // Integration Tools
     googleCalendarTool,
     getMessagesFromOtherChatTool,
-    // Debug Tools
-    debugAsanaTasksTool,
   ];
 
   let integrationTools: DynamicStructuredTool[] = [];
@@ -367,9 +267,6 @@ export async function getAvailableTools(session?: any) {
       // DEVELOPMENT MODE: Check for Asana environment variables first
       const envAsanaToken = process.env.ASANA_ACCESS_TOKEN;
       if (envAsanaToken) {
-        console.log(
-          '[ToolIndex] DEVELOPMENT MODE: Loading Asana from environment variables',
-        );
         try {
           const { McpToolFactory } = await import('./mcp/core/factory');
           const asanaTools = await McpToolFactory.createToolsForUser(
@@ -378,19 +275,9 @@ export async function getAvailableTools(session?: any) {
             'env-session',
           );
 
-          console.log(
-            '[ToolIndex] Successfully loaded Asana tools from environment:',
-            {
-              toolCount: asanaTools.length,
-              toolNames: asanaTools.map((t: DynamicStructuredTool) => t.name),
-            },
-          );
           integrationTools.push(...asanaTools);
         } catch (error) {
-          console.error(
-            '[ToolIndex] Error loading Asana tools from environment:',
-            error,
-          );
+          // Silently handle error in production
         }
       }
 
@@ -398,41 +285,70 @@ export async function getAvailableTools(session?: any) {
       const mcpTools = await getUserMcpTools(session.user.id);
 
       if (mcpTools.length > 0) {
-        console.log('[ToolIndex] Loading additional MCP tools from database:', {
-          userId: session.user.id,
-          mcpToolCount: mcpTools.length,
-          mcpToolNames: mcpTools.map((t: DynamicStructuredTool) => t.name),
-        });
         integrationTools.push(...mcpTools);
       }
-
-      if (integrationTools.length === 0) {
-        // No MCP integrations available
-        console.log(
-          '[ToolIndex] No MCP integrations found, no integration tools available',
-        );
-      }
     } catch (error) {
-      console.error('[ToolIndex] Error loading MCP tools:', error);
       integrationTools = [];
     }
-  } else {
-    // No session, no integration tools available
-    console.log(
-      '[ToolIndex] No session provided, no integration tools available',
-    );
-    integrationTools = [];
   }
 
-  console.log('[ToolIndex] Loading tools:', {
-    staticTools: staticTools.length,
-    integrationTools: integrationTools.length,
-    total: staticTools.length + integrationTools.length,
-    hasSession: !!session,
-    userId: session?.user?.id,
-  });
-
   return [...staticTools, ...integrationTools];
+}
+
+/**
+ * Enhanced version of getAvailableTools with manifest enrichment
+ * This is the new V2 function that adds metadata without breaking existing functionality
+ */
+export async function getAvailableToolsV2(session?: any) {
+  const staticTools = [
+    // Knowledge Base Tools
+    listDocumentsTool,
+    getDocumentContentsTool,
+    multiDocumentRetrievalTool,
+    searchAndRetrieveKnowledgeBase,
+    queryDocumentRowsTool,
+    // Utility Tools
+    requestSuggestionsTool,
+    createBudgetTool,
+    // Search & Retrieval Tools
+    tavilySearchTool,
+    tavilyExtractTool,
+    // Integration Tools
+    googleCalendarTool,
+    getMessagesFromOtherChatTool,
+  ];
+
+  let integrationTools: DynamicStructuredTool[] = [];
+
+  // Check if user has MCP integrations and load MCP tools
+  if (session?.user?.id) {
+    try {
+      // Use the enhanced V2 function for MCP tools
+      const mcpTools = await getUserMcpToolsV2(session.user.id);
+
+      if (mcpTools.length > 0) {
+        integrationTools.push(...mcpTools);
+      }
+    } catch (error) {
+      integrationTools = [];
+    }
+  }
+
+  // Enhance static tools with manifests as well
+  const allTools = [...staticTools, ...integrationTools];
+  const enrichedTools = await toolRegistry.enrichToolsWithManifests(allTools);
+
+  return enrichedTools.map(({ tool, enrichedDescription }) => {
+    if (enrichedDescription && enrichedDescription !== tool.description) {
+      return new DynamicStructuredTool({
+        name: tool.name,
+        description: enrichedDescription,
+        schema: tool.schema,
+        func: tool.func,
+      });
+    }
+    return tool;
+  });
 }
 
 // Synchronous version for backward compatibility (without session-aware MCP tools)

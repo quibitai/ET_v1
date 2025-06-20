@@ -22,6 +22,7 @@ import {
   type ExecutionPlan,
 } from '@/lib/ai/graphs/services/PlannerService';
 import { ChatOpenAI } from '@langchain/openai';
+import { WorkflowSystem } from '@/lib/ai/workflows';
 
 export class BrainOrchestrator {
   private logger: RequestLogger;
@@ -30,6 +31,7 @@ export class BrainOrchestrator {
   private contextService: ContextService;
   private chatRepository: ChatRepository;
   private plannerService: PlannerService;
+  private workflowSystem: WorkflowSystem;
 
   constructor(logger: RequestLogger) {
     this.logger = logger;
@@ -40,6 +42,9 @@ export class BrainOrchestrator {
 
     const planningLLM = this.getLowLatencyLLM();
     this.plannerService = new PlannerService(logger, planningLLM);
+    this.workflowSystem = new WorkflowSystem((update) => {
+      this.logger.info('Workflow progress update', update);
+    });
   }
 
   /**
@@ -93,6 +98,28 @@ export class BrainOrchestrator {
       ...classification,
       planGuidance: `${executionPlan.task_type} task with ${executionPlan.external_research_topics.length} external topics`,
     });
+
+    // NEW: Check for multi-step workflows
+    if (
+      classification.workflowDetection?.isWorkflow &&
+      classification.workflowDetection.confidence >= 0.6
+    ) {
+      this.logger.info(
+        'Multi-step workflow detected, processing via WorkflowSystem',
+        {
+          complexity: classification.workflowDetection.complexity,
+          estimatedSteps: classification.workflowDetection.estimatedSteps,
+          confidence: classification.workflowDetection.confidence,
+        },
+      );
+
+      // TODO: Implement workflow streaming
+      // For now, we'll fall through to LangChain which can handle multi-step operations
+      // In Phase 3, we'll implement proper workflow streaming
+      this.logger.info(
+        'Workflow streaming not yet implemented, routing to LangChain for multi-step handling',
+      );
+    }
 
     if (classification.shouldUseLangChain) {
       this.logger.info(

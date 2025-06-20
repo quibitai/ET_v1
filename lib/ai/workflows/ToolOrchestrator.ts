@@ -265,9 +265,9 @@ export class ToolOrchestrator {
 
       // Get the tool function
       const tools = await getAvailableTools();
-      const toolFunction = tools[step.tool];
+      const tool = tools.find((t) => t.name === step.tool);
 
-      if (!toolFunction) {
+      if (!tool) {
         throw new WorkflowError(
           `Tool ${step.tool} not found`,
           step.id,
@@ -277,7 +277,7 @@ export class ToolOrchestrator {
 
       // Execute with timeout
       const result = await this.executeWithTimeout(
-        () => toolFunction(substitutedParameters),
+        () => tool.func(substitutedParameters),
         step.timeout || this.config.defaultTimeout,
         step.id,
       );

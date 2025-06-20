@@ -396,8 +396,27 @@ export async function PATCH() {
   try {
     console.log('[TestEmptyParams] Testing empty parameter fix for Asana...');
 
-    // Import the createMcpToolFunction directly
-    const { createMcpToolFunction } = await import('@/lib/utils/mcpUtils');
+    // Create a simple tool function for testing
+    const createMcpToolFunction = (toolName: string, client: any) => {
+      return async (input: any) => {
+        try {
+          const result = await client.callTool({
+            name: toolName,
+            arguments: input || {},
+          });
+          return JSON.stringify(result.content, null, 2);
+        } catch (error: any) {
+          return JSON.stringify(
+            {
+              error: error.message || 'Unknown error',
+              tool: toolName,
+            },
+            null,
+            2,
+          );
+        }
+      };
+    };
 
     // Mock client that matches the actual MCP client interface
     const mockClient = {

@@ -26,14 +26,6 @@ class McpSchemaService {
     );
 
     if (tool.inputSchema) {
-      // Debug log the original schema for problematic tools
-      if (tool.name === 'asana_create_project') {
-        console.log(
-          `[McpSchemaService] DEBUGGING asana_create_project original schema:`,
-          JSON.stringify(tool.inputSchema, null, 2),
-        );
-      }
-
       try {
         const { patchedSchema, patchCount, issues } = this.patchSchema(
           tool.inputSchema,
