@@ -7,7 +7,6 @@
 
 export { WorkflowDetector } from './WorkflowDetector';
 export { WorkflowPlanner } from './WorkflowPlanner';
-export { WorkflowContext } from './WorkflowContext';
 export { ToolOrchestrator } from './ToolOrchestrator';
 
 export * from './types';

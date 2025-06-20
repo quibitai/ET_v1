@@ -3,7 +3,6 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import type { McpServer as McpServerType } from '@/lib/db/schema';
 import { mcpSchemaService, type McpTool } from './mcpSchemaService';
-import { isValidMcpTool, createMcpToolFunction } from '@/lib/utils/mcpUtils';
 
 /**
  * Production-grade MCP Service - Connection Management Only
@@ -43,6 +42,56 @@ export class McpService {
   constructor(config: Partial<McpConnectionConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.startCleanupTimer();
+  }
+
+  /**
+   * Validates if a tool object has the minimum required properties.
+   */
+  private isValidMcpTool(tool: any): boolean {
+    return (
+      tool &&
+      typeof tool === 'object' &&
+      typeof tool.name === 'string' &&
+      tool.name.length > 0
+    );
+  }
+
+  /**
+   * Creates a standardized tool execution function for MCP tools.
+   */
+  private createMcpToolFunction(toolName: string, client: Client) {
+    return async (input: any) => {
+      try {
+        console.log(
+          `[McpService] Executing MCP tool ${toolName} with input:`,
+          input,
+        );
+
+        const startTime = Date.now();
+        const result = await client.callTool({
+          name: toolName,
+          arguments: input || {},
+        });
+        const duration = Date.now() - startTime;
+
+        console.log(`[McpService] Tool ${toolName} completed in ${duration}ms`);
+        return JSON.stringify(result.content, null, 2);
+      } catch (error: any) {
+        console.error(
+          `[McpService] Error executing MCP tool ${toolName}:`,
+          error,
+        );
+        return JSON.stringify(
+          {
+            error: error.message || 'Unknown error',
+            tool: toolName,
+            timestamp: new Date().toISOString(),
+          },
+          null,
+          2,
+        );
+      }
+    };
   }
 
   /**
@@ -273,7 +322,7 @@ export class McpService {
       `[McpService] Received ${mcpTools.length} tools from ${serverName} for conversion.`,
     );
 
-    const validTools = mcpTools.filter(isValidMcpTool);
+    const validTools = mcpTools.filter((tool) => this.isValidMcpTool(tool));
 
     if (validTools.length !== mcpTools.length) {
       console.warn(
@@ -287,7 +336,7 @@ export class McpService {
           name: tool.name,
           description: `${tool.description || ''} (via ${serverName} MCP server)`,
           schema: mcpSchemaService.buildToolSchema(tool, serverName), // DELEGATE
-          func: createMcpToolFunction(tool.name, client), // DELEGATE
+          func: this.createMcpToolFunction(tool.name, client), // DELEGATE
         }),
     );
 

@@ -262,11 +262,23 @@ export class WorkflowContext implements IWorkflowContext {
    * Export context for debugging or logging
    */
   public export(): {
-    metadata: typeof this.metadata;
+    metadata: {
+      startTime: Date;
+      userId?: string;
+      sessionId?: string;
+      originalQuery: string;
+    };
     variables: Array<[string, WorkflowVariable]>;
     stepResults: Array<[string, any]>;
     executionHistory: WorkflowExecution[];
-    summary: ReturnType<typeof this.getExecutionSummary>;
+    summary: {
+      totalSteps: number;
+      completedSteps: number;
+      failedSteps: number;
+      runningSteps: number;
+      pendingSteps: number;
+      duration: number;
+    };
   } {
     return {
       metadata: this.metadata,

@@ -376,11 +376,30 @@ export class QueryClassifier {
       const documentContentIntent = this.detectDocumentContentIntent(userInput);
       const companyInfoIntent = this.detectCompanyInfoIntent(userInput);
 
-      // 4. Analyze conversation context
+      // 4. NEW: Workflow detection using WorkflowSystem
+      const workflowAnalysis = this.workflowSystem.analyzeQuery(userInput);
+      const workflowDetection = {
+        isWorkflow: workflowAnalysis.detection.isWorkflow,
+        confidence: workflowAnalysis.detection.confidence,
+        complexity: workflowAnalysis.detection.complexity,
+        estimatedSteps: workflowAnalysis.plan?.totalSteps || 1,
+        reasoning:
+          workflowAnalysis.detection.reasoning ||
+          'Single-step operation detected',
+      };
+
+      this.logger.info('Workflow detection completed', {
+        isWorkflow: workflowDetection.isWorkflow,
+        confidence: workflowDetection.confidence,
+        complexity: workflowDetection.complexity,
+        estimatedSteps: workflowDetection.estimatedSteps,
+      });
+
+      // 5. Analyze conversation context
       const contextComplexity =
         this.analyzeContextComplexity(conversationHistory);
 
-      // 5. Make routing decision (enhanced with execution plan guidance)
+      // 6. Make routing decision (enhanced with execution plan guidance and workflow detection)
       let shouldUseLangChain = this.determineRoutingDecision(
         complexityScore,
         detectedPatterns,
@@ -594,6 +613,7 @@ export class QueryClassifier {
             internalDocsNeeded: knowledgeBaseIntent.hasIntent,
             planConfidence: confidence,
           },
+          workflowDetection, // Include workflow detection results
         };
       }
 
@@ -615,6 +635,7 @@ export class QueryClassifier {
           internalDocsNeeded: knowledgeBaseIntent.hasIntent,
           planConfidence: confidence,
         },
+        workflowDetection, // NEW: Include workflow detection results
       };
 
       const executionTime = performance.now() - startTime;
@@ -662,6 +683,13 @@ export class QueryClassifier {
           externalResearchNeeded: false,
           internalDocsNeeded: false,
           planConfidence: 0.5,
+        },
+        workflowDetection: {
+          isWorkflow: false,
+          confidence: 0,
+          complexity: 'simple',
+          estimatedSteps: 1,
+          reasoning: 'Classification error - no workflow analysis performed',
         },
       };
     }
@@ -986,7 +1014,23 @@ export class QueryClassifier {
         '[QueryClassifier] Detected team query - suggesting asana_get_teams_for_workspace',
       );
     }
-    // PRIORITY 5: Specific task filtering (use search with filters)
+    // PRIORITY 5: User-specific task queries (my tasks, assigned to me)
+    else if (
+      /(?:my|mine)\s+(?:tasks?|assignments?)/i.test(userInput) ||
+      /(?:tasks?\s+(?:assigned\s+to\s+)?me)/i.test(userInput) ||
+      /(?:show\s+me\s+my|give\s+me\s+my)\s+(?:tasks?|assignments?)/i.test(
+        userInput,
+      ) ||
+      /(?:what\s+(?:are\s+)?my\s+(?:tasks?|assignments?))/i.test(userInput)
+    ) {
+      suggestedTool = 'asana_search_tasks';
+      // Boost confidence for user-specific queries
+      adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.4);
+      this.logger.info(
+        '[QueryClassifier] Detected user-specific task query - suggesting asana_search_tasks with user filter',
+      );
+    }
+    // PRIORITY 6: Specific task filtering (use search with filters)
     else if (
       /(?:incomplete|uncompleted|unfinished|pending)\s+tasks?/i.test(
         userInput,
@@ -1003,7 +1047,7 @@ export class QueryClassifier {
         '[QueryClassifier] Detected filtered task query - suggesting asana_search_tasks with filters',
       );
     }
-    // PRIORITY 6: General project listing (use search with empty pattern for listing)
+    // PRIORITY 7: General project listing (use list_projects for general listing)
     else if (
       /(?:list|show|display|view|see)\s+(?:my\s+|active\s+|current\s+|all\s+)?projects?/i.test(
         userInput,
@@ -1013,18 +1057,17 @@ export class QueryClassifier {
       /(?:current\s+projects?)/i.test(userInput) ||
       /(?:what\s+projects?)/i.test(userInput)
     ) {
-      suggestedTool = 'asana_search_projects';
+      suggestedTool = 'asana_list_projects';
       this.logger.info(
-        '[QueryClassifier] Detected general project listing - suggesting asana_search_projects',
+        '[QueryClassifier] Detected general project listing - suggesting asana_list_projects',
       );
     }
-    // PRIORITY 7: General task listing (use search for general listing)
+    // PRIORITY 8: General task listing (use search for general listing)
     else if (
       /(?:list|show|display|view|see)\s+(?:my\s+|active\s+|current\s+|all\s+)?tasks?/i.test(
         userInput,
       ) ||
       /(?:tasks?\s+(?:in|on|from|for)\s+(?:asana|me))/i.test(userInput) ||
-      /(?:my\s+tasks?)/i.test(userInput) ||
       /(?:what\s+tasks?)/i.test(userInput)
     ) {
       suggestedTool = 'asana_search_tasks';
