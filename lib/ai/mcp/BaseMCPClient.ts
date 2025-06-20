@@ -8,6 +8,13 @@
  * This abstraction enables multi-service support without code duplication.
  */
 
+import {
+  MCPErrorFactory,
+  RetryStrategy,
+  MCPError,
+  type MCPErrorContext,
+} from './errors';
+
 export interface MCPClientConfig {
   serverUrl?: string;
   timeout?: number;
@@ -76,6 +83,12 @@ export abstract class BaseMCPClient {
   protected config: Required<MCPClientConfig>;
   protected requestCache: Map<string, { data: any; timestamp: number }> =
     new Map();
+  protected cacheStats = {
+    hits: 0,
+    misses: 0,
+    evictions: 0,
+    totalRequests: 0,
+  };
 
   /**
    * Service-specific properties that must be implemented
@@ -203,20 +216,28 @@ export abstract class BaseMCPClient {
     if (this.config.enableCaching) {
       const cached = this.getCachedResult(toolName, args);
       if (cached) {
+        this.cacheStats.hits++;
+        this.cacheStats.totalRequests++;
         return cached;
       }
+      this.cacheStats.misses++;
+      this.cacheStats.totalRequests++;
     }
 
     const startTime = Date.now();
 
     try {
-      const response = await this.makeRequest(`/tool/${toolName}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await this.makeRequest(
+        `/tool/${toolName}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(args),
         },
-        body: JSON.stringify(args),
-      });
+        toolName,
+      );
 
       const result: MCPToolResponse = {
         success: true,
@@ -326,16 +347,26 @@ export abstract class BaseMCPClient {
   }
 
   /**
-   * Make HTTP request with retry logic
+   * Make HTTP request with enhanced retry logic and error handling
    */
   protected async makeRequest(
     path: string,
     options: RequestInit,
+    toolName?: string,
   ): Promise<Response> {
     const url = `${this.config.serverUrl}${path}`;
-    let lastError: Error | null = null;
+    let lastError: MCPError | null = null;
 
-    for (let attempt = 0; attempt <= this.config.retries; attempt++) {
+    for (let attempt = 1; attempt <= this.config.retries + 1; attempt++) {
+      const errorContext: MCPErrorContext = {
+        service: this.serviceName,
+        tool: toolName,
+        request: { url, method: options.method, body: options.body },
+        timestamp: new Date(),
+        attemptNumber: attempt,
+        maxAttempts: this.config.retries + 1,
+      };
+
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(
@@ -351,28 +382,63 @@ export abstract class BaseMCPClient {
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          const responseBody = await response.text().catch(() => null);
+          let parsedBody: any;
+          try {
+            parsedBody = responseBody ? JSON.parse(responseBody) : null;
+          } catch {
+            parsedBody = { message: responseBody };
+          }
+
+          const error = MCPErrorFactory.fromResponse(
+            response,
+            errorContext,
+            parsedBody,
+          );
+
+          if (
+            !RetryStrategy.shouldRetry(error, attempt, this.config.retries + 1)
+          ) {
+            throw error;
+          }
+
+          lastError = error;
+          const delay = RetryStrategy.getRetryDelay(error, attempt);
+          if (delay && attempt < this.config.retries + 1) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            continue;
+          }
         }
 
         return response;
       } catch (error) {
-        lastError = error instanceof Error ? error : new Error('Unknown error');
+        const mcpError =
+          error instanceof MCPError
+            ? error
+            : MCPErrorFactory.fromError(error as Error, errorContext);
 
-        // Don't retry on client errors (4xx)
-        if (error instanceof Error && error.message.includes('HTTP 4')) {
-          throw error;
+        if (
+          !RetryStrategy.shouldRetry(mcpError, attempt, this.config.retries + 1)
+        ) {
+          throw mcpError;
         }
 
-        // Wait before retrying (exponential backoff)
-        if (attempt < this.config.retries) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, Math.pow(2, attempt) * 1000),
-          );
+        lastError = mcpError;
+        const delay = RetryStrategy.getRetryDelay(mcpError, attempt);
+        if (delay && attempt < this.config.retries + 1) {
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
 
-    throw lastError || new Error('Request failed after retries');
+    throw (
+      lastError ||
+      MCPErrorFactory.fromError(new Error('Request failed after retries'), {
+        service: this.serviceName,
+        tool: toolName,
+        timestamp: new Date(),
+      })
+    );
   }
 
   /**
@@ -408,11 +474,22 @@ export abstract class BaseMCPClient {
       timestamp: Date.now(),
     });
 
-    // Limit cache size
+    // Limit cache size with LRU eviction
     if (this.requestCache.size > 1000) {
-      const firstKey = this.requestCache.keys().next().value;
-      if (firstKey !== undefined) {
-        this.requestCache.delete(firstKey);
+      // Find least recently used entry
+      let oldestKey: string | null = null;
+      let oldestTime = Date.now();
+
+      for (const [key, value] of this.requestCache.entries()) {
+        if (value.timestamp < oldestTime) {
+          oldestTime = value.timestamp;
+          oldestKey = key;
+        }
+      }
+
+      if (oldestKey) {
+        this.requestCache.delete(oldestKey);
+        this.cacheStats.evictions++;
       }
     }
   }
@@ -436,13 +513,21 @@ export abstract class BaseMCPClient {
     hits: number;
     misses: number;
     hitRate: number;
+    evictions: number;
+    totalRequests: number;
   } {
-    // This is a simplified version - in production you'd track hits/misses
+    const hitRate =
+      this.cacheStats.totalRequests > 0
+        ? this.cacheStats.hits / this.cacheStats.totalRequests
+        : 0;
+
     return {
       size: this.requestCache.size,
-      hits: 0,
-      misses: 0,
-      hitRate: 0,
+      hits: this.cacheStats.hits,
+      misses: this.cacheStats.misses,
+      hitRate: Math.round(hitRate * 100) / 100,
+      evictions: this.cacheStats.evictions,
+      totalRequests: this.cacheStats.totalRequests,
     };
   }
 }
