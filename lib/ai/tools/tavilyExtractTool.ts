@@ -11,8 +11,9 @@ const tavilyExtractSchema = z.object({
     .array(
       z
         .string()
-        .url()
-        .describe('A list of valid URLs to extract content from.'),
+        .describe(
+          'A valid URL to extract content from (must be a valid HTTP/HTTPS URL).',
+        ),
     )
     .describe('An array of URLs from which to extract content.'),
   // Optional: Add other parameters from Tavily Extract API if needed
