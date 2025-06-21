@@ -120,9 +120,9 @@ export const tools = {
         .nullish()
         .describe('Comma-separated list of optional fields to include'),
       custom_fields: z
-        .record(z.any())
+        .record(z.union([z.string(), z.number(), z.boolean()]))
         .nullish()
-        .describe('Object containing custom field filters'),
+        .describe('Object mapping custom field GID strings to their values'),
     }),
   },
 
@@ -171,7 +171,7 @@ export const tools = {
         .nullish()
         .describe('The type of the task (default_task or milestone)'),
       custom_fields: z
-        .record(z.any())
+        .record(z.union([z.string(), z.number(), z.boolean()]))
         .nullish()
         .describe('Object mapping custom field GID strings to their values'),
       opt_fields: z
@@ -205,7 +205,7 @@ export const tools = {
         .nullish()
         .describe('The type of the task (default_task or milestone)'),
       custom_fields: z
-        .record(z.any())
+        .record(z.union([z.string(), z.number(), z.boolean()]))
         .nullish()
         .describe('Object mapping custom field GID strings to their values'),
       opt_fields: z

@@ -302,12 +302,9 @@ export async function createAsanaTools(
             .string()
             .nullish()
             .describe('Due date in YYYY-MM-DD format.'),
-          assignee: z
-            .string()
-            .nullish()
-            .describe('Assignee user GID or "me".'),
+          assignee: z.string().nullish().describe('Assignee user GID or "me".'),
           custom_fields: z
-            .record(z.any())
+            .record(z.union([z.string(), z.number(), z.boolean()]))
             .nullish()
             .describe(
               'Object mapping custom field GID strings to their values.',
@@ -325,10 +322,7 @@ export async function createAsanaTools(
         schema: z.object({
           task_id: z.string().describe('The GID of the task to update.'),
           name: z.string().nullish().describe('New name for the task.'),
-          notes: z
-            .string()
-            .nullish()
-            .describe('New description for the task.'),
+          notes: z.string().nullish().describe('New description for the task.'),
           completed: z
             .boolean()
             .nullish()
@@ -342,7 +336,7 @@ export async function createAsanaTools(
             .nullish()
             .describe('Due date in YYYY-MM-DD format.'),
           custom_fields: z
-            .record(z.any())
+            .record(z.union([z.string(), z.number(), z.boolean()]))
             .nullish()
             .describe(
               'Object mapping custom field GID strings to their values.',
@@ -381,10 +375,7 @@ export async function createAsanaTools(
             .string()
             .nullish()
             .describe('Due date in YYYY-MM-DD format.'),
-          assignee: z
-            .string()
-            .nullish()
-            .describe('Assignee user GID or "me".'),
+          assignee: z.string().nullish().describe('Assignee user GID or "me".'),
         }),
         func: async (args) => {
           const result = await client.createSubtask(args.parent_task_id, {
@@ -418,10 +409,7 @@ export async function createAsanaTools(
           task_id: z
             .string()
             .describe('The GID of the task to get comments for.'),
-          limit: z
-            .number()
-            .nullish()
-            .describe('Number of comments to return.'),
+          limit: z.number().nullish().describe('Number of comments to return.'),
         }),
         func: async (args) => {
           const result = await client.getTaskComments(args.task_id, args.limit);
