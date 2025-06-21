@@ -11,7 +11,8 @@ export const tools = {
     inputSchema: z.object({
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
+        .nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -23,75 +24,75 @@ export const tools = {
     inputSchema: z.object({
       workspace: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'The workspace to search in (optional if DEFAULT_WORKSPACE_ID is set)',
         ),
       text: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Text to search for in task names and descriptions'),
       resource_subtype: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Filter by task subtype (e.g. milestone)'),
-      completed: z.boolean().optional().describe('Filter for completed tasks'),
-      is_subtask: z.boolean().optional().describe('Filter for subtasks'),
+      completed: z.boolean().optional().nullable().describe('Filter for completed tasks'),
+      is_subtask: z.boolean().optional().nullable().describe('Filter for subtasks'),
       has_attachment: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe('Filter for tasks with attachments'),
       is_blocked: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe('Filter for tasks with incomplete dependencies'),
       is_blocking: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe('Filter for incomplete tasks with dependents'),
       assignee: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Filter by assignee (user GID or "me")'),
       'assignee.any': z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Filter by any assignee ("me" for current user)'),
       projects: z
         .union([z.string(), z.array(z.string())])
-        .optional()
+        .optional().nullable()
         .describe('Filter by project(s)'),
       sections: z
         .union([z.string(), z.array(z.string())])
-        .optional()
+        .optional().nullable()
         .describe('Filter by section(s)'),
       tags: z
         .union([z.string(), z.array(z.string())])
-        .optional()
+        .optional().nullable()
         .describe('Filter by tag(s)'),
       teams: z
         .union([z.string(), z.array(z.string())])
-        .optional()
+        .optional().nullable()
         .describe('Filter by team(s)'),
       followers: z
         .union([z.string(), z.array(z.string())])
-        .optional()
+        .optional().nullable()
         .describe('Filter by follower(s)'),
-      created_by: z.string().optional().describe('Filter by creator'),
+      created_by: z.string().optional().nullable().describe('Filter by creator'),
       modified_since: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Filter by modification date (ISO 8601)'),
       completed_since: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Filter by completion date (ISO 8601)'),
       due_date: z
         .object({
-          before: z.string().optional(),
-          after: z.string().optional(),
+          before: z.string().optional().nullable(),
+          after: z.string().optional().nullable(),
         })
-        .optional()
+        .optional().nullable()
         .describe('Filter by due date range'),
       sort_by: z
         .enum([
@@ -101,26 +102,26 @@ export const tools = {
           'likes',
           'modified_at',
         ])
-        .optional()
+        .optional().nullable()
         .describe('Sort by field (default: modified_at)'),
       sort_ascending: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe('Sort in ascending order (default: false)'),
       limit: z
         .number()
         .min(1)
         .max(100)
-        .optional()
+        .optional().nullable()
         .describe('Results per page (1-100)'),
-      offset: z.string().optional().describe('Pagination offset token'),
+      offset: z.string().optional().nullable().describe('Pagination offset token'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
       custom_fields: z
         .record(z.any())
-        .optional()
+        .optional().nullable()
         .describe('Object containing custom field filters'),
     }),
   },
@@ -132,7 +133,7 @@ export const tools = {
       task_id: z.string().describe('The task ID to retrieve'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -143,39 +144,39 @@ export const tools = {
     inputSchema: z.object({
       project_id: z.string().describe('The project to create the task in'),
       name: z.string().describe('Name of the task'),
-      notes: z.string().optional().describe('Description of the task'),
+      notes: z.string().optional().nullable().describe('Description of the task'),
       html_notes: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('HTML-like formatted description of the task'),
-      due_on: z.string().optional().describe('Due date in YYYY-MM-DD format'),
+      due_on: z.string().optional().nullable().describe('Due date in YYYY-MM-DD format'),
       assignee: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Assignee (can be "me" or a user ID)'),
       followers: z
         .array(z.string())
-        .optional()
+        .optional().nullable()
         .describe('Array of user IDs to add as followers'),
       parent: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('The parent task ID to set this task under'),
       projects: z
         .array(z.string())
-        .optional()
+        .optional().nullable()
         .describe('Array of project IDs to add this task to'),
       resource_subtype: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('The type of the task (default_task or milestone)'),
       custom_fields: z
         .record(z.any())
-        .optional()
+        .optional().nullable()
         .describe('Object mapping custom field GID strings to their values'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -185,31 +186,31 @@ export const tools = {
     description: "Update an existing task's details",
     inputSchema: z.object({
       task_id: z.string().describe('The task ID to update'),
-      name: z.string().optional().describe('New name for the task'),
-      notes: z.string().optional().describe('New description for the task'),
+      name: z.string().optional().nullable().describe('New name for the task'),
+      notes: z.string().optional().nullable().describe('New description for the task'),
       due_on: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('New due date in YYYY-MM-DD format'),
       assignee: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('New assignee (can be "me" or a user ID)'),
       completed: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe('Mark task as completed or not'),
       resource_subtype: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('The type of the task (default_task or milestone)'),
       custom_fields: z
         .record(z.any())
-        .optional()
+        .optional().nullable()
         .describe('Object mapping custom field GID strings to their values'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -229,7 +230,7 @@ export const tools = {
       task_id: z.string().describe('The task ID to get stories for'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -242,7 +243,7 @@ export const tools = {
       text: z.string().describe('The text content of the story/comment'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -255,15 +256,15 @@ export const tools = {
         .string()
         .describe('The parent task ID to create the subtask under'),
       name: z.string().describe('Name of the subtask'),
-      notes: z.string().optional().describe('Description of the subtask'),
-      due_on: z.string().optional().describe('Due date in YYYY-MM-DD format'),
+      notes: z.string().optional().nullable().describe('Description of the subtask'),
+      due_on: z.string().optional().nullable().describe('Due date in YYYY-MM-DD format'),
       assignee: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Assignee (can be "me" or a user ID)'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -312,19 +313,19 @@ export const tools = {
         .describe('The new parent of the task, or null for no parent'),
       insert_after: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'A subtask of the parent to insert the task after, or null to insert at the beginning',
         ),
       insert_before: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'A subtask of the parent to insert the task before, or null to insert at the end',
         ),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -341,7 +342,7 @@ export const tools = {
         ),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -356,25 +357,25 @@ export const tools = {
         .describe('Regular expression pattern to match project names'),
       workspace: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'The workspace to search in (optional if DEFAULT_WORKSPACE_ID is set)',
         ),
-      team: z.string().optional().describe('The team to filter projects on'),
+      team: z.string().optional().nullable().describe('The team to filter projects on'),
       archived: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe('Only return archived projects (default: false)'),
       limit: z
         .number()
         .min(1)
         .max(100)
-        .optional()
+        .optional().nullable()
         .describe('Results per page (1-100)'),
-      offset: z.string().optional().describe('Pagination offset token'),
+      offset: z.string().optional().nullable().describe('Pagination offset token'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -385,25 +386,25 @@ export const tools = {
     inputSchema: z.object({
       workspace: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'The workspace to list projects from (optional if DEFAULT_WORKSPACE_ID is set)',
         ),
-      team: z.string().optional().describe('The team to filter projects on'),
+      team: z.string().optional().nullable().describe('The team to filter projects on'),
       archived: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe('Only return archived projects (default: false)'),
       limit: z
         .number()
         .min(1)
         .max(100)
-        .optional()
+        .optional().nullable()
         .describe('Results per page (1-100)'),
-      offset: z.string().optional().describe('Pagination offset token'),
+      offset: z.string().optional().nullable().describe('Pagination offset token'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -415,7 +416,7 @@ export const tools = {
       project_id: z.string().describe('The project ID to retrieve'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -426,7 +427,7 @@ export const tools = {
     inputSchema: z.object({
       workspace_id: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'The workspace ID to create the project in (optional if DEFAULT_WORKSPACE_ID is set)',
         ),
@@ -438,49 +439,49 @@ export const tools = {
         ),
       public: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe(
           'Whether the project is public to the organization (default: false)',
         ),
       archived: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe('Whether the project is archived (default: false)'),
       color: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'Color of the project (light-green, light-orange, light-blue, etc.)',
         ),
       layout: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'The layout of the project (board, list, timeline, or calendar)',
         ),
       default_view: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'The default view of the project (list, board, calendar, timeline, or gantt)',
         ),
       due_on: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('The date on which this project is due (YYYY-MM-DD format)'),
       start_on: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'The day on which work for this project begins (YYYY-MM-DD format)',
         ),
       notes: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Free-form textual information associated with the project'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -492,7 +493,7 @@ export const tools = {
       project_id: z.string().describe('The project ID to get task counts for'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -504,7 +505,7 @@ export const tools = {
       project_id: z.string().describe('The project ID to get sections for'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -517,50 +518,50 @@ export const tools = {
       project_id: z.string().describe('The project ID to get hierarchy for'),
       include_completed_tasks: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe('Include completed tasks (default: false)'),
       include_subtasks: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe('Include subtasks for each task (default: true)'),
       include_completed_subtasks: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe(
           'Include completed subtasks (default: follows include_completed_tasks)',
         ),
       max_subtask_depth: z
         .number()
-        .optional()
+        .optional().nullable()
         .describe('Maximum depth of subtasks to retrieve (default: 1)'),
       opt_fields_tasks: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Optional fields for tasks'),
       opt_fields_subtasks: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Optional fields for subtasks'),
       opt_fields_sections: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Optional fields for sections'),
       opt_fields_project: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Optional fields for project'),
-      limit: z.number().optional().describe('Max results per page (1-100)'),
+      limit: z.number().optional().nullable().describe('Max results per page (1-100)'),
       offset: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Pagination token from previous response'),
       auto_paginate: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe('Whether to automatically fetch all pages'),
       max_pages: z
         .number()
-        .optional()
+        .optional().nullable()
         .describe('Maximum pages to fetch when auto_paginate is true'),
     }),
   },
@@ -575,7 +576,7 @@ export const tools = {
         .describe('The project status GID to retrieve'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -589,12 +590,12 @@ export const tools = {
         .number()
         .min(1)
         .max(100)
-        .optional()
+        .optional().nullable()
         .describe('Results per page (1-100)'),
-      offset: z.string().optional().describe('Pagination offset token'),
+      offset: z.string().optional().nullable().describe('Pagination offset token'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -609,16 +610,16 @@ export const tools = {
       text: z.string().describe('The text content of the status update'),
       color: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('The color of the status (green, yellow, red)'),
-      title: z.string().optional().describe('The title of the status update'),
+      title: z.string().optional().nullable().describe('The title of the status update'),
       html_text: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('HTML formatted text for the status update'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -644,7 +645,7 @@ export const tools = {
       name: z.string().describe('Name of the section to create'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -657,7 +658,7 @@ export const tools = {
       task_id: z.string().describe('The task ID to add to the section'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -674,7 +675,7 @@ export const tools = {
         ),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -685,13 +686,13 @@ export const tools = {
     inputSchema: z.object({
       workspace_gid: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'The workspace GID to get teams for (optional if DEFAULT_WORKSPACE_ID is set)',
         ),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -702,7 +703,7 @@ export const tools = {
     inputSchema: z.object({
       workspace_id: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'The workspace ID to list users from (optional if DEFAULT_WORKSPACE_ID is set)',
         ),
@@ -710,12 +711,12 @@ export const tools = {
         .number()
         .min(1)
         .max(100)
-        .optional()
+        .optional().nullable()
         .describe('Results per page (1-100)'),
-      offset: z.string().optional().describe('Pagination offset token'),
+      offset: z.string().optional().nullable().describe('Pagination offset token'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -730,7 +731,7 @@ export const tools = {
         .describe('The user ID to retrieve (use "me" for current user)'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -742,7 +743,7 @@ export const tools = {
     inputSchema: z.object({
       workspace_gid: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'Globally unique identifier for the workspace or organization (optional if DEFAULT_WORKSPACE_ID is set)',
         ),
@@ -750,19 +751,19 @@ export const tools = {
         .number()
         .min(1)
         .max(100)
-        .optional()
+        .optional().nullable()
         .describe(
           'Results per page. The number of objects to return per page. The value must be between 1 and 100.',
         ),
       offset: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe(
           'Offset token. An offset to the next page returned by the API.',
         ),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
@@ -774,23 +775,23 @@ export const tools = {
       tag_gid: z.string().describe('The tag GID to retrieve tasks for'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
       opt_pretty: z
         .boolean()
-        .optional()
+        .optional().nullable()
         .describe('Provides the response in a "pretty" format'),
       limit: z
         .number()
         .min(1)
         .max(100)
-        .optional()
+        .optional().nullable()
         .describe(
           'The number of objects to return per page. The value must be between 1 and 100.',
         ),
       offset: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('An offset to the next page returned by the API.'),
     }),
   },
@@ -807,12 +808,12 @@ export const tools = {
         .number()
         .min(1)
         .max(100)
-        .optional()
+        .optional().nullable()
         .describe('Results per page (1-100)'),
-      offset: z.string().optional().describe('Pagination offset token'),
+      offset: z.string().optional().nullable().describe('Pagination offset token'),
       opt_fields: z
         .string()
-        .optional()
+        .optional().nullable()
         .describe('Comma-separated list of optional fields to include'),
     }),
   },
