@@ -45,7 +45,7 @@ export async function createAsanaTools(
       new DynamicStructuredTool({
         name: 'asana_list_workspaces',
         description:
-          'List all available workspaces in Asana. Use this to discover workspaces the user has access to.',
+          'List all available workspaces that the user has access to in Asana. Use this when the user asks about their workspaces, wants to see what organizations they belong to, or needs to identify workspace IDs for other operations. Essential first step before working with projects or tasks.',
         schema: z.object({
           opt_fields: z
             .string()
@@ -62,7 +62,7 @@ export async function createAsanaTools(
       new DynamicStructuredTool({
         name: 'asana_search_projects',
         description:
-          'Search for projects in Asana using name pattern matching. Essential for finding projects before working with tasks.',
+          'Search for projects in Asana by name pattern when you need to find specific projects. Use this when the user mentions specific project names or wants to find projects matching certain keywords. For listing all available projects without filtering, use asana_list_projects instead.',
         schema: z.object({
           name_pattern: z
             .string()
@@ -93,9 +93,56 @@ export async function createAsanaTools(
       }),
 
       new DynamicStructuredTool({
+        name: 'asana_list_projects',
+        description:
+          'List all projects in a workspace without filtering. Use this when the user wants to see all available projects, browse projects, or asks "what projects do I have" or "list my projects". For finding specific projects by name, use asana_search_projects instead.',
+        schema: z.object({
+          workspace: z
+            .string()
+            .nullish()
+            .describe(
+              'The workspace to list projects from (optional if default workspace is configured).',
+            ),
+          team: z
+            .string()
+            .nullish()
+            .describe('The team to filter projects on.'),
+          archived: z
+            .boolean()
+            .nullish()
+            .describe('Include archived projects (default: false).'),
+          limit: z
+            .number()
+            .min(1)
+            .max(100)
+            .nullish()
+            .describe('Number of results per page (1-100, default: 20).'),
+          offset: z
+            .string()
+            .nullish()
+            .describe('Pagination offset token for getting next page.'),
+          opt_fields: z
+            .string()
+            .nullish()
+            .describe(
+              'Comma-separated list of optional fields to include (e.g., "name,archived,team,owner").',
+            ),
+        }),
+        func: async (args) => {
+          // Add basic parameter validation
+          if (args.limit && (args.limit < 1 || args.limit > 100)) {
+            throw new Error('Limit must be between 1 and 100');
+          }
+
+          const result = await client.listProjects(args);
+          return JSON.stringify(result);
+        },
+      }),
+
+      new DynamicStructuredTool({
         name: 'asana_get_project',
         description:
-          'Get detailed information about a specific project by its GID.',
+          'Get detailed information about a specific project when you have the project GID. Use this to fetch comprehensive project details including description, team, status, and metadata. Requires the exact project GID.',
         schema: z.object({
           project_id: z
             .string()
@@ -227,7 +274,7 @@ export async function createAsanaTools(
       new DynamicStructuredTool({
         name: 'asana_search_tasks',
         description:
-          'Search tasks in a workspace. Use this for all task-related queries, including "list my tasks", "show my tasks", or searching for specific tasks.',
+          'Search and list tasks in a workspace with filtering options. Use this when the user wants to see their tasks, find specific tasks, or filter tasks by criteria like assignee, project, completion status, or text content. Examples: "list my tasks", "show completed tasks", "find tasks in project X".',
         schema: z.object({
           text: z
             .string()
@@ -265,6 +312,11 @@ export async function createAsanaTools(
             ),
         }),
         func: async (args) => {
+          // Add basic parameter validation
+          if (args.limit && (args.limit < 1 || args.limit > 100)) {
+            throw new Error('Limit must be between 1 and 100');
+          }
+
           // Arguments are passed directly to the MCP client.
           // The MCP server is responsible for applying defaults (assignee: 'me', completed: false).
           const result = await client.searchTasks(args);
@@ -291,7 +343,8 @@ export async function createAsanaTools(
 
       new DynamicStructuredTool({
         name: 'asana_create_task',
-        description: 'Create a new task.',
+        description:
+          'Create a new task in a project when the user wants to add a task, create a to-do item, or assign work. Use this when the user says "create a task", "add a task", "make a task", or similar creation requests. Requires a project ID.',
         schema: z.object({
           project_id: z
             .string()
@@ -311,6 +364,14 @@ export async function createAsanaTools(
             ),
         }),
         func: async (args) => {
+          // Add basic parameter validation
+          if (!args.project_id || args.project_id.trim() === '') {
+            throw new Error('Project ID is required to create a task');
+          }
+          if (!args.name || args.name.trim() === '') {
+            throw new Error('Task name is required');
+          }
+
           const result = await client.createTask(args);
           return JSON.stringify(result);
         },
