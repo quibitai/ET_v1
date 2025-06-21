@@ -17,10 +17,10 @@ import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
 import { RunnableSequence, RunnableLambda } from '@langchain/core/runnables';
 import type { RunnableConfig, Runnable } from '@langchain/core/runnables';
 import type { RequestLogger } from '../../services/observabilityService';
+import { QueryIntentAnalyzer, ResponseRouter } from '../services';
 import { ContextWindowManager } from '../core/contextWindowManager';
 import {
   ContentFormatter,
-  type DocumentResult,
   type ToolResult,
 } from '../formatting/ContentFormatter';
 import { StreamingCoordinator } from '../formatting/StreamingCoordinator';
@@ -29,8 +29,6 @@ import { SynthesisValidator } from '../core/SynthesisValidator';
 import { ProgressIndicatorManager } from '../core/ProgressIndicatorManager';
 import { ResponseRoutingDisplay } from '../core/ResponseRoutingDisplay';
 import { ContentQualityValidator } from '../core/ContentQualityValidator';
-import type { DocumentRetrievalPlan } from '../core/DocumentOrchestrator';
-import type { ValidationContext } from '../core/SynthesisValidator';
 
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 
@@ -554,6 +552,10 @@ export class SimpleLangGraphWrapper {
   // ADD: Tool workflow manager for orchestrating tool sequences
   private workflowManager: ToolWorkflowManager;
 
+  // PHASE 3 INTEGRATION: Service integrations
+  private queryIntentAnalyzer: QueryIntentAnalyzer;
+  private responseRouter: ResponseRouter;
+
   constructor(config: LangGraphWrapperConfig) {
     this.config = config;
     this.llm = config.llm;
@@ -578,6 +580,10 @@ export class SimpleLangGraphWrapper {
 
     // Initialize workflow manager
     this.workflowManager = new ToolWorkflowManager(this.logger);
+
+    // PHASE 3 INTEGRATION: Initialize services
+    this.queryIntentAnalyzer = new QueryIntentAnalyzer(this.logger);
+    this.responseRouter = new ResponseRouter(this.logger);
 
     // Initialize the graph
     this.graph = this.initializeAndCompileGraph();
@@ -2411,6 +2417,7 @@ Create the ${responseType} now.`,
   /**
    * Enhanced query intent analysis for better routing decisions
    * Task 2.3: Enhanced Router Logic implementation
+   * REFACTORED: Now delegates to QueryIntentAnalyzer service
    */
   private analyzeQueryIntent(state: GraphState): {
     intentType:
@@ -2426,90 +2433,8 @@ Create the ${responseType} now.`,
       | 'simple_response'
       | 'conversational_response';
   } {
-    // Get the original user query
-    const userMessages = state.messages.filter(
-      (msg) => msg._getType() === 'human',
-    );
-    const originalQuery =
-      userMessages.length > 0
-        ? typeof userMessages[0].content === 'string'
-          ? userMessages[0].content
-          : JSON.stringify(userMessages[0].content)
-        : state.input || '';
-    const queryLower = originalQuery.toLowerCase();
-
-    // Intent classification patterns
-    const analysisPatterns =
-      /\b(?:analyz[ei](?:ng)?|analysis|analytical|compar[ei]|comparison|vs|versus|contrast|relationship|align|alignment|how.*relate|what.*relationship|differences?|similarities)\b/i;
-    const researchPatterns =
-      /\b(?:research|report|brief|proposal|summary|overview|findings|insights|recommendations?)\b/i;
-    const creativePatterns =
-      /\b(?:creative\s+brief|write\s+a|create\s+a|generate\s+a|develop\s+a|draft\s+a|prepare\s+a)\b/i;
-    const simpleLookupPatterns =
-      /\b(?:what\s+is|who\s+is|when\s+is|where\s+is|how\s+much|list|show\s+me|find|get\s+me)\b/i;
-
-    // Determine intent type
-    let intentType:
-      | 'analysis'
-      | 'research'
-      | 'simple_lookup'
-      | 'conversational'
-      | 'creative' = 'conversational';
-    let complexity: 'high' | 'medium' | 'low' = 'low';
-    let requiresDeepAnalysis = false;
-
-    if (analysisPatterns.test(originalQuery)) {
-      intentType = 'analysis';
-      complexity = 'high';
-      requiresDeepAnalysis = true;
-    } else if (creativePatterns.test(originalQuery)) {
-      intentType = 'creative';
-      complexity = 'high';
-      requiresDeepAnalysis = true;
-    } else if (researchPatterns.test(originalQuery)) {
-      intentType = 'research';
-      complexity = 'medium';
-      requiresDeepAnalysis = true;
-    } else if (simpleLookupPatterns.test(originalQuery)) {
-      intentType = 'simple_lookup';
-      complexity = 'low';
-      requiresDeepAnalysis = false;
-    }
-
-    // Adjust complexity based on query length and structure
-    if (
-      originalQuery.length > 100 ||
-      (originalQuery.includes('?') && originalQuery.split('?').length > 2)
-    ) {
-      complexity = complexity === 'low' ? 'medium' : 'high';
-    }
-
-    // Determine suggested response type
-    let suggestedResponseType:
-      | 'synthesis'
-      | 'simple_response'
-      | 'conversational_response' = 'conversational_response';
-
-    if (requiresDeepAnalysis || complexity === 'high') {
-      suggestedResponseType = 'synthesis';
-    } else if (complexity === 'medium' || intentType === 'simple_lookup') {
-      suggestedResponseType = 'simple_response';
-    }
-
-    this.logger.info('[LangGraph Router] Query intent analysis', {
-      originalQuery: originalQuery.substring(0, 100),
-      intentType,
-      complexity,
-      requiresDeepAnalysis,
-      suggestedResponseType,
-    });
-
-    return {
-      intentType,
-      complexity,
-      requiresDeepAnalysis,
-      suggestedResponseType,
-    };
+    // REFACTORED: Delegate to service
+    return this.queryIntentAnalyzer.analyzeQueryIntent(state);
   }
 
   private routeNextStep(
