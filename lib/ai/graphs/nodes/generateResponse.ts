@@ -17,6 +17,7 @@ import type { RequestLogger } from '../../../services/observabilityService';
 import type { GraphState } from '../state';
 import { getLastHumanMessage, getToolMessages } from '../state';
 import { loadGraphPrompt } from '../prompts/loader';
+import { determineResponseMode as unifiedDetermineResponseMode } from '../../utils/responseMode';
 
 /**
  * Dependencies for the response generation node
@@ -55,8 +56,9 @@ export async function generateResponseNode(
 
   const startTime = Date.now();
 
-  // Determine response mode (use existing or auto-detect)
-  const responseMode = state.response_mode || autoDetectResponseMode(state);
+  // Determine response mode (use existing or auto-detect using unified utility)
+  const responseMode =
+    state.response_mode || unifiedDetermineResponseMode(state).mode;
 
   logger.info('[GenerateResponse] Starting response generation', {
     mode: responseMode,
@@ -155,82 +157,15 @@ async function generateResponseByMode(
 
 /**
  * Auto-detect the appropriate response mode based on conversation context
+ * @deprecated Use unifiedDetermineResponseMode from utils/responseMode.ts instead
  */
 function autoDetectResponseMode(
   state: GraphState,
 ): 'synthesis' | 'simple' | 'conversational' {
-  const userQuery = getLastHumanMessage(state);
-  const toolMessages = getToolMessages(state);
-
-  // If we have multiple tool results, likely need synthesis
-  if (toolMessages.length > 2) {
-    return 'synthesis';
-  }
-
-  // Check for document retrieval - usually needs synthesis
-  const hasDocuments = toolMessages.some((msg) => {
-    try {
-      const content =
-        typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
-      return content.document_id || content.title || content.documents;
-    } catch {
-      return false;
-    }
-  });
-
-  if (hasDocuments) {
-    return 'synthesis';
-  }
-
-  // Analyze query content for response type indicators
-  const queryLower = userQuery.toLowerCase();
-
-  // Synthesis indicators
-  const synthesisKeywords = [
-    'analyze',
-    'analysis',
-    'research',
-    'compare',
-    'comparison',
-    'evaluate',
-    'report',
-    'comprehensive',
-    'detailed',
-    'investigate',
-    'summarize',
-    'synthesis',
-    'assessment',
-    'study',
-    'examine',
-  ];
-
-  if (synthesisKeywords.some((keyword) => queryLower.includes(keyword))) {
-    return 'synthesis';
-  }
-
-  // Conversational indicators
-  const conversationalKeywords = [
-    'chat',
-    'discuss',
-    'talk about',
-    'tell me about',
-    'what do you think',
-    'opinion',
-    'recommend',
-    'suggest',
-    'advice',
-    'help me understand',
-    'explain to me',
-    'walk me through',
-    'your thoughts',
-  ];
-
-  if (conversationalKeywords.some((keyword) => queryLower.includes(keyword))) {
-    return 'conversational';
-  }
-
-  // Default to simple for straightforward queries
-  return 'simple';
+  console.warn(
+    '[GenerateResponse] Using deprecated autoDetectResponseMode - switch to utils/responseMode.ts',
+  );
+  return unifiedDetermineResponseMode(state).mode;
 }
 
 /**

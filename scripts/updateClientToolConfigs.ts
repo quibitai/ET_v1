@@ -171,6 +171,9 @@ async function updateClientToolConfigs(
 
       // Skip backward compatibility config to avoid double counting
       if (toolName === 'nativeAsana') {
+        console.log(
+          '🔧 Legacy nativeAsana skipped - using new MCP implementation',
+        );
         return; // Skip - using 'asana' as the primary config
       }
 

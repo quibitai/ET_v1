@@ -218,6 +218,7 @@ export const multiDocumentRetrievalTool = new DynamicStructuredTool({
     specific_documents: z
       .array(z.string())
       .optional()
+      .nullable()
       .describe(
         'Optional: Specific document names or IDs to retrieve if you know them exactly. If not provided, the tool will extract them from the query.',
       ),

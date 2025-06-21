@@ -56,7 +56,8 @@ async function testToolConfigurations(): Promise<void> {
 
   // Test each tool configuration
   await testAsanaConfig(toolConfigs.asana, 'Modern Asana (asana)');
-  await testAsanaConfig(toolConfigs.nativeAsana, 'Legacy Asana (nativeAsana)');
+  // Legacy nativeAsana removed - using new MCP implementation
+  // await testAsanaConfig(toolConfigs.nativeAsana, 'Legacy Asana (nativeAsana)');
   await testGoogleCalendarConfig(toolConfigs.googleCalendar);
   await testTavilyConfig(toolConfigs.tavily);
   await testN8NConfig(toolConfigs.n8n);

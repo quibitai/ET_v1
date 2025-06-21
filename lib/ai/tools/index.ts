@@ -49,18 +49,25 @@ async function getUserMcpTools(
     // DEVELOPMENT MODE: Check for environment variable based MCP tools first
     const envAsanaToken = process.env.ASANA_ACCESS_TOKEN;
 
+    // Always prefer new MCP implementation when available
+    let asanaToolsLoaded = false;
     if (envAsanaToken) {
       try {
-        // Use the MCP tool factory which handles environment variables
+        // Use the new AsanaMCPClient implementation
         const { createAsanaTools } = await import('./mcp/asana');
 
         const asanaTools = await createAsanaTools(userId, 'env-session');
 
         if (asanaTools.length > 0) {
           allMcpTools.push(...asanaTools);
+          asanaToolsLoaded = true;
+          console.log(
+            `[MCP] Successfully loaded ${asanaTools.length} Asana tools using new MCP client`,
+          );
         }
       } catch (error) {
-        // Silently handle error in production
+        console.error('[MCP] New Asana client failed:', error);
+        // Fall back to database lookup if new client fails
       }
     }
 
@@ -86,7 +93,13 @@ async function getUserMcpTools(
         }
 
         // Skip if we already loaded this server from environment variables
-        if (server.name === 'Asana' && envAsanaToken) {
+        if (
+          (server.name === 'Asana' || server.name === 'asana') &&
+          asanaToolsLoaded
+        ) {
+          console.log(
+            `[MCP] Skipping database Asana lookup - already loaded ${allMcpTools.filter((t) => t.name.includes('asana')).length} tools from new MCP client`,
+          );
           continue;
         }
 
@@ -264,19 +277,28 @@ export async function getAvailableTools(session?: any) {
   // Check if user has MCP integrations and load MCP tools
   if (session?.user?.id) {
     try {
-      // DEVELOPMENT MODE: Check for Asana environment variables first
+      // DEVELOPMENT MODE: Use new MCP implementation directly
       const envAsanaToken = process.env.ASANA_ACCESS_TOKEN;
       if (envAsanaToken) {
         try {
-          const { McpToolFactory } = await import('./mcp/core/factory');
-          const asanaTools = await McpToolFactory.createToolsForUser(
-            'Asana',
+          // Use the new AsanaMCPClient implementation
+          const { createAsanaTools } = await import('./mcp/asana');
+          const asanaTools = await createAsanaTools(
             session.user.id,
             'env-session',
           );
 
-          integrationTools.push(...asanaTools);
+          if (asanaTools.length > 0) {
+            integrationTools.push(...asanaTools);
+            console.log(
+              `[MCP] getAvailableTools: Loaded ${asanaTools.length} Asana tools using new MCP client`,
+            );
+          }
         } catch (error) {
+          console.error(
+            '[MCP] getAvailableTools: New Asana client failed:',
+            error,
+          );
           // Silently handle error in production
         }
       }

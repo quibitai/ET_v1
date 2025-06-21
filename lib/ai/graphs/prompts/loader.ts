@@ -82,12 +82,10 @@ export async function loadGraphPrompt({
         });
 
       case 'simple':
-        return await formatSimpleResponsePrompt({
-          user_query: userQuery,
-          tool_results: toolResults,
-          references_context: referencesContext,
-          current_date: currentDateTime,
-        });
+        if (!state) {
+          throw new Error('State is required for simple response prompt');
+        }
+        return formatSimpleResponsePrompt(state);
 
       case 'conversational':
         return await formatConversationalPrompt({
@@ -254,51 +252,4 @@ export async function loadPromptEnhanced({
   // return await loadPrompt({ modelId, contextId, clientConfig, currentDateTime });
 
   return createFallbackPrompt('agent', currentDateTime);
-}
-
-/**
- * Utility function to determine appropriate response mode based on query
- */
-export function determineResponseMode(
-  query: string,
-): 'synthesis' | 'simple' | 'conversational' {
-  const queryLower = query.toLowerCase();
-
-  // Synthesis indicators
-  const synthesisKeywords = [
-    'analyze',
-    'analysis',
-    'research',
-    'compare',
-    'comparison',
-    'evaluate',
-    'report',
-    'comprehensive',
-    'detailed',
-    'investigate',
-  ];
-
-  // Conversational indicators
-  const conversationalKeywords = [
-    'chat',
-    'discuss',
-    'talk about',
-    'tell me about',
-    'what do you think',
-    'opinion',
-    'recommend',
-    'suggest',
-    'advice',
-  ];
-
-  if (synthesisKeywords.some((keyword) => queryLower.includes(keyword))) {
-    return 'synthesis';
-  }
-
-  if (conversationalKeywords.some((keyword) => queryLower.includes(keyword))) {
-    return 'conversational';
-  }
-
-  // Default to simple for straightforward queries
-  return 'simple';
 }

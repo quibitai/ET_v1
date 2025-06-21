@@ -698,13 +698,13 @@ export const tools = {
 
   asana_list_workspace_users: {
     name: 'asana_list_workspace_users',
-    description: 'Get users in a workspace',
+    description: 'List users in a workspace',
     inputSchema: z.object({
       workspace_id: z
         .string()
         .optional()
         .describe(
-          'The workspace ID to get users for (optional if DEFAULT_WORKSPACE_ID is set)',
+          'The workspace ID to list users from (optional if DEFAULT_WORKSPACE_ID is set)',
         ),
       limit: z
         .number()
@@ -716,19 +716,22 @@ export const tools = {
       opt_fields: z
         .string()
         .optional()
-        .describe(
-          'Comma-separated list of optional fields to include (defaults to "name,email")',
-        ),
-      auto_paginate: z
-        .boolean()
+        .describe('Comma-separated list of optional fields to include'),
+    }),
+  },
+
+  asana_get_user: {
+    name: 'asana_get_user',
+    description:
+      'Get information about a specific user. Use "me" to get current user.',
+    inputSchema: z.object({
+      user_id: z
+        .string()
+        .describe('The user ID to retrieve (use "me" for current user)'),
+      opt_fields: z
+        .string()
         .optional()
-        .describe('Whether to automatically fetch all pages'),
-      max_pages: z
-        .number()
-        .optional()
-        .describe(
-          'Maximum number of pages to fetch when auto_paginate is true',
-        ),
+        .describe('Comma-separated list of optional fields to include'),
     }),
   },
 
@@ -832,8 +835,16 @@ export function createToolHandler(client: AsanaClientWrapper) {
           return await client.listWorkspaces(args.opt_fields);
 
         // Task tools
-        case 'asana_search_tasks':
-          return await client.searchTasks(args);
+        case 'asana_search_tasks': {
+          // By default, search for incomplete tasks assigned to the current user.
+          // Allow these defaults to be overridden by explicit arguments.
+          const searchArgs = {
+            assignee: 'me',
+            completed: false,
+            ...args,
+          };
+          return await client.searchTasks(searchArgs);
+        }
 
         case 'asana_get_task':
           return await client.getTask(args.task_id, args.opt_fields);
@@ -976,6 +987,11 @@ export function createToolHandler(client: AsanaClientWrapper) {
         case 'asana_list_workspace_users': {
           const { workspace_id, ...userParams } = args;
           return await client.listWorkspaceUsers(workspace_id, userParams);
+        }
+
+        case 'asana_get_user': {
+          const { user_id, ...userParams } = args;
+          return await client.getUser(user_id, userParams);
         }
 
         // Tag tools

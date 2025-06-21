@@ -1023,11 +1023,11 @@ export class QueryClassifier {
       ) ||
       /(?:what\s+(?:are\s+)?my\s+(?:tasks?|assignments?))/i.test(userInput)
     ) {
-      suggestedTool = 'asana_search_tasks';
+      suggestedTool = 'asana_list_my_tasks';
       // Boost confidence for user-specific queries
       adjustedConfidence = Math.min(1.0, adjustedConfidence + 0.4);
       this.logger.info(
-        '[QueryClassifier] Detected user-specific task query - suggesting asana_search_tasks with user filter',
+        '[QueryClassifier] Detected user-specific task listing - suggesting asana_list_my_tasks',
       );
     }
     // PRIORITY 6: Specific task filtering (use search with filters)
@@ -1062,7 +1062,7 @@ export class QueryClassifier {
         '[QueryClassifier] Detected general project listing - suggesting asana_list_projects',
       );
     }
-    // PRIORITY 8: General task listing (use search for general listing)
+    // PRIORITY 8: General task listing vs. Specific task search
     else if (
       /(?:list|show|display|view|see)\s+(?:my\s+|active\s+|current\s+|all\s+)?tasks?/i.test(
         userInput,
@@ -1070,10 +1070,24 @@ export class QueryClassifier {
       /(?:tasks?\s+(?:in|on|from|for)\s+(?:asana|me))/i.test(userInput) ||
       /(?:what\s+tasks?)/i.test(userInput)
     ) {
-      suggestedTool = 'asana_search_tasks';
-      this.logger.info(
-        '[QueryClassifier] Detected general task listing - suggesting asana_search_tasks',
-      );
+      // Check if this is a specific search vs general listing
+      if (
+        /(?:find|search\s+for|look\s+for|locate)\s+(?:task|the\s+task)/i.test(
+          userInput,
+        ) ||
+        /(?:task\s+(?:called|named|titled))/i.test(userInput) ||
+        /(?:with\s+(?:title|name))/i.test(userInput)
+      ) {
+        suggestedTool = 'asana_search_tasks';
+        this.logger.info(
+          '[QueryClassifier] Detected specific task search - suggesting asana_search_tasks',
+        );
+      } else {
+        suggestedTool = 'asana_list_my_tasks';
+        this.logger.info(
+          '[QueryClassifier] Detected general task listing - suggesting asana_list_my_tasks',
+        );
+      }
     }
 
     return {

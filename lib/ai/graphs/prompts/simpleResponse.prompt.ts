@@ -5,61 +5,44 @@
  * Used when the user needs a clear, focused answer without extensive analysis.
  */
 
-import { ChatPromptTemplate } from '@langchain/core/prompts';
+import { dedent } from 'ts-dedent';
+import type { GraphState } from '../state';
+import { getToolMessages, getLastHumanMessage } from '../state';
 
-export const simpleResponsePromptTemplate = ChatPromptTemplate.fromMessages([
-  [
-    'system',
-    `You are a helpful AI assistant providing clear, direct responses to user queries.
+export const SIMPLE_RESPONSE_PROMPT_TEMPLATE = dedent`
+  You are an AI assistant. Your task is to provide a direct and concise response to the user's query based on the provided tool results.
 
-RESPONSE GUIDELINES:
-- Provide concise, accurate answers based on the available information
-- Use clear, accessible language appropriate for the query complexity
-- Include relevant details without overwhelming the user
-- Cite sources when referencing specific documents or web content
-- Maintain a professional but friendly tone
+  **CRITICAL INSTRUCTIONS:**
+  1.  **DO NOT** under any circumstances generate an "Overview", "Summary", "Introduction", "Conclusion", or "Actionable Insights" section.
+  2.  Your response **MUST** be a direct answer to the user's question, which is often a simple list of items.
+  3.  Format the output as clean, readable markdown. For lists, use numbered or bulleted points.
+  4.  Embed hyperlinks directly in the item names where applicable.
+  5.  **DO NOT** add any conversational text, preamble, or explanation unless the user explicitly asked for it. Just provide the data.
 
-FORMATTING:
-- Use simple markdown formatting for readability
-- Organize information with bullet points or numbered lists when helpful
-- Use **bold** sparingly for key points
-- Keep responses focused and to-the-point
+  **User Query:**
+  {query}
 
-CITATION APPROACH:
-- Reference sources naturally within the response
-- Include document titles or web URLs when relevant
-- Avoid overly academic citation styles unless specifically requested
+  **Tool Results:**
+  {tool_results}
+`;
 
-Current date: {current_date}`,
-  ],
-  [
-    'human',
-    `User Request: "{user_query}"
+export function formatSimpleResponsePrompt(state: GraphState): string {
+  const toolMessages = getToolMessages(state);
+  const query = getLastHumanMessage(state);
 
-Available Information:
-{tool_results}
+  const tool_results =
+    toolMessages.length > 0
+      ? toolMessages
+          .map((msg) =>
+            typeof msg.content === 'string'
+              ? msg.content
+              : JSON.stringify(msg.content, null, 2),
+          )
+          .join('\n\n---\n\n')
+      : 'No tool results available.';
 
-{references_context}
-
-Provide a clear, direct response to the user's question based on the available information.`,
-  ],
-]);
-
-/**
- * Format the simple response prompt with context
- */
-export async function formatSimpleResponsePrompt(context: {
-  user_query: string;
-  tool_results: string;
-  references_context?: string;
-  current_date?: string;
-}): Promise<string> {
-  const formatted = await simpleResponsePromptTemplate.format({
-    user_query: context.user_query,
-    tool_results: context.tool_results,
-    references_context: context.references_context || '',
-    current_date: context.current_date || new Date().toISOString(),
-  });
-
-  return formatted;
+  return SIMPLE_RESPONSE_PROMPT_TEMPLATE.replace('{query}', query).replace(
+    '{tool_results}',
+    tool_results,
+  );
 }

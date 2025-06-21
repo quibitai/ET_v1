@@ -37,22 +37,28 @@ export const listDocumentsTool = new DynamicStructuredTool({
     - schema: Document type/schema information`,
   schema: z.object({
     filter: z
-      .record(z.unknown())
+      .record(z.string())
       .optional()
+      .nullable()
       .describe(
         'Optional JSONB filter for metadata (e.g., {"schema": "markdown"})',
       ),
   }),
-  func: async ({ filter = {} }): Promise<string> => {
+  func: async ({ filter }): Promise<string> => {
     const startTime = performance.now();
-    console.log('[listDocuments] Fetching document list', { filter });
+    const normalizedFilter = filter || {};
+    console.log('[listDocuments] Fetching document list', {
+      filter: normalizedFilter,
+    });
 
     // Track tool usage
     await trackEvent({
       eventName: ANALYTICS_EVENTS.TOOL_USED,
       properties: {
         toolName: 'listDocuments',
-        hasFilter: Object.keys(filter).length > 0,
+        hasFilter: normalizedFilter
+          ? Object.keys(normalizedFilter).length > 0
+          : false,
         timestamp: new Date().toISOString(),
       },
     });
@@ -87,8 +93,8 @@ export const listDocumentsTool = new DynamicStructuredTool({
         .order('title');
 
       // Apply any provided filters
-      if (Object.keys(filter).length > 0) {
-        Object.entries(filter).forEach(([key, value]) => {
+      if (normalizedFilter && Object.keys(normalizedFilter).length > 0) {
+        Object.entries(normalizedFilter).forEach(([key, value]) => {
           query = query.eq(key, value);
         });
       }

@@ -723,6 +723,24 @@ export class SimpleLangGraphWrapper {
         };
       }
 
+      // Skip schema patching for tools that have been fixed for OpenAI compatibility
+      const fixedTools = [
+        'listDocuments',
+        'searchInternalKnowledgeBase',
+        'getMultipleDocuments',
+        'asana_search_tasks',
+        'asana_get_task',
+        'asana_create_task',
+        'asana_update_task',
+      ];
+
+      if (fixedTools.includes(tool.name)) {
+        this.logger.info(
+          `[LangGraph Agent] Tool '${tool.name}' has been fixed for OpenAI compatibility, skipping schema patching`,
+        );
+        return tool; // Return original tool without patching
+      }
+
       // For other tools, check if they have array properties that might cause issues
       if (tool.schema) {
         try {
@@ -733,13 +751,13 @@ export class SimpleLangGraphWrapper {
               `[LangGraph Agent] Tool '${tool.name}' might have array schemas, applying safe fallback`,
             );
 
-            // Use a very safe fallback schema
+            // Use a very safe fallback schema - FIXED: No .optional() to avoid OpenAI issues
             const { z } = require('zod');
             const safeSchema = z.object({
               input: z
                 .any()
-                .optional()
-                .describe(`Input parameters for ${tool.name}`),
+                .describe(`Input parameters for ${tool.name}`)
+                .default({}),
             });
 
             return {
@@ -756,8 +774,8 @@ export class SimpleLangGraphWrapper {
           const safeSchema = z.object({
             input: z
               .any()
-              .optional()
-              .describe(`Input parameters for ${tool.name}`),
+              .describe(`Input parameters for ${tool.name}`)
+              .default({}),
           });
 
           return {

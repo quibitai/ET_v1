@@ -245,6 +245,24 @@ export class ToolRegistry {
   }
 
   /**
+   * Get tools that support streaming
+   */
+  async getStreamingTools(): Promise<ToolManifest[]> {
+    const manifests = await this.manifestLoader.loadManifests();
+    const streamingTools: ToolManifest[] = [];
+
+    for (const service of Object.values(manifests)) {
+      for (const manifest of Object.values(service)) {
+        if (manifest.streamingSupported) {
+          streamingTools.push(manifest);
+        }
+      }
+    }
+
+    return streamingTools;
+  }
+
+  /**
    * Clear the manifest cache
    */
   clearCache(): void {

@@ -106,7 +106,7 @@ export abstract class BaseMCPClient {
    */
   protected mergeConfig(config: MCPClientConfig): Required<MCPClientConfig> {
     return {
-      serverUrl: config.serverUrl || this.detectServerUrl(),
+      serverUrl: config.serverUrl || '', // Don't auto-detect during construction
       timeout: config.timeout || 30000,
       retries: config.retries || 3,
       autoDetect: config.autoDetect !== false,
@@ -114,6 +114,15 @@ export abstract class BaseMCPClient {
       enableCaching: config.enableCaching !== false,
       cacheTTL: config.cacheTTL || 5 * 60 * 1000, // 5 minutes
     };
+  }
+
+  /**
+   * Ensure configuration is complete (lazy initialization)
+   */
+  protected ensureConfigured(): void {
+    if (!this.config.serverUrl && this.config.autoDetect) {
+      this.config.serverUrl = this.detectServerUrl();
+    }
   }
 
   /**

@@ -113,6 +113,9 @@ export class AsanaMCPClient extends BaseMCPClient {
   static async create(config: AsanaMCPConfig = {}): Promise<AsanaMCPClient> {
     const client = new AsanaMCPClient(config);
 
+    // Ensure configuration is complete after inheritance
+    client.ensureConfigured();
+
     // Validate configuration if auto-detect is enabled
     if (client.configuration.autoDetect) {
       const validation = await client.validateConfiguration();
@@ -385,7 +388,7 @@ export class AsanaMCPClient extends BaseMCPClient {
    */
   async addTaskComment(taskId: string, text: string): Promise<any> {
     const response = await this.executeTool('asana_add_task_comment', {
-      arguments: { task_id: taskId, text },
+      arguments: { task_id: taskId, text: text },
     });
     return response.result;
   }
@@ -395,7 +398,7 @@ export class AsanaMCPClient extends BaseMCPClient {
    */
   async getTaskComments(taskId: string, limit?: number): Promise<any[]> {
     const response = await this.executeTool('asana_get_task_comments', {
-      arguments: { task_id: taskId, limit },
+      arguments: { task_id: taskId, limit: limit },
     });
     return response.result;
   }
@@ -436,7 +439,7 @@ export class AsanaMCPClient extends BaseMCPClient {
     limit?: number,
   ): Promise<any[]> {
     const response = await this.executeTool('asana_list_workspace_users', {
-      arguments: { workspace_id: workspaceId, limit },
+      arguments: { workspace_id: workspaceId, limit: limit },
     });
     return response.result;
   }
@@ -447,6 +450,17 @@ export class AsanaMCPClient extends BaseMCPClient {
   async getUser(userId: string): Promise<any> {
     const response = await this.executeTool('asana_get_user', {
       arguments: { user_id: userId },
+    });
+    return response.result;
+  }
+
+  /**
+   * Get current user information
+   * This uses the "me" identifier which should resolve to the authenticated user
+   */
+  async getCurrentUser(): Promise<any> {
+    const response = await this.executeTool('asana_get_user', {
+      arguments: { user_id: 'me' },
     });
     return response.result;
   }

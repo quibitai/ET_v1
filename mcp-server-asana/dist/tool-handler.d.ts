@@ -679,22 +679,30 @@ export declare const tools: {
             limit: z.ZodOptional<z.ZodNumber>;
             offset: z.ZodOptional<z.ZodString>;
             opt_fields: z.ZodOptional<z.ZodString>;
-            auto_paginate: z.ZodOptional<z.ZodBoolean>;
-            max_pages: z.ZodOptional<z.ZodNumber>;
         }, "strip", z.ZodTypeAny, {
             opt_fields?: string | undefined;
             limit?: number | undefined;
             offset?: string | undefined;
             workspace_id?: string | undefined;
-            auto_paginate?: boolean | undefined;
-            max_pages?: number | undefined;
         }, {
             opt_fields?: string | undefined;
             limit?: number | undefined;
             offset?: string | undefined;
             workspace_id?: string | undefined;
-            auto_paginate?: boolean | undefined;
-            max_pages?: number | undefined;
+        }>;
+    };
+    asana_get_user: {
+        name: string;
+        description: string;
+        inputSchema: z.ZodObject<{
+            user_id: z.ZodString;
+            opt_fields: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            user_id: string;
+            opt_fields?: string | undefined;
+        }, {
+            user_id: string;
+            opt_fields?: string | undefined;
         }>;
     };
     asana_get_tags_for_workspace: {
@@ -1410,22 +1418,29 @@ export declare const list_of_tools: ({
         limit: z.ZodOptional<z.ZodNumber>;
         offset: z.ZodOptional<z.ZodString>;
         opt_fields: z.ZodOptional<z.ZodString>;
-        auto_paginate: z.ZodOptional<z.ZodBoolean>;
-        max_pages: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         opt_fields?: string | undefined;
         limit?: number | undefined;
         offset?: string | undefined;
         workspace_id?: string | undefined;
-        auto_paginate?: boolean | undefined;
-        max_pages?: number | undefined;
     }, {
         opt_fields?: string | undefined;
         limit?: number | undefined;
         offset?: string | undefined;
         workspace_id?: string | undefined;
-        auto_paginate?: boolean | undefined;
-        max_pages?: number | undefined;
+    }>;
+} | {
+    name: string;
+    description: string;
+    inputSchema: z.ZodObject<{
+        user_id: z.ZodString;
+        opt_fields: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        user_id: string;
+        opt_fields?: string | undefined;
+    }, {
+        user_id: string;
+        opt_fields?: string | undefined;
     }>;
 } | {
     name: string;

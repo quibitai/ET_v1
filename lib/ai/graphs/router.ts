@@ -8,6 +8,7 @@
 
 import type { GraphState } from './state';
 import { hasToolCalls, isReadyForResponse } from './state';
+import { determineResponseMode as unifiedDetermineResponseMode } from '../utils/responseMode';
 
 /**
  * Primary router function with corrected ReAct pattern logic
@@ -83,64 +84,23 @@ export function routeNextStepEnhanced(
 
 /**
  * Utility function to determine response mode based on conversation state
+ * @deprecated Use determineResponseMode from utils/responseMode.ts instead
  */
 export function determineResponseMode(
   state: GraphState,
 ): 'synthesis' | 'simple' | 'conversational' {
-  const messages = state.messages;
-  const toolMessages = messages.filter((msg) => msg._getType?.() === 'tool');
+  console.warn(
+    '[Router] Using deprecated determineResponseMode - switch to utils/responseMode.ts',
+  );
 
-  // If we have multiple tool results, likely need synthesis
-  if (toolMessages.length > 2) {
-    return 'synthesis';
-  }
+  const result = unifiedDetermineResponseMode(state);
 
-  // If we have document retrieval results, likely need analysis
-  const hasDocuments = toolMessages.some((msg) => {
-    try {
-      const content =
-        typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
-      return content.document_id || content.title;
-    } catch {
-      return false;
-    }
-  });
+  console.log(
+    `[Router] Response mode: ${result.mode} (${result.confidence} confidence)`,
+  );
+  console.log(`[Router] Reason: ${result.reason}`);
 
-  if (hasDocuments) {
-    return 'synthesis';
-  }
-
-  // Check for conversational indicators in the original query
-  const humanMessage = messages.find((msg) => msg._getType?.() === 'human');
-  if (humanMessage?.content) {
-    const content =
-      typeof humanMessage.content === 'string'
-        ? humanMessage.content
-        : JSON.stringify(humanMessage.content);
-
-    const conversationalKeywords = [
-      'chat',
-      'discuss',
-      'talk about',
-      'tell me about',
-      'what do you think',
-      'opinion',
-      'recommend',
-      'suggest',
-      'advice',
-    ];
-
-    if (
-      conversationalKeywords.some((keyword) =>
-        content.toLowerCase().includes(keyword),
-      )
-    ) {
-      return 'conversational';
-    }
-  }
-
-  // Default to simple for straightforward queries
-  return 'simple';
+  return result.mode;
 }
 
 /**
@@ -169,11 +129,28 @@ export function validateRouterLogic(): {
   const issues: string[] = [];
 
   // Critical validation: Ensure tools never route directly to generate_response
-  const testState: Partial<GraphState> = {
+  const testState = {
     messages: [{ _getType: () => 'tool', content: 'test tool result' } as any],
+    input: 'test input',
+    agent_outcome: undefined,
+    ui: [],
+    _lastToolExecutionResults: [],
+    toolForcingCount: 0,
+    iterationCount: 0,
+    needsSynthesis: true,
+    response_mode: 'synthesis' as const,
+    node_execution_trace: [],
+    tool_workflow_state: {
+      documentsListed: false,
+      documentsRetrieved: [],
+      webSearchCompleted: false,
+      extractionCompleted: false,
+      multiDocAnalysisCompleted: false,
+    },
+    metadata: {},
   };
 
-  const route = routeNextStep(testState as GraphState);
+  const route = routeNextStep(testState);
   if (route !== 'agent') {
     issues.push(
       'CRITICAL: Tools do not route back to agent - ReAct pattern broken',
