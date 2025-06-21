@@ -694,19 +694,23 @@ export class SimpleLangGraphWrapper {
       // Comprehensive list of tools that have been fixed for OpenAI compatibility
       // These tools now have proper .optional().nullable() schemas and don't need patching
       const fixedTools = [
-        // Document tools (fixed in recent schema updates)
+        // ALL TOOLS - Comprehensive list to prevent schema validation errors
+        // Document and knowledge base tools
         'listDocuments',
         'searchInternalKnowledgeBase',
+        'searchAndRetrieveKnowledgeBase',
         'getMultipleDocuments',
         'getDocumentContents',
         'queryDocumentRows',
+        'multiDocumentRetrieval',
+        // Web search and extraction tools
+        'tavilySearch',
+        'tavilyExtract',
+        'extractWebContent',
+        // Utility and integration tools
         'requestSuggestions',
         'googleCalendar',
-        'tavilyExtract',
         'createBudget',
-        // Other core tools with proper schemas
-        'multiDocumentRetrieval',
-        'tavilySearch',
         'getMessagesFromOtherChat',
         // All Asana tools (now properly defined with correct schemas)
         'asana_list_workspaces',
