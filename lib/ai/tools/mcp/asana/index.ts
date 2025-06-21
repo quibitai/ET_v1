@@ -49,7 +49,7 @@ export async function createAsanaTools(
         schema: z.object({
           opt_fields: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('Comma-separated list of optional fields to include.'),
         }),
         func: async (args) => {
@@ -69,21 +69,21 @@ export async function createAsanaTools(
             .describe('Regular expression pattern to match project names.'),
           workspace: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('The workspace to search in.'),
           team: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('The team to filter projects on.'),
           archived: z
             .boolean()
-            .optional().nullable()
+            .nullish()
             .describe('Only return archived projects (default: false).'),
-          limit: z.number().optional().nullable().describe('Results per page (1-100).'),
-          offset: z.string().optional().nullable().describe('Pagination offset token.'),
+          limit: z.number().nullish().describe('Results per page (1-100).'),
+          offset: z.string().nullish().describe('Pagination offset token.'),
           opt_fields: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('Comma-separated list of optional fields to include.'),
         }),
         func: async (args) => {
@@ -102,7 +102,7 @@ export async function createAsanaTools(
             .describe('The GID of the project to retrieve.'),
           opt_fields: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('Comma-separated list of optional fields to include.'),
         }),
         func: async (args) => {
@@ -124,28 +124,28 @@ export async function createAsanaTools(
           name: z.string().describe('Name of the project.'),
           team_id: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe(
               'The team GID to share the project with (required for organization workspaces).',
             ),
           public: z
             .boolean()
-            .optional().nullable()
+            .nullish()
             .describe('Whether the project is public to the organization.'),
           archived: z
             .boolean()
-            .optional().nullable()
+            .nullish()
             .describe('Whether the project is archived.'),
-          color: z.string().optional().nullable().describe('Color of the project.'),
+          color: z.string().nullish().describe('Color of the project.'),
           layout: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe(
               'The layout of the project (board, list, timeline, or calendar).',
             ),
           notes: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe(
               'Free-form textual information associated with the project.',
             ),
@@ -161,19 +161,19 @@ export async function createAsanaTools(
         description: 'Update an existing project.',
         schema: z.object({
           project_id: z.string().describe('The GID of the project to update.'),
-          name: z.string().optional().nullable().describe('New name for the project.'),
+          name: z.string().nullish().describe('New name for the project.'),
           notes: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('New description for the project.'),
           archived: z
             .boolean()
-            .optional().nullable()
+            .nullish()
             .describe('Whether the project is archived.'),
-          color: z.string().optional().nullable().describe('Color of the project.'),
+          color: z.string().nullish().describe('Color of the project.'),
           public: z
             .boolean()
-            .optional().nullable()
+            .nullish()
             .describe('Whether the project is public.'),
         }),
         func: async (args) => {
@@ -206,15 +206,15 @@ export async function createAsanaTools(
             .describe('The project GID to get hierarchy for.'),
           include_completed_tasks: z
             .boolean()
-            .optional().nullable()
+            .nullish()
             .describe('Include completed tasks (default: false).'),
           include_subtasks: z
             .boolean()
-            .optional().nullable()
+            .nullish()
             .describe('Include subtasks for each task (default: true).'),
           max_subtask_depth: z
             .number()
-            .optional().nullable()
+            .nullish()
             .describe('Maximum depth of subtasks to retrieve (default: 1).'),
         }),
         func: async (args) => {
@@ -231,35 +231,35 @@ export async function createAsanaTools(
         schema: z.object({
           text: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('Text to search for in task names and descriptions.'),
           assignee: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe(
               "Filter by assignee's GID or use 'me' for the current user.",
             ),
           project: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('Filter by a specific project GID.'),
           workspace: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe(
               'The workspace GID to search in. Defaults to the configured default.',
             ),
           completed: z
             .boolean()
-            .optional().nullable()
+            .nullish()
             .describe('Filter for completed tasks. Defaults to false.'),
           limit: z
             .number()
-            .optional().nullable()
+            .nullish()
             .describe('Number of tasks to return. Defaults to 20.'),
           opt_fields: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe(
               'Comma-separated list of optional fields to include in the response.',
             ),
@@ -280,7 +280,7 @@ export async function createAsanaTools(
           task_id: z.string().describe('The GID of the task to retrieve.'),
           opt_fields: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('Comma-separated list of optional fields to include.'),
         }),
         func: async (args) => {
@@ -297,18 +297,18 @@ export async function createAsanaTools(
             .string()
             .describe('The project GID to create the task in.'),
           name: z.string().describe('Name of the task.'),
-          notes: z.string().optional().nullable().describe('Description of the task.'),
+          notes: z.string().nullish().describe('Description of the task.'),
           due_on: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('Due date in YYYY-MM-DD format.'),
           assignee: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('Assignee user GID or "me".'),
           custom_fields: z
             .record(z.any())
-            .optional().nullable()
+            .nullish()
             .describe(
               'Object mapping custom field GID strings to their values.',
             ),
@@ -324,26 +324,26 @@ export async function createAsanaTools(
         description: 'Update an existing task.',
         schema: z.object({
           task_id: z.string().describe('The GID of the task to update.'),
-          name: z.string().optional().nullable().describe('New name for the task.'),
+          name: z.string().nullish().describe('New name for the task.'),
           notes: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('New description for the task.'),
           completed: z
             .boolean()
-            .optional().nullable()
+            .nullish()
             .describe('Mark task as completed or not.'),
           assignee: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('New assignee user GID or "me".'),
           due_on: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('Due date in YYYY-MM-DD format.'),
           custom_fields: z
             .record(z.any())
-            .optional().nullable()
+            .nullish()
             .describe(
               'Object mapping custom field GID strings to their values.',
             ),
@@ -376,14 +376,14 @@ export async function createAsanaTools(
             .string()
             .describe('The parent task GID to create the subtask under.'),
           name: z.string().describe('Name of the subtask.'),
-          notes: z.string().optional().nullable().describe('Description of the subtask.'),
+          notes: z.string().nullish().describe('Description of the subtask.'),
           due_on: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('Due date in YYYY-MM-DD format.'),
           assignee: z
             .string()
-            .optional().nullable()
+            .nullish()
             .describe('Assignee user GID or "me".'),
         }),
         func: async (args) => {
@@ -420,7 +420,7 @@ export async function createAsanaTools(
             .describe('The GID of the task to get comments for.'),
           limit: z
             .number()
-            .optional().nullable()
+            .nullish()
             .describe('Number of comments to return.'),
         }),
         func: async (args) => {
@@ -452,7 +452,7 @@ export async function createAsanaTools(
           workspace_id: z
             .string()
             .describe('The workspace GID to get users for.'),
-          limit: z.number().optional().nullable().describe('Results per page (1-100).'),
+          limit: z.number().nullish().describe('Results per page (1-100).'),
         }),
         func: async (args) => {
           const result = await client.listWorkspaceUsers(
