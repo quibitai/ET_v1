@@ -1,29 +1,101 @@
 # LangGraph Modular Architecture
 
-This directory contains the modular LangGraph implementation for the Quibit RAG system, replacing the monolithic `SimpleLangGraphWrapper.ts` with a clean, maintainable architecture.
+This directory contains the modular LangGraph implementation for the Quibit RAG system. This document outlines the target architecture for the ongoing refactor, which replaces the monolithic `SimpleLangGraphWrapper.ts` with a clean, maintainable, and observable system.
 
-## 🏗️ **Directory Structure**
+## 🏗️ **Target Architecture**
+
+The final architecture is designed to separate concerns into distinct layers: execution, business logic, and infrastructure.
 
 ```
-lib/ai/graphs/
-├── nodes/              # Individual graph node implementations
-│   ├── agent.ts        # Agent decision-making node
-│   ├── tools.ts        # Tool execution node  
-│   └── generateResponse.ts # Unified response generation node
-├── prompts/            # LangGraph-specific prompt templates
-│   ├── agent.prompt.ts      # Agent reasoning prompts
-│   ├── synthesis.prompt.ts  # Comprehensive analysis prompts
-│   ├── simpleResponse.prompt.ts # Direct response prompts
-│   ├── conversational.prompt.ts # Interactive dialogue prompts
-│   └── loader.ts           # Graph prompt loading service
-├── services/           # Business logic services
-│   ├── DocumentAnalysisService.ts # Document scenario analysis
-│   └── ContextService.ts          # Context optimization
-├── state.ts           # Graph state definitions and utilities
-├── router.ts          # Conditional routing logic
-├── graph.ts           # Graph assembly and compilation
-└── README.md          # This documentation
+lib/
+└── ai/
+    ├── graphs/
+    │   ├── nodes/              # Individual graph node implementations
+    │   │   ├── agent.ts
+    │   │   ├── tools.ts
+    │   │   └── generateResponse.ts
+    │   ├── prompts/            # LangGraph-specific prompt templates
+    │   │   ├── agent.prompt.ts
+    │   │   ├── synthesis.prompt.ts
+    │   │   └── loader.ts
+    │   ├── state.ts           # Graph state definitions
+    │   ├── router.ts          # Conditional routing logic
+    │   └── graph.ts           # Graph assembly and compilation
+    └── services/               # Shared business logic services
+        ├── QueryIntentAnalyzer.ts
+        ├── ResponseRouter.ts
+        └── ...
 ```
+
+## 🗺️ **Refactor Roadmap & Status**
+
+The transition from the monolithic `SimpleLangGraphWrapper.ts` to the modular architecture is being executed in phases.
+
+### Phase 1: Project Restructuring & Prompt Externalization (✅ Complete)
+
+- [x] **Directory Structure**: Created modular file organization for graph components.
+- [x] **State Management**: Extracted and defined `GraphState`.
+- [x] **Prompt Templates**: Externalized graph-related prompts into `lib/ai/graphs/prompts/`.
+- [x] **Prompt Service**: Created a loader for graph-specific prompts.
+- [x] **Type Definitions**: Established core type definitions for the new architecture.
+
+### Phase 2: Core Business Logic Service Extraction (🚧 In Progress)
+
+- [x] **Service Directory**: Established `lib/ai/services/` for shared business logic.
+- [x] **QueryIntentAnalyzer**: Created service to analyze the intent of a user's query.
+- [x] **ResponseRouter**: Created service to determine the appropriate response strategy.
+- [ ] **ToolExecutionService**: *Planned service for orchestrating tool calls.*
+- [ ] **DocumentAnalysisService**: *Planned service for complex document-related scenarios.*
+- [ ] **ContextService**: *Planned service for advanced context management.*
+
+### Phase 3: Node Implementation (🚧 In Progress)
+
+- [ ] **Agent Node** (`nodes/agent.ts`): *Implementation in progress. Will be responsible for decision-making and service utilization.*
+- [ ] **Tools Node** (`nodes/tools.ts`): *Implementation in progress. Will handle tool execution with enhanced error handling and timeouts.*
+- [ ] **Response Generation Node** (`nodes/generateResponse.ts`): *Implementation in progress. Will generate the final AI response based on the determined strategy.*
+
+### Phase 4: Full Graph Assembly & Production Features (🔵 Planned)
+
+- [ ] **Graph Assembly** (`graph.ts`): *Will integrate all nodes and services into a complete, compiled graph.*
+- [ ] **Modular Wrapper**: *A new, clean wrapper will be created to expose the modular graph, eventually deprecating `SimpleLangGraphWrapper.ts`.*
+- [ ] **Enhanced Observability**: *Production-grade monitoring, metrics, and health checks will be integrated.*
+- [ ] **Intelligent Caching**: *A robust caching layer will be implemented to improve performance.*
+
+## 🏆 **Architectural Vision**
+
+The goal of this refactor is to move from a monolithic system to a modular one, unlocking significant benefits in maintainability, testability, and observability.
+
+### **Before (Current Legacy System)**
+- **Single File**: Much of the core logic resides in `SimpleLangGraphWrapper.ts`.
+- **Embedded Logic**: Business logic is tightly coupled with execution flow.
+- **Limited Observability**: Basic logging with minimal metrics.
+- **Hard to Test**: Monolithic methods are difficult to isolate.
+- **Poor Maintainability**: Changes require understanding a large, complex file.
+
+### **After (Target Modular System)**
+- **Execution Layer**: Clean nodes (`agent.ts`, `tools.ts`, `generateResponse.ts`).
+- **Business Logic Layer**: Dedicated, reusable services in `lib/ai/services/`.
+- **Infrastructure Layer**: Future wrappers and `ObservabilityService`.
+- **Principle Adherence**: All new files will adhere to a strict 200 LOC architectural principle.
+- **Production Ready**: Comprehensive monitoring, caching, and error handling.
+
+## 🔄 **Control Flow Principles (Target)**
+
+The graph will follow a **ReAct (Reason-Act-Observe) pattern** with **corrected logic**:
+
+```
+START → Agent → Tools → Agent → Generate Response → END
+                ↑_______|        |
+                                 ↓
+                               END
+```
+
+1. **Agent Node**: Will analyze queries and use services for intelligent routing and decision-making.
+2. **Tools Node**: Will execute tools with robust error handling and timeout management.  
+3. **Agent Node (Re-entry)**: Will process tool results, using services to decide the next step (e.g., respond to the user, call another tool).
+4. **Generate Response Node**: Will create the final user-facing response.
+
+**Key Principle**: Tools will ALWAYS return to the Agent for result processing to ensure proper reasoning and observation steps.
 
 ## 📋 **Implementation Status**
 
