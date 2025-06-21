@@ -49,7 +49,7 @@ export declare const tools: {
             limit: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
             offset: z.ZodOptional<z.ZodNullable<z.ZodString>>;
             opt_fields: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-            custom_fields: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodAny>>>;
+            custom_fields: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodString, z.ZodNumber, z.ZodBoolean]>>>>;
         }, "strip", z.ZodTypeAny, {
             opt_fields?: string | null | undefined;
             workspace?: string | null | undefined;
@@ -78,7 +78,7 @@ export declare const tools: {
             sort_ascending?: boolean | null | undefined;
             limit?: number | null | undefined;
             offset?: string | null | undefined;
-            custom_fields?: Record<string, any> | null | undefined;
+            custom_fields?: Record<string, string | number | boolean> | null | undefined;
         }, {
             opt_fields?: string | null | undefined;
             workspace?: string | null | undefined;
@@ -107,7 +107,7 @@ export declare const tools: {
             sort_ascending?: boolean | null | undefined;
             limit?: number | null | undefined;
             offset?: string | null | undefined;
-            custom_fields?: Record<string, any> | null | undefined;
+            custom_fields?: Record<string, string | number | boolean> | null | undefined;
         }>;
     };
     asana_get_task: {
@@ -138,7 +138,7 @@ export declare const tools: {
             parent: z.ZodOptional<z.ZodNullable<z.ZodString>>;
             projects: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodString, "many">>>;
             resource_subtype: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-            custom_fields: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodAny>>>;
+            custom_fields: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodString, z.ZodNumber, z.ZodBoolean]>>>>;
             opt_fields: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         }, "strip", z.ZodTypeAny, {
             project_id: string;
@@ -148,7 +148,7 @@ export declare const tools: {
             assignee?: string | null | undefined;
             projects?: string[] | null | undefined;
             followers?: string[] | null | undefined;
-            custom_fields?: Record<string, any> | null | undefined;
+            custom_fields?: Record<string, string | number | boolean> | null | undefined;
             notes?: string | null | undefined;
             html_notes?: string | null | undefined;
             due_on?: string | null | undefined;
@@ -161,7 +161,7 @@ export declare const tools: {
             assignee?: string | null | undefined;
             projects?: string[] | null | undefined;
             followers?: string[] | null | undefined;
-            custom_fields?: Record<string, any> | null | undefined;
+            custom_fields?: Record<string, string | number | boolean> | null | undefined;
             notes?: string | null | undefined;
             html_notes?: string | null | undefined;
             due_on?: string | null | undefined;
@@ -179,7 +179,7 @@ export declare const tools: {
             assignee: z.ZodOptional<z.ZodNullable<z.ZodString>>;
             completed: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
             resource_subtype: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-            custom_fields: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodAny>>>;
+            custom_fields: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodString, z.ZodNumber, z.ZodBoolean]>>>>;
             opt_fields: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         }, "strip", z.ZodTypeAny, {
             task_id: string;
@@ -187,7 +187,7 @@ export declare const tools: {
             resource_subtype?: string | null | undefined;
             completed?: boolean | null | undefined;
             assignee?: string | null | undefined;
-            custom_fields?: Record<string, any> | null | undefined;
+            custom_fields?: Record<string, string | number | boolean> | null | undefined;
             name?: string | null | undefined;
             notes?: string | null | undefined;
             due_on?: string | null | undefined;
@@ -197,7 +197,7 @@ export declare const tools: {
             resource_subtype?: string | null | undefined;
             completed?: boolean | null | undefined;
             assignee?: string | null | undefined;
-            custom_fields?: Record<string, any> | null | undefined;
+            custom_fields?: Record<string, string | number | boolean> | null | undefined;
             name?: string | null | undefined;
             notes?: string | null | undefined;
             due_on?: string | null | undefined;
@@ -365,17 +365,17 @@ export declare const tools: {
             name_pattern: string;
             opt_fields?: string | null | undefined;
             workspace?: string | null | undefined;
+            team?: string | null | undefined;
             limit?: number | null | undefined;
             offset?: string | null | undefined;
-            team?: string | null | undefined;
             archived?: boolean | null | undefined;
         }, {
             name_pattern: string;
             opt_fields?: string | null | undefined;
             workspace?: string | null | undefined;
+            team?: string | null | undefined;
             limit?: number | null | undefined;
             offset?: string | null | undefined;
-            team?: string | null | undefined;
             archived?: boolean | null | undefined;
         }>;
     };
@@ -392,16 +392,16 @@ export declare const tools: {
         }, "strip", z.ZodTypeAny, {
             opt_fields?: string | null | undefined;
             workspace?: string | null | undefined;
+            team?: string | null | undefined;
             limit?: number | null | undefined;
             offset?: string | null | undefined;
-            team?: string | null | undefined;
             archived?: boolean | null | undefined;
         }, {
             opt_fields?: string | null | undefined;
             workspace?: string | null | undefined;
+            team?: string | null | undefined;
             limit?: number | null | undefined;
             offset?: string | null | undefined;
-            team?: string | null | undefined;
             archived?: boolean | null | undefined;
         }>;
     };
@@ -816,7 +816,7 @@ export declare const list_of_tools: ({
         limit: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
         offset: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         opt_fields: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-        custom_fields: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodAny>>>;
+        custom_fields: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodString, z.ZodNumber, z.ZodBoolean]>>>>;
     }, "strip", z.ZodTypeAny, {
         opt_fields?: string | null | undefined;
         workspace?: string | null | undefined;
@@ -845,7 +845,7 @@ export declare const list_of_tools: ({
         sort_ascending?: boolean | null | undefined;
         limit?: number | null | undefined;
         offset?: string | null | undefined;
-        custom_fields?: Record<string, any> | null | undefined;
+        custom_fields?: Record<string, string | number | boolean> | null | undefined;
     }, {
         opt_fields?: string | null | undefined;
         workspace?: string | null | undefined;
@@ -874,7 +874,7 @@ export declare const list_of_tools: ({
         sort_ascending?: boolean | null | undefined;
         limit?: number | null | undefined;
         offset?: string | null | undefined;
-        custom_fields?: Record<string, any> | null | undefined;
+        custom_fields?: Record<string, string | number | boolean> | null | undefined;
     }>;
 } | {
     name: string;
@@ -903,7 +903,7 @@ export declare const list_of_tools: ({
         parent: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         projects: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodString, "many">>>;
         resource_subtype: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-        custom_fields: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodAny>>>;
+        custom_fields: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodString, z.ZodNumber, z.ZodBoolean]>>>>;
         opt_fields: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     }, "strip", z.ZodTypeAny, {
         project_id: string;
@@ -913,7 +913,7 @@ export declare const list_of_tools: ({
         assignee?: string | null | undefined;
         projects?: string[] | null | undefined;
         followers?: string[] | null | undefined;
-        custom_fields?: Record<string, any> | null | undefined;
+        custom_fields?: Record<string, string | number | boolean> | null | undefined;
         notes?: string | null | undefined;
         html_notes?: string | null | undefined;
         due_on?: string | null | undefined;
@@ -926,7 +926,7 @@ export declare const list_of_tools: ({
         assignee?: string | null | undefined;
         projects?: string[] | null | undefined;
         followers?: string[] | null | undefined;
-        custom_fields?: Record<string, any> | null | undefined;
+        custom_fields?: Record<string, string | number | boolean> | null | undefined;
         notes?: string | null | undefined;
         html_notes?: string | null | undefined;
         due_on?: string | null | undefined;
@@ -943,7 +943,7 @@ export declare const list_of_tools: ({
         assignee: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         completed: z.ZodOptional<z.ZodNullable<z.ZodBoolean>>;
         resource_subtype: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-        custom_fields: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodAny>>>;
+        custom_fields: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodString, z.ZodNumber, z.ZodBoolean]>>>>;
         opt_fields: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     }, "strip", z.ZodTypeAny, {
         task_id: string;
@@ -951,7 +951,7 @@ export declare const list_of_tools: ({
         resource_subtype?: string | null | undefined;
         completed?: boolean | null | undefined;
         assignee?: string | null | undefined;
-        custom_fields?: Record<string, any> | null | undefined;
+        custom_fields?: Record<string, string | number | boolean> | null | undefined;
         name?: string | null | undefined;
         notes?: string | null | undefined;
         due_on?: string | null | undefined;
@@ -961,7 +961,7 @@ export declare const list_of_tools: ({
         resource_subtype?: string | null | undefined;
         completed?: boolean | null | undefined;
         assignee?: string | null | undefined;
-        custom_fields?: Record<string, any> | null | undefined;
+        custom_fields?: Record<string, string | number | boolean> | null | undefined;
         name?: string | null | undefined;
         notes?: string | null | undefined;
         due_on?: string | null | undefined;
@@ -1119,17 +1119,17 @@ export declare const list_of_tools: ({
         name_pattern: string;
         opt_fields?: string | null | undefined;
         workspace?: string | null | undefined;
+        team?: string | null | undefined;
         limit?: number | null | undefined;
         offset?: string | null | undefined;
-        team?: string | null | undefined;
         archived?: boolean | null | undefined;
     }, {
         name_pattern: string;
         opt_fields?: string | null | undefined;
         workspace?: string | null | undefined;
+        team?: string | null | undefined;
         limit?: number | null | undefined;
         offset?: string | null | undefined;
-        team?: string | null | undefined;
         archived?: boolean | null | undefined;
     }>;
 } | {
@@ -1145,16 +1145,16 @@ export declare const list_of_tools: ({
     }, "strip", z.ZodTypeAny, {
         opt_fields?: string | null | undefined;
         workspace?: string | null | undefined;
+        team?: string | null | undefined;
         limit?: number | null | undefined;
         offset?: string | null | undefined;
-        team?: string | null | undefined;
         archived?: boolean | null | undefined;
     }, {
         opt_fields?: string | null | undefined;
         workspace?: string | null | undefined;
+        team?: string | null | undefined;
         limit?: number | null | undefined;
         offset?: string | null | undefined;
-        team?: string | null | undefined;
         archived?: boolean | null | undefined;
     }>;
 } | {

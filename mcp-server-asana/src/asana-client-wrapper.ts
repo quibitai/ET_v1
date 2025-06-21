@@ -64,6 +64,23 @@ export class AsanaClientWrapper {
     }
   }
 
+  // Helper method to filter out undefined/null/empty values from parameters
+  private filterQueryParams(params: any): any {
+    const filtered: any = {};
+
+    for (const [key, value] of Object.entries(params)) {
+      // Skip undefined, null, or empty string values
+      if (value === undefined || value === null || value === '') {
+        continue;
+      }
+
+      // Include all other values (including false, 0, empty arrays)
+      filtered[key] = value;
+    }
+
+    return filtered;
+  }
+
   // Workspace operations
   async listWorkspaces(optFields?: string): Promise<any> {
     return this.withErrorHandling(async () => {
@@ -99,9 +116,12 @@ export class AsanaClientWrapper {
         params.workspace = this.config.defaultWorkspaceId;
       }
 
+      // Filter out undefined/null/empty values to prevent API errors
+      const filteredParams = this.filterQueryParams(params);
+
       const result = await tasksApi.searchTasksForWorkspace(
-        params.workspace,
-        params,
+        filteredParams.workspace,
+        filteredParams,
       );
       return result.data;
     }, 'searchTasks');
@@ -168,7 +188,8 @@ export class AsanaClientWrapper {
     return this.withErrorHandling(async () => {
       // @ts-ignore - Type definitions don't match runtime structure
       const tasksApi = new Asana.TasksApi();
-      const result = await tasksApi.getTasks(params);
+      const filteredParams = this.filterQueryParams(params);
+      const result = await tasksApi.getTasks(filteredParams);
       return result.data;
     }, 'getTasks');
   }
@@ -298,7 +319,10 @@ export class AsanaClientWrapper {
         params.workspace = this.config.defaultWorkspaceId;
       }
 
-      const result = await projectsApi.getProjects(params);
+      // FIX: Use the utility method to filter out undefined/null/empty values
+      const filteredParams = this.filterQueryParams(params);
+
+      const result = await projectsApi.getProjects(filteredParams);
       return result.data;
     }, 'searchProjects');
   }
@@ -314,20 +338,15 @@ export class AsanaClientWrapper {
         throw new Error('Workspace ID is required');
       }
 
-      // Build query parameters
-      const queryParams: any = {
-        opt_fields: params.opt_fields,
-        limit: params.limit,
-        offset: params.offset,
-        archived: params.archived,
-      };
+      // Use the utility method to filter out undefined/null/empty values
+      const filteredParams = this.filterQueryParams(params);
+
+      // Remove workspace from query params as it's passed separately
+      const { workspace: _, team, ...queryParams } = filteredParams;
 
       // If team is specified, use getProjectsForTeam
-      if (params.team) {
-        const result = await projectsApi.getProjectsForTeam(
-          params.team,
-          queryParams,
-        );
+      if (team) {
+        const result = await projectsApi.getProjectsForTeam(team, queryParams);
         return result.data;
       } else {
         // Otherwise use getProjectsForWorkspace
@@ -420,9 +439,10 @@ export class AsanaClientWrapper {
     return this.withErrorHandling(async () => {
       // @ts-ignore - Type definitions don't match runtime structure
       const projectStatusesApi = new Asana.ProjectStatusesApi();
+      const filteredParams = this.filterQueryParams(params);
       const result = await projectStatusesApi.getProjectStatusesForProject(
         projectId,
-        params,
+        filteredParams,
       );
       return result.data;
     }, 'getProjectStatuses');
@@ -545,7 +565,11 @@ export class AsanaClientWrapper {
         throw new Error('Workspace ID is required');
       }
 
-      const result = await usersApi.getUsersForWorkspace(workspace, params);
+      const filteredParams = this.filterQueryParams(params);
+      const result = await usersApi.getUsersForWorkspace(
+        workspace,
+        filteredParams,
+      );
       return result.data;
     }, 'listWorkspaceUsers');
   }
@@ -555,7 +579,8 @@ export class AsanaClientWrapper {
       // @ts-ignore - Type definitions don't match runtime structure
       const usersApi = new Asana.UsersApi();
 
-      const result = await usersApi.getUser(userId, params);
+      const filteredParams = this.filterQueryParams(params);
+      const result = await usersApi.getUser(userId, filteredParams);
       return result.data;
     }, 'getUser');
   }
@@ -573,7 +598,11 @@ export class AsanaClientWrapper {
         throw new Error('Workspace ID is required');
       }
 
-      const result = await tagsApi.getTagsForWorkspace(workspace, params);
+      const filteredParams = this.filterQueryParams(params);
+      const result = await tagsApi.getTagsForWorkspace(
+        workspace,
+        filteredParams,
+      );
       return result.data;
     }, 'getTagsForWorkspace');
   }
@@ -582,7 +611,8 @@ export class AsanaClientWrapper {
     return this.withErrorHandling(async () => {
       // @ts-ignore - Type definitions don't match runtime structure
       const tagsApi = new Asana.TagsApi();
-      const result = await tagsApi.getTasksForTag(tagGid, params);
+      const filteredParams = this.filterQueryParams(params);
+      const result = await tagsApi.getTasksForTag(tagGid, filteredParams);
       return result.data;
     }, 'getTasksForTag');
   }
@@ -595,9 +625,10 @@ export class AsanaClientWrapper {
     return this.withErrorHandling(async () => {
       // @ts-ignore - Type definitions don't match runtime structure
       const attachmentsApi = new Asana.AttachmentsApi();
+      const filteredParams = this.filterQueryParams(params);
       const result = await attachmentsApi.getAttachmentsForObject({
         parent: objectGid,
-        ...params,
+        ...filteredParams,
       });
       return result.data;
     }, 'getAttachmentsForObject');

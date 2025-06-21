@@ -721,6 +721,7 @@ export class SimpleLangGraphWrapper {
         // All Asana tools (now properly defined with correct schemas)
         'asana_list_workspaces',
         'asana_search_projects',
+        'asana_list_projects',
         'asana_search_tasks',
         'asana_get_task',
         'asana_create_task',

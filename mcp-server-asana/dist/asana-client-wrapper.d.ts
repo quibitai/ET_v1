@@ -9,6 +9,7 @@ export declare class AsanaClientWrapper {
     constructor(config: AsanaClientConfig);
     private initializeClient;
     private withErrorHandling;
+    private filterQueryParams;
     listWorkspaces(optFields?: string): Promise<any>;
     searchTasks(params: any): Promise<any>;
     getTask(taskId: string, optFields?: string): Promise<any>;

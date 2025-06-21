@@ -1,0 +1,14 @@
+# Node
+node_modules
+npm-debug.log
+pnpm-lock.yaml
+
+# Build output
+dist
+
+# Environment
+.env
+.env.local
+
+# OS-specific
+.DS_Store 

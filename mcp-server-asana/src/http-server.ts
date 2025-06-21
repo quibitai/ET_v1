@@ -6,7 +6,9 @@ import { createToolHandler, list_of_tools } from './tool-handler.js';
 import { logger } from './utils/logger.js';
 import { VERSION } from './version.js';
 
-export function createHttpServer(asanaClient: AsanaClientWrapper) {
+export function createHttpServer(
+  asanaClient: AsanaClientWrapper,
+): express.Application {
   const app = express();
   const toolHandler = createToolHandler(asanaClient);
 
