@@ -71,16 +71,18 @@ export const searchAndRetrieveKnowledgeBase = new DynamicStructuredTool({
         'Number of results to consider. The tool will return the content of the top result.',
       ),
     filter: z
-      .record(z.unknown())
+      .record(z.string())
       .optional()
+      .nullable()
       .describe(
         'Optional JSONB filter for metadata (e.g., {"file_title": "Specific Title"}).',
       ),
   }),
-  func: async ({ query, match_count = 1, filter = {} }): Promise<string> => {
+  func: async ({ query, match_count = 1, filter }): Promise<string> => {
     const startTime = performance.now();
+    const normalizedFilter = filter || {};
     console.log(
-      `[searchAndRetrieveKnowledgeBase] Searching "${query}" (k=${match_count}, filter=${JSON.stringify(filter)})`,
+      `[searchAndRetrieveKnowledgeBase] Searching "${query}" (k=${match_count}, filter=${JSON.stringify(normalizedFilter)})`,
     );
 
     // Track tool usage analytics
@@ -90,7 +92,9 @@ export const searchAndRetrieveKnowledgeBase = new DynamicStructuredTool({
         toolName: 'searchInternalKnowledgeBase',
         query: query.substring(0, 100), // Limit for privacy
         matchCount: match_count,
-        hasFilter: Object.keys(filter).length > 0,
+        hasFilter: normalizedFilter
+          ? Object.keys(normalizedFilter).length > 0
+          : false,
         timestamp: new Date().toISOString(),
       },
     });
@@ -149,7 +153,7 @@ export const searchAndRetrieveKnowledgeBase = new DynamicStructuredTool({
         {
           query_embedding: queryEmbedding,
           match_count,
-          filter,
+          filter: normalizedFilter,
         },
       );
 

@@ -66,6 +66,39 @@ export interface ToolManifest {
   requiredScopes?: string[];
 
   /**
+   * Streaming configuration for tools that support streaming
+   */
+  streamingConfig?: {
+    /**
+     * Type of streaming this tool provides
+     * - progress: Shows completion percentage and status updates
+     * - incremental: Streams data as it becomes available
+     * - status: Provides real-time status messages
+     */
+    type: 'progress' | 'incremental' | 'status';
+
+    /**
+     * Preferred chunk size for incremental streaming
+     */
+    chunkSize?: number;
+
+    /**
+     * Expected progress steps for progress streaming
+     */
+    progressSteps?: string[];
+
+    /**
+     * Status messages for status streaming
+     */
+    statusMessages?: string[];
+
+    /**
+     * Whether this tool can stream partial results
+     */
+    supportsPartialResults?: boolean;
+  };
+
+  /**
    * Version of the manifest format (for future compatibility)
    */
   manifestVersion?: string;

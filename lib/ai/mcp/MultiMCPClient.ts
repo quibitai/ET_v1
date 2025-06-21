@@ -13,6 +13,12 @@ import type {
 import { AsanaMCPClient } from './AsanaMCPClient';
 import { HealthMonitor } from './health/HealthMonitor';
 import type { HealthAlert } from './health/HealthMonitor';
+import { StreamingMCPWrapper } from './streaming/StreamingMCPWrapper';
+import { ToolRegistry } from '../tools/registry/ToolRegistry';
+import type {
+  StreamingToolRequest,
+  StreamingToolResponse,
+} from './streaming/types';
 
 export interface ServiceRegistration {
   name: string;
@@ -53,6 +59,8 @@ export class MultiMCPClient {
   private serviceStatus: Map<string, ServiceStatus> = new Map();
   private healthMonitor: HealthMonitor;
   private config: Required<MultiMCPConfig>;
+  private toolRegistry: ToolRegistry;
+  private streamingWrappers: Map<string, StreamingMCPWrapper> = new Map();
 
   constructor(config: MultiMCPConfig = {}) {
     this.config = {
@@ -60,6 +68,9 @@ export class MultiMCPClient {
       healthCheckInterval: config.healthCheckInterval || 60000, // 1 minute
       autoDiscovery: config.autoDiscovery !== false,
     };
+
+    // Initialize tool registry for streaming support
+    this.toolRegistry = new ToolRegistry();
 
     // Initialize health monitor
     this.healthMonitor = new HealthMonitor({
@@ -155,6 +166,9 @@ export class MultiMCPClient {
 
     // Update tool routing
     this.updateToolRouting(name, client, priority);
+
+    // Create streaming wrapper for the service
+    this.createStreamingWrapper(name, client);
 
     // Register with health monitor
     this.healthMonitor.startMonitoring(
@@ -482,6 +496,125 @@ export class MultiMCPClient {
   }
 
   /**
+   * Create streaming wrapper for a service
+   */
+  private async createStreamingWrapper(
+    serviceName: string,
+    client: BaseMCPClient,
+  ): Promise<void> {
+    try {
+      // Create wrapper (manifests will be loaded on demand)
+      const wrapper = new StreamingMCPWrapper(client);
+      this.streamingWrappers.set(serviceName, wrapper);
+    } catch (error) {
+      console.warn(
+        `Failed to create streaming wrapper for ${serviceName}:`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Execute tool with streaming support
+   */
+  async executeStreamingTool(
+    request: StreamingToolRequest,
+  ): Promise<StreamingToolResponse | null> {
+    const routes = this.getToolRouting(request.toolName);
+
+    if (routes.length === 0) {
+      throw new Error(`Tool ${request.toolName} not available in any service`);
+    }
+
+    // Try services in priority order
+    for (const route of routes) {
+      const service = this.services.get(route.service);
+      if (!service?.enabled) continue;
+
+      try {
+        // Get tool manifest
+        const manifest = await this.toolRegistry.getToolManifest(
+          request.toolName,
+          route.service,
+        );
+
+        // Check if tool supports streaming
+        if (!manifest?.streamingSupported) {
+          continue; // Try next service
+        }
+
+        // Create wrapper with manifest
+        const streamingWrapper = new StreamingMCPWrapper(
+          route.client,
+          manifest,
+        );
+
+        return await streamingWrapper.executeStreaming(request);
+      } catch (error) {
+        console.warn(`Streaming execution failed on ${route.service}:`, error);
+        continue; // Try next service
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Get streaming tools available across all services
+   */
+  async getStreamingTools(): Promise<
+    Array<{
+      toolName: string;
+      service: string;
+      manifest: any;
+    }>
+  > {
+    const streamingTools: Array<{
+      toolName: string;
+      service: string;
+      manifest: any;
+    }> = [];
+
+    try {
+      const allStreamingTools = await this.toolRegistry.getStreamingTools();
+
+      for (const manifest of allStreamingTools) {
+        // Check if service is available
+        const service = this.services.get(manifest.service);
+        if (service?.enabled) {
+          streamingTools.push({
+            toolName: manifest.id,
+            service: manifest.service,
+            manifest,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to get streaming tools:', error);
+    }
+
+    return streamingTools;
+  }
+
+  /**
+   * Check if a tool supports streaming
+   */
+  async isStreamingSupported(
+    toolName: string,
+    serviceName?: string,
+  ): Promise<boolean> {
+    try {
+      const manifest = await this.toolRegistry.getToolManifest(
+        toolName,
+        serviceName,
+      );
+      return manifest?.streamingSupported || false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Destroy the client and clean up resources
    */
   destroy(): void {
@@ -489,5 +622,6 @@ export class MultiMCPClient {
     this.services.clear();
     this.toolRouting.clear();
     this.serviceStatus.clear();
+    this.streamingWrappers.clear();
   }
 }

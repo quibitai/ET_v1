@@ -38,6 +38,7 @@ export declare class AsanaClientWrapper {
     getTeamsForUser(userGid: string, optFields?: string): Promise<any>;
     getTeamsForWorkspace(workspaceGid?: string, optFields?: string): Promise<any>;
     listWorkspaceUsers(workspaceId?: string, params?: any): Promise<any>;
+    getUser(userId: string, params?: any): Promise<any>;
     getTagsForWorkspace(workspaceGid?: string, params?: any): Promise<any>;
     getTasksForTag(tagGid: string, params?: any): Promise<any>;
     getAttachmentsForObject(objectGid: string, params?: any): Promise<any>;

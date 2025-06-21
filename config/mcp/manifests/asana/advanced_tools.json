@@ -133,7 +133,18 @@
       "streamingSupported": true,
       "batchCompatible": false,
       "tags": ["hierarchy", "project", "structure", "analysis"],
-      "requiredPermissions": ["read:projects", "read:tasks"]
+      "requiredPermissions": ["read:projects", "read:tasks"],
+      "streamingConfig": {
+        "type": "progress",
+        "progressSteps": [
+          "Loading project details",
+          "Fetching sections",
+          "Loading tasks",
+          "Processing subtasks",
+          "Building hierarchy"
+        ],
+        "supportsPartialResults": true
+      }
     },
     {
       "id": "asana_batch_operations",
@@ -145,7 +156,17 @@
       "streamingSupported": true,
       "batchCompatible": false,
       "tags": ["batch", "bulk", "performance", "advanced"],
-      "requiredPermissions": ["write:tasks", "write:projects"]
+      "requiredPermissions": ["write:tasks", "write:projects"],
+      "streamingConfig": {
+        "type": "progress",
+        "progressSteps": [
+          "Validating operations",
+          "Processing batch",
+          "Executing operations",
+          "Collecting results"
+        ],
+        "supportsPartialResults": false
+      }
     },
     {
       "id": "asana_upload_attachment",

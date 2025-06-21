@@ -387,6 +387,7 @@ export class AsanaClientWrapper {
         return this.withErrorHandling(async () => {
             // @ts-ignore - Type definitions don't match runtime structure
             const usersApi = new Asana.UsersApi();
+            // Use workspace from params or default workspace
             const workspace = workspaceId || this.config.defaultWorkspaceId;
             if (!workspace) {
                 throw new Error('Workspace ID is required');
@@ -394,6 +395,14 @@ export class AsanaClientWrapper {
             const result = await usersApi.getUsersForWorkspace(workspace, params);
             return result.data;
         }, 'listWorkspaceUsers');
+    }
+    async getUser(userId, params = {}) {
+        return this.withErrorHandling(async () => {
+            // @ts-ignore - Type definitions don't match runtime structure
+            const usersApi = new Asana.UsersApi();
+            const result = await usersApi.getUser(userId, params);
+            return result.data;
+        }, 'getUser');
     }
     // Tag operations
     async getTagsForWorkspace(workspaceGid, params = {}) {
