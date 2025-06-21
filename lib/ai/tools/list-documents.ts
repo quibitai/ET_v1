@@ -38,8 +38,7 @@ export const listDocumentsTool = new DynamicStructuredTool({
   schema: z.object({
     filter: z
       .record(z.string())
-      .optional()
-      .nullable()
+      .nullish()
       .describe(
         'Optional JSONB filter for metadata (e.g., {"schema": "markdown"})',
       ),

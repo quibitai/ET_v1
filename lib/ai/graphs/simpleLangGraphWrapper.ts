@@ -698,6 +698,16 @@ export class SimpleLangGraphWrapper {
         'listDocuments',
         'searchInternalKnowledgeBase',
         'getMultipleDocuments',
+        'getDocumentContents',
+        'queryDocumentRows',
+        'requestSuggestions',
+        'googleCalendar',
+        'tavilyExtract',
+        'createBudget',
+        // Other core tools with proper schemas
+        'multiDocumentRetrieval',
+        'tavilySearch',
+        'getMessagesFromOtherChat',
         // All Asana tools (now properly defined with correct schemas)
         'asana_list_workspaces',
         'asana_search_projects',
