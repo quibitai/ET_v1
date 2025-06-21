@@ -1,2 +1,3 @@
+import express from 'express';
 import type { AsanaClientWrapper } from './asana-client-wrapper.js';
-export declare function createHttpServer(asanaClient: AsanaClientWrapper): import("express-serve-static-core").Express;
+export declare function createHttpServer(asanaClient: AsanaClientWrapper): express.Application;
