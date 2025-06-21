@@ -679,97 +679,77 @@ export class SimpleLangGraphWrapper {
       '[LangGraph Agent] Applying schema patching to tools before OpenAI binding',
       {
         toolCount: tools.length,
+        toolNames: tools.map((t) => t?.name || 'unnamed').join(', '),
       },
     );
 
-    // Since zod-to-json-schema conversion is failing, let's just return the original tools
-    // but create a patched version that will work with OpenAI
     return tools.map((tool, index) => {
       if (!tool || !tool.name) {
+        this.logger.warn(
+          `[LangGraph Agent] Tool at index ${index} is missing name, skipping`,
+        );
         return tool;
       }
 
-      // Special handling for asana_create_project which is causing the error
-      if (tool.name === 'asana_create_project') {
-        this.logger.warn(
-          `[LangGraph Agent] 🔧 Applying special fix for asana_create_project (tool index ${index})`,
-        );
-
-        // Create a safe schema for this tool that won't cause OpenAI errors
-        const { z } = require('zod');
-        const safeSchema = z.object({
-          name: z.string().describe('The name of the project'),
-          members: z
-            .array(z.string())
-            .optional()
-            .describe('Array of user GIDs to add as members'),
-          notes: z
-            .string()
-            .optional()
-            .describe('Free-form text notes for the project'),
-          team: z
-            .string()
-            .optional()
-            .describe('The team to create the project in'),
-          workspace: z
-            .string()
-            .optional()
-            .describe('The workspace to create the project in'),
-        });
-
-        return {
-          ...tool,
-          schema: safeSchema,
-        };
-      }
-
-      // Skip schema patching for tools that have been fixed for OpenAI compatibility
+      // Comprehensive list of tools that have been fixed for OpenAI compatibility
+      // These tools now have proper .optional().nullable() schemas and don't need patching
       const fixedTools = [
+        // Document tools (fixed in recent schema updates)
         'listDocuments',
         'searchInternalKnowledgeBase',
         'getMultipleDocuments',
+        // All Asana tools (now properly defined with correct schemas)
+        'asana_list_workspaces',
+        'asana_search_projects',
         'asana_search_tasks',
         'asana_get_task',
         'asana_create_task',
+        'asana_get_task_stories',
         'asana_update_task',
+        'asana_get_project',
+        'asana_get_project_task_counts',
+        'asana_get_project_sections',
+        'asana_create_task_story',
+        'asana_add_task_dependencies',
+        'asana_add_task_dependents',
+        'asana_create_subtask',
+        'asana_add_followers_to_task',
+        'asana_get_multiple_tasks_by_gid',
+        'asana_get_project_status',
+        'asana_get_project_statuses',
+        'asana_create_project_status',
+        'asana_delete_project_status',
+        'asana_set_parent_for_task',
+        'asana_get_tasks_for_tag',
+        'asana_get_tags_for_workspace',
+        'asana_create_section_for_project',
+        'asana_add_task_to_section',
+        'asana_create_project',
+        'asana_get_teams_for_user',
+        'asana_get_teams_for_workspace',
+        'asana_list_workspace_users',
+        'asana_get_project_hierarchy',
+        'asana_get_attachments_for_object',
+        'asana_upload_attachment_for_object',
+        'asana_download_attachment',
       ];
 
       if (fixedTools.includes(tool.name)) {
         this.logger.info(
-          `[LangGraph Agent] Tool '${tool.name}' has been fixed for OpenAI compatibility, skipping schema patching`,
+          `[LangGraph Agent] ✅ Tool '${tool.name}' has proper OpenAI-compatible schema, using as-is`,
         );
-        return tool; // Return original tool without patching
+        return tool; // Return original tool without any patching
       }
 
-      // For other tools, check if they have array properties that might cause issues
+      // For tools that haven't been explicitly fixed, apply conservative patching
+      this.logger.warn(
+        `[LangGraph Agent] ⚠️ Tool '${tool.name}' not in fixed list, applying conservative schema patching`,
+      );
+
+      // Only apply fallback patching for truly unknown tools
       if (tool.schema) {
         try {
-          // Try to detect if this tool might have array schema issues
-          const schemaString = tool.schema.toString();
-          if (schemaString.includes('array') || tool.name.includes('asana')) {
-            this.logger.info(
-              `[LangGraph Agent] Tool '${tool.name}' might have array schemas, applying safe fallback`,
-            );
-
-            // Use a very safe fallback schema - FIXED: No .optional() to avoid OpenAI issues
-            const { z } = require('zod');
-            const safeSchema = z.object({
-              input: z
-                .any()
-                .describe(`Input parameters for ${tool.name}`)
-                .default({}),
-            });
-
-            return {
-              ...tool,
-              schema: safeSchema,
-            };
-          }
-        } catch (error) {
-          this.logger.warn(
-            `[LangGraph Agent] Error analyzing tool ${tool.name}, using safe fallback`,
-          );
-
+          // For unknown tools, use a conservative approach
           const { z } = require('zod');
           const safeSchema = z.object({
             input: z
@@ -782,6 +762,12 @@ export class SimpleLangGraphWrapper {
             ...tool,
             schema: safeSchema,
           };
+        } catch (error) {
+          this.logger.error(
+            `[LangGraph Agent] Error creating fallback schema for tool ${tool.name}:`,
+            error,
+          );
+          return tool; // Return original tool if patching fails
         }
       }
 
