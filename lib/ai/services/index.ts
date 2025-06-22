@@ -47,3 +47,20 @@ export type {
 
 export { UnifiedSystemPromptManager } from './UnifiedSystemPromptManager';
 export type { PromptContext } from './UnifiedSystemPromptManager';
+
+// Phase 4: State Management Services
+export { StateManagementService } from './StateManagementService';
+export type {
+  WorkflowStateData,
+  StateValidationResult,
+  MultiDocumentScenario,
+  QueryIntentAnalysis,
+} from './StateManagementService';
+
+export { WorkflowOrchestrator } from './WorkflowOrchestrator';
+export type {
+  WorkflowState,
+  ExecutedTool,
+  ToolSuggestion,
+  WorkflowStatus,
+} from './WorkflowOrchestrator';

@@ -22,9 +22,13 @@ import { ContextWindowManager } from '../core/contextWindowManager';
 import {
   StandardizedResponseFormatter,
   UnifiedSystemPromptManager,
+  StateManagementService,
+  WorkflowOrchestrator,
   type ToolResult,
   type FormattingOptions,
   type PromptContext,
+  type MultiDocumentScenario,
+  type QueryIntentAnalysis,
 } from '../services';
 import { StreamingCoordinator } from '../formatting/StreamingCoordinator';
 import { DocumentOrchestrator } from '../core/DocumentOrchestrator';
@@ -552,8 +556,8 @@ export class SimpleLangGraphWrapper {
   private shownProgressIndicators: Set<string> = new Set();
   // ADD: Tool result caching to prevent redundant calls
   private toolResultCache: Map<string, any> = new Map();
-  // ADD: Tool workflow manager for orchestrating tool sequences
-  private workflowManager: ToolWorkflowManager;
+  // PHASE 4: State Management Services
+  private workflowOrchestrator: WorkflowOrchestrator;
 
   // PHASE 3 INTEGRATION: Service integrations
   private queryIntentAnalyzer: QueryIntentAnalyzer;
@@ -581,8 +585,8 @@ export class SimpleLangGraphWrapper {
       process.setMaxListeners(20);
     }
 
-    // Initialize workflow manager
-    this.workflowManager = new ToolWorkflowManager(this.logger);
+    // PHASE 4: Initialize workflow orchestrator
+    this.workflowOrchestrator = new WorkflowOrchestrator(this.logger);
 
     // PHASE 3 INTEGRATION: Initialize services
     this.queryIntentAnalyzer = new QueryIntentAnalyzer(this.logger);
@@ -1144,8 +1148,10 @@ export class SimpleLangGraphWrapper {
               : state.input || '';
 
           const suggestedTools =
-            this.workflowManager.getSuggestedNextTools(currentQuery);
-          const forceToolCall = suggestedTools.find((tool) => tool.forceCall);
+            this.workflowOrchestrator.getSuggestedNextTools(currentQuery);
+          const forceToolCall = suggestedTools.find(
+            (tool: any) => tool.forceCall,
+          );
 
           if (forceToolCall) {
             const targetTool = this.tools.find(
@@ -2301,7 +2307,7 @@ Create the ${responseType} now.`,
           const toolCall = toExecute[i];
           const toolMessage = newToolMessages[i];
           if (toolMessage) {
-            this.workflowManager.analyzeToolResults(
+            this.workflowOrchestrator.analyzeToolResults(
               toolCall.name,
               toolMessage.content,
               toolCall.args,
@@ -2543,8 +2549,8 @@ Create the ${responseType} now.`,
 
     // Check if workflow is ready for synthesis
     const isWorkflowReady =
-      this.workflowManager.isWorkflowReadyForSynthesis(currentQuery);
-    const workflowStatus = this.workflowManager.getWorkflowStatus();
+      this.workflowOrchestrator.isWorkflowReadyForSynthesis(currentQuery);
+    const workflowStatus = this.workflowOrchestrator.getWorkflowStatus();
 
     this.logger.info('[LangGraph Router] Workflow status check:', {
       isWorkflowReady,
@@ -2552,11 +2558,11 @@ Create the ${responseType} now.`,
       currentQuery: currentQuery.substring(0, 100),
     });
 
-    // Get suggested tools from workflow manager
+    // Get suggested tools from workflow orchestrator
     const suggestedTools =
-      this.workflowManager.getSuggestedNextTools(currentQuery);
+      this.workflowOrchestrator.getSuggestedNextTools(currentQuery);
     const hasHighPriorityTools = suggestedTools.some(
-      (tool) => tool.priority === 'high',
+      (tool: any) => tool.priority === 'high',
     );
 
     this.logger.info('[LangGraph Router] Tool suggestions:', {
@@ -2895,7 +2901,7 @@ Create the ${responseType} now.`,
     needsSynthesis = true,
   ): AsyncGenerator<Uint8Array> {
     // Reset workflow manager for new conversations
-    this.workflowManager.reset();
+    this.workflowOrchestrator.reset();
 
     // Clear tool result cache for new conversations
     this.toolResultCache.clear();
