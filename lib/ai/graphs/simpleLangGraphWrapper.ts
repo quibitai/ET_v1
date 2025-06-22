@@ -3716,8 +3716,8 @@ Current date: ${new Date().toISOString()}`;
           const toolMessages = state.messages.filter(
             (msg: any) => msg._getType() === 'tool',
           );
-          const toolResults: ToolResult[] = toolMessages.map((msg) => ({
-            name: (msg as any)?.name || 'tool',
+          const toolResults: ToolResult[] = toolMessages.map((msg: any) => ({
+            name: msg?.name || 'tool',
             content: msg.content,
           }));
 
