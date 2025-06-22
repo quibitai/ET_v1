@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react';
 
 import type { Vote } from '@/lib/db/schema';
 
-import { CopyIcon, ThumbDownIcon, ThumbUpIcon } from './icons';
+import { CopyIcon } from './icons';
 import { Button } from './ui/button';
 import {
   Tooltip,
@@ -13,7 +13,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from './ui/tooltip';
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import equal from 'fast-deep-equal';
 import { toast } from 'sonner';
 
@@ -32,6 +32,8 @@ export function PureMessageActions({
   const [_, copyToClipboard] = useCopyToClipboard();
   const { data: session } = useSession();
   const clientId = session?.user?.clientId as string;
+  const [isCopied, setIsCopied] = useState(false);
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
 
   if (isLoading) return null;
   if (message.role === 'user') return null;
@@ -39,12 +41,13 @@ export function PureMessageActions({
   return (
     <TooltipProvider delayDuration={0}>
       <div className="flex flex-row gap-2">
-        <Tooltip>
+        <Tooltip open={isTooltipOpen} onOpenChange={setIsTooltipOpen}>
           <TooltipTrigger asChild>
             <Button
               className="py-1 px-2 h-fit text-muted-foreground"
               variant="outline"
-              onClick={async () => {
+              onClick={async (e) => {
+                e.preventDefault();
                 const textFromParts = message.parts
                   ?.filter((part) => part.type === 'text')
                   .map((part) => part.text)
@@ -57,131 +60,19 @@ export function PureMessageActions({
                 }
 
                 await copyToClipboard(textFromParts);
+                setIsCopied(true);
+                setIsTooltipOpen(true);
+                setTimeout(() => {
+                  setIsCopied(false);
+                  setIsTooltipOpen(false);
+                }, 2000);
                 console.log('[MessageActions] Copied message to clipboard');
               }}
             >
               <CopyIcon />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Copy</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              data-testid="message-upvote"
-              className="py-1 px-2 h-fit text-muted-foreground !pointer-events-auto"
-              disabled={vote?.isUpvoted}
-              variant="outline"
-              onClick={async () => {
-                try {
-                  const response = await fetch('/api/vote', {
-                    method: 'PATCH',
-                    body: JSON.stringify({
-                      chatId,
-                      messageId: message.id,
-                      type: 'up',
-                    }),
-                  });
-
-                  if (!response.ok) {
-                    toast.error('Failed to upvote response.');
-                    return;
-                  }
-
-                  // Update the votes cache
-                  mutate<Array<Vote>>(
-                    `/api/vote?chatId=${chatId}`,
-                    (currentVotes) => {
-                      if (!currentVotes) return [];
-
-                      const votesWithoutCurrent = currentVotes.filter(
-                        (vote) => vote.messageId !== message.id,
-                      );
-
-                      return [
-                        ...votesWithoutCurrent,
-                        {
-                          chatId,
-                          clientId,
-                          messageId: message.id,
-                          isUpvoted: true,
-                        },
-                      ];
-                    },
-                    { revalidate: false },
-                  );
-
-                  console.log('[MessageActions] Response upvoted');
-                } catch (error) {
-                  console.error('[MessageActions] Error upvoting:', error);
-                  toast.error('Failed to upvote response.');
-                }
-              }}
-            >
-              <ThumbUpIcon />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Upvote Response</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              data-testid="message-downvote"
-              className="py-1 px-2 h-fit text-muted-foreground !pointer-events-auto"
-              variant="outline"
-              disabled={vote && !vote.isUpvoted}
-              onClick={async () => {
-                try {
-                  const response = await fetch('/api/vote', {
-                    method: 'PATCH',
-                    body: JSON.stringify({
-                      chatId,
-                      messageId: message.id,
-                      type: 'down',
-                    }),
-                  });
-
-                  if (!response.ok) {
-                    toast.error('Failed to downvote response.');
-                    return;
-                  }
-
-                  // Update the votes cache
-                  mutate<Array<Vote>>(
-                    `/api/vote?chatId=${chatId}`,
-                    (currentVotes) => {
-                      if (!currentVotes) return [];
-
-                      const votesWithoutCurrent = currentVotes.filter(
-                        (vote) => vote.messageId !== message.id,
-                      );
-
-                      return [
-                        ...votesWithoutCurrent,
-                        {
-                          chatId,
-                          clientId,
-                          messageId: message.id,
-                          isUpvoted: false,
-                        },
-                      ];
-                    },
-                    { revalidate: false },
-                  );
-
-                  console.log('[MessageActions] Response downvoted');
-                } catch (error) {
-                  console.error('[MessageActions] Error downvoting:', error);
-                  toast.error('Failed to downvote response.');
-                }
-              }}
-            >
-              <ThumbDownIcon />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Downvote Response</TooltipContent>
+          <TooltipContent>{isCopied ? 'Copied!' : 'Copy'}</TooltipContent>
         </Tooltip>
       </div>
     </TooltipProvider>
