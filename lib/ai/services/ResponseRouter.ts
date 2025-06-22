@@ -14,10 +14,7 @@ import {
   type QueryIntent,
   type GraphState,
 } from './QueryIntentAnalyzer';
-import {
-  SynthesisValidator,
-  type ValidationContext,
-} from '../core/SynthesisValidator';
+import { SynthesisValidator } from '../core/SynthesisValidator';
 
 export type RouteDecision =
   | 'use_tools'

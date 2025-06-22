@@ -244,4 +244,4 @@ services:
 3. **Performance Testing**: Monitor memory and CPU usage under load
 4. **Production Deployment**: Deploy to your server infrastructure
 
-For more details, see the main README.md and WORKFLOW_INTELLIGENCE_CHECKLIST.md files. 
+For more details, see the main README.md and LANGRAPH_REFACTOR_ROADMAP_v5.2.0.md files. 

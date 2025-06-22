@@ -22,9 +22,10 @@ import type {
 } from '../ResponseStrategyFactory';
 import type { GraphState } from '../QueryIntentAnalyzer';
 import {
-  ContentFormatter,
+  StandardizedResponseFormatter,
   type ToolResult,
-} from '../../formatting/ContentFormatter';
+  type FormattingOptions,
+} from '../index';
 
 /**
  * Strategy for handling complex synthesis responses
@@ -214,10 +215,14 @@ Use this context to inform your synthesis approach and confidence levels.`;
       content: msg.content,
     }));
 
-    // Use centralized formatter for consistency
-    const formattedContent = ContentFormatter.formatToolResults(
+    // Use new standardized formatter for consistency
+    const formattingOptions: FormattingOptions = {
+      contentType: 'generic',
+      userQuery: originalQuery,
+    };
+    const formattedContent = StandardizedResponseFormatter.formatToolResults(
       toolResults,
-      originalQuery,
+      formattingOptions,
     );
 
     // Build comprehensive synthesis instruction

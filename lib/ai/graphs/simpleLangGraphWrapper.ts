@@ -20,9 +20,12 @@ import type { RequestLogger } from '../../services/observabilityService';
 import { QueryIntentAnalyzer, ResponseRouter } from '../services';
 import { ContextWindowManager } from '../core/contextWindowManager';
 import {
-  ContentFormatter,
+  StandardizedResponseFormatter,
+  UnifiedSystemPromptManager,
   type ToolResult,
-} from '../formatting/ContentFormatter';
+  type FormattingOptions,
+  type PromptContext,
+} from '../services';
 import { StreamingCoordinator } from '../formatting/StreamingCoordinator';
 import { DocumentOrchestrator } from '../core/DocumentOrchestrator';
 import { SynthesisValidator } from '../core/SynthesisValidator';
@@ -1522,9 +1525,14 @@ export class SimpleLangGraphWrapper {
 
         if (toolMessages.length === 0) {
           // No tool results, provide a simple acknowledgment
+          const promptContext: PromptContext = {
+            responseType: 'generic',
+            hasToolResults: false,
+          };
           return [
             new SystemMessage({
-              content: ContentFormatter.getSystemPrompt('generic'),
+              content:
+                UnifiedSystemPromptManager.getSystemPrompt(promptContext),
             }),
           ];
         }
@@ -1549,21 +1557,35 @@ export class SimpleLangGraphWrapper {
           content: msg.content,
         }));
 
-        // Use centralized formatter - SINGLE point of formatting (fixes duplication)
-        const formattedContent = ContentFormatter.formatToolResults(
-          toolResults,
+        // Determine response type and formatting options
+        const responseType = UnifiedSystemPromptManager.determineResponseType(
           userQuery,
+          true,
         );
+        const formattingOptions: FormattingOptions = {
+          contentType:
+            responseType === 'document_list' ? 'document_list' : 'content',
+          userQuery,
+        };
 
-        // Determine content type for appropriate system prompt
-        const isDocumentListing = formattedContent.includes(
-          '📋 **Available Documents:**',
-        );
-        const contentType = isDocumentListing ? 'document_list' : 'content';
+        // Use new standardized formatter
+        const formattedContent =
+          StandardizedResponseFormatter.formatToolResults(
+            toolResults,
+            formattingOptions,
+          );
+
+        // Get unified system prompt
+        const promptContext: PromptContext = {
+          responseType,
+          userQuery,
+          hasToolResults: true,
+        };
 
         return [
           new SystemMessage({
-            content: ContentFormatter.getSystemPrompt(contentType),
+            content:
+              UnifiedSystemPromptManager.buildCompletePrompt(promptContext),
           }),
           new HumanMessage({
             content: formattedContent,
@@ -3689,7 +3711,38 @@ Current date: ${new Date().toISOString()}`;
     const response = await this.llm.invoke([
       new SystemMessage(synthesisPrompt),
       new HumanMessage(
-        `User Request: "${userMessage}"\n\nTool Results Available:\n${ContentFormatter.formatToolResults(state.messages.filter((msg: any) => msg._getType() === 'tool'))}\n\nIMPORTANT FORMATTING INSTRUCTIONS:\n- When writing your response, use the URLs provided above to make ALL document and source names clickable links\n- Do not mention any document name as plain text if a URL is available\n- If the tool results include a "formatted_list" field (from listDocuments), use that exact formatted list with clickable links\n- For document listings, present the formatted_list exactly as provided - do not modify the format or add extra text\n- CRITICAL: Never display the same hyperlink more than once in your response - if you need to reference the same source again, use plain text instead of a duplicate link\n- CRITICAL: Only categorize sources as "Knowledge Base Documents" if they came from getDocumentContents or searchInternalKnowledgeBase tools\n- CRITICAL: Only categorize sources as "Web Sources" if they came from tavilySearch or webSearch tools\n\nCreate the comprehensive research report now.`,
+        (() => {
+          // Convert tool messages to ToolResult format for new formatter
+          const toolMessages = state.messages.filter(
+            (msg: any) => msg._getType() === 'tool',
+          );
+          const toolResults: ToolResult[] = toolMessages.map((msg) => ({
+            name: (msg as any)?.name || 'tool',
+            content: msg.content,
+          }));
+
+          // Use new standardized formatter
+          const formattingOptions: FormattingOptions = {
+            contentType: 'generic',
+            userQuery: userMessage,
+          };
+          const formattedToolResults =
+            StandardizedResponseFormatter.formatToolResults(
+              toolResults,
+              formattingOptions,
+            );
+
+          // Get unified formatting instructions
+          const promptContext: PromptContext = {
+            responseType: 'synthesis',
+            userQuery: userMessage,
+            hasToolResults: true,
+          };
+          const formattingInstructions =
+            UnifiedSystemPromptManager.getFormattingInstructions(promptContext);
+
+          return `User Request: "${userMessage}"\n\nTool Results Available:\n${formattedToolResults}\n\n${formattingInstructions}\n\nCreate the comprehensive research report now.`;
+        })(),
       ),
     ]);
 
