@@ -4,15 +4,16 @@
  * Comprehensive test suite for the extracted ToolCache service.
  */
 
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ToolCache } from '../ToolCache';
 import type { ToolCall } from '../ToolCache';
 
 // Mock logger
 const mockLogger = {
-  info: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-  debug: jest.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
 };
 
 describe('ToolCache', () => {
@@ -20,7 +21,7 @@ describe('ToolCache', () => {
 
   beforeEach(() => {
     toolCache = new ToolCache(mockLogger as any);
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('Cache Key Generation', () => {

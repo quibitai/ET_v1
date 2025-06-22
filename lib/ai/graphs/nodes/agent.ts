@@ -21,7 +21,7 @@ import {
 } from '@langchain/core/messages';
 import type { RequestLogger } from '../../../services/observabilityService';
 import type { GraphState } from '../state';
-import { getLastHumanMessage, hasToolCalls } from '../state';
+import { getLastHumanMessage, getToolMessages, hasToolCalls } from '../state';
 import { loadGraphPrompt } from '../prompts/loader';
 import type { DocumentAnalysisService } from '../services/DocumentAnalysisService';
 import type { ContextService } from '../services/ContextService';
@@ -107,28 +107,28 @@ export async function agentNode(
     }
 
     // USE SERVICES: Analyze query for better decision making
-    let responseMode = state.response_mode;
-    if (queryService && !responseMode) {
+    let responseType = state.response_mode;
+    if (queryService && !responseType) {
       const queryAnalysis = queryService.analyzeQuery(state);
 
       if (queryAnalysis.intent.suggestedResponseStyle === 'analytical') {
-        responseMode = 'synthesis';
+        responseType = 'synthesis';
       } else if (
         queryAnalysis.intent.suggestedResponseStyle === 'conversational'
       ) {
-        responseMode = 'conversational';
+        responseType = 'conversational';
       } else {
-        responseMode = 'simple';
+        responseType = 'simple';
       }
 
       logger.info('[Agent] Query analyzed by service', {
         complexity: queryAnalysis.complexity.level,
         intent: queryAnalysis.intent.primary,
-        responseMode,
+        responseType,
       });
     } else {
       // Fallback to original logic if no service or mode already set
-      responseMode = responseMode || determineAgentResponseMode(state);
+      responseType = responseType || determineAgentResponseType(state);
     }
 
     // NEW: Load the appropriate agent prompt with execution plan context
@@ -136,7 +136,7 @@ export async function agentNode(
       nodeType: 'agent',
       state: { ...state, messages: optimizedMessages },
       currentDateTime: currentDateTime || new Date().toISOString(),
-      responseMode,
+      responseType,
       availableTools: tools.map((tool) => tool.name),
       clientConfig,
       executionPlan, // NEW: Pass execution plan to prompt loading
@@ -151,7 +151,7 @@ export async function agentNode(
     logger.info('[Agent] Invoking LLM with strategic guidance', {
       toolCount: tools.length,
       messageCount: messages.length,
-      responseMode,
+      responseType,
       hasExecutionPlan: !!executionPlan,
       planGuidance: executionPlan
         ? `${executionPlan.task_type} task with ${executionPlan.external_research_topics.length} external topics`
@@ -169,7 +169,7 @@ export async function agentNode(
       hasToolCalls: hasToolCallsInResponse,
       toolCallCount: (response as AIMessage).tool_calls?.length || 0,
       duration,
-      responseMode,
+      responseType,
       planAlignment: executionPlan
         ? assessPlanAlignment(response as AIMessage, executionPlan)
         : 'no plan',
@@ -184,7 +184,7 @@ export async function agentNode(
     return {
       messages: [response],
       agent_outcome: response as AIMessage,
-      response_mode: responseMode,
+      response_mode: responseType,
       node_execution_trace: [...(state.node_execution_trace || []), 'agent'],
       iterationCount: (state.iterationCount || 0) + 1,
       tool_workflow_state: updatedWorkflowState,
@@ -276,22 +276,20 @@ function assessPlanAlignment(response: AIMessage, plan: ExecutionPlan): string {
     alignment = 'poor';
   }
 
-  return issues.length > 0 ? `${alignment} (${issues.join(', ')})` : alignment;
+  return issues.length > 0 ? `partial (${issues.join(', ')})` : 'good';
 }
 
 /**
- * Determine the appropriate response mode for the agent
+ * Determines the agent's response mode based on the current state.
+ * @param state The current graph state.
+ * @returns The determined response mode.
+ * @deprecated This logic is being migrated to a centralized QueryAnalysisService
  */
-function determineAgentResponseMode(
+function determineAgentResponseType(
   state: GraphState,
 ): 'synthesis' | 'simple' | 'conversational' {
-  // Use existing response mode if set
-  if (state.response_mode) {
-    return state.response_mode;
-  }
-
-  const userQuery = getLastHumanMessage(state);
-  const queryLower = userQuery.toLowerCase();
+  const lastHumanMessage = getLastHumanMessage(state);
+  const toolMessages = getToolMessages(state);
 
   // Analysis indicators suggest synthesis
   const analysisKeywords = [
@@ -310,7 +308,11 @@ function determineAgentResponseMode(
     'assessment',
   ];
 
-  if (analysisKeywords.some((keyword) => queryLower.includes(keyword))) {
+  if (
+    analysisKeywords.some((keyword) =>
+      lastHumanMessage.toLowerCase().includes(keyword),
+    )
+  ) {
     return 'synthesis';
   }
 
@@ -328,14 +330,15 @@ function determineAgentResponseMode(
     'help me understand',
   ];
 
-  if (conversationalKeywords.some((keyword) => queryLower.includes(keyword))) {
+  if (
+    conversationalKeywords.some((keyword) =>
+      lastHumanMessage.toLowerCase().includes(keyword),
+    )
+  ) {
     return 'conversational';
   }
 
   // Check if we have tool results that suggest complexity
-  const toolMessages = state.messages.filter(
-    (msg) => msg._getType?.() === 'tool',
-  );
   if (toolMessages.length > 1) {
     return 'synthesis';
   }

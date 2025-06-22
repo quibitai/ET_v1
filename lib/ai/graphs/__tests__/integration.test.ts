@@ -11,6 +11,7 @@ import {
   shouldUseLangGraph,
 } from '../index';
 import type { LangGraphWrapperConfig } from '../simpleLangGraphWrapper';
+import type { ChatOpenAI } from '@langchain/openai';
 
 // Mock the logger
 const mockLogger = {
@@ -19,6 +20,12 @@ const mockLogger = {
   error: vi.fn(),
   debug: vi.fn(),
 };
+
+// Mock ChatOpenAI
+const mockLLM = {
+  modelName: 'gpt-4.1-mini',
+  invoke: vi.fn(),
+} as unknown as ChatOpenAI;
 
 describe('LangGraph Integration', () => {
   beforeEach(() => {
@@ -49,11 +56,7 @@ describe('LangGraph Integration', () => {
     beforeEach(() => {
       config = {
         systemPrompt: 'Test system prompt',
-        selectedChatModel: 'gpt-4.1-mini',
-        contextId: 'test-context',
-        enableToolExecution: true,
-        maxIterations: 5,
-        verbose: false,
+        llm: mockLLM,
         logger: mockLogger as any,
         tools: [],
       };
@@ -69,19 +72,16 @@ describe('LangGraph Integration', () => {
       const retrievedConfig = wrapper.getConfig();
 
       expect(retrievedConfig.systemPrompt).toBe('Test system prompt');
-      expect(retrievedConfig.selectedChatModel).toBe('gpt-4.1-mini');
-      expect(retrievedConfig.contextId).toBe('test-context');
-      expect(retrievedConfig.enableToolExecution).toBe(true);
+      expect(retrievedConfig.llm.modelName).toBe('gpt-4.1-mini');
     });
 
     it('should log initialization without tools', () => {
       createLangGraphWrapper(config);
 
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'LangGraph wrapper initialized without tools',
+        'Initializing LangGraph with proper state management',
         expect.objectContaining({
           model: 'gpt-4.1-mini',
-          contextId: 'test-context',
         }),
       );
     });

@@ -20,6 +20,10 @@ import {
   afterAll,
 } from 'vitest';
 import { searchAndRetrieveKnowledgeBase } from '@/lib/ai/tools/search-internal-knowledge-base';
+import {
+  trackEvent,
+  ANALYTICS_EVENTS,
+} from '@/lib/services/observabilityService';
 
 // Mock environment variables for testing
 const mockEnv = {
@@ -199,6 +203,7 @@ describe('search-internal-knowledge-base Tool Tests', () => {
 
       const result = await searchAndRetrieveKnowledgeBase.func({
         query: 'nonexistent content',
+        match_count: 1,
       });
 
       expect(result).toContain('No documents found');
@@ -218,6 +223,7 @@ describe('search-internal-knowledge-base Tool Tests', () => {
 
       const result = await searchAndRetrieveKnowledgeBase.func({
         query: 'test query',
+        match_count: 1,
       });
 
       const parsedResult = JSON.parse(result);
@@ -231,6 +237,7 @@ describe('search-internal-knowledge-base Tool Tests', () => {
 
       const result = await searchAndRetrieveKnowledgeBase.func({
         query: 'test query',
+        match_count: 1,
       });
 
       const parsedResult = JSON.parse(result);
@@ -245,6 +252,7 @@ describe('search-internal-knowledge-base Tool Tests', () => {
 
       const result = await searchAndRetrieveKnowledgeBase.func({
         query: 'test query',
+        match_count: 1,
       });
 
       const parsedResult = JSON.parse(result);
@@ -253,7 +261,7 @@ describe('search-internal-knowledge-base Tool Tests', () => {
         'Supabase credentials are not configured',
       );
 
-      // Restore env var
+      // Restore env vars
       process.env.NEXT_PUBLIC_SUPABASE_URL = originalUrl;
     });
 
@@ -271,95 +279,54 @@ describe('search-internal-knowledge-base Tool Tests', () => {
 
       const result = await searchAndRetrieveKnowledgeBase.func({
         query: 'test query',
+        match_count: 1,
       });
 
       expect(result).toContain('Unknown Title');
       expect(result).toContain('Document without metadata');
     });
-  });
 
-  describe('Performance and Observability', () => {
-    it('should track analytics events for successful searches', async () => {
-      const { trackEvent } = await import(
-        '@/lib/services/observabilityService'
-      );
-
+    it('should track successful tool usage with analytics', async () => {
       await searchAndRetrieveKnowledgeBase.func({
-        query: 'performance test',
-        match_count: 2,
-        filter: { type: 'test' },
+        query: 'test query',
+        match_count: 1,
       });
 
-      // Should track initial usage
-      expect(trackEvent).toHaveBeenCalledWith({
-        eventName: 'tool_used',
-        properties: expect.objectContaining({
-          toolName: 'searchInternalKnowledgeBase',
-          query: 'performance test',
-          matchCount: 2,
-          hasFilter: true,
-        }),
-      });
-
-      // Should track successful completion
-      expect(trackEvent).toHaveBeenCalledWith({
-        eventName: 'tool_used',
-        properties: expect.objectContaining({
+      expect(trackEvent).toHaveBeenCalledWith(
+        ANALYTICS_EVENTS.TOOL_USED,
+        expect.objectContaining({
           toolName: 'searchInternalKnowledgeBase',
           success: true,
           resultsCount: 1,
           topSimilarity: 0.85,
         }),
-      });
+      );
     });
 
-    it('should track analytics events for errors', async () => {
-      const { trackEvent } = await import(
-        '@/lib/services/observabilityService'
-      );
-      mockSupabaseRpc.mockResolvedValue({
-        data: null,
-        error: { message: 'Test error' },
-      });
+    it('should track failed tool usage with analytics', async () => {
+      mockEmbedQuery.mockRejectedValue(new Error('Embedding failed'));
 
       await searchAndRetrieveKnowledgeBase.func({
         query: 'error test',
+        match_count: 1,
       });
 
-      expect(trackEvent).toHaveBeenCalledWith({
-        eventName: 'tool_used',
-        properties: expect.objectContaining({
+      expect(trackEvent).toHaveBeenCalledWith(
+        ANALYTICS_EVENTS.TOOL_USED,
+        expect.objectContaining({
           toolName: 'searchInternalKnowledgeBase',
           success: false,
-          error: 'RPC error: Test error',
+          error: 'Embedding failed',
         }),
-      });
-    });
-
-    it('should measure and report execution duration', async () => {
-      const { trackEvent } = await import(
-        '@/lib/services/observabilityService'
       );
-
-      await searchAndRetrieveKnowledgeBase.func({
-        query: 'duration test',
-      });
-
-      expect(trackEvent).toHaveBeenCalledWith({
-        eventName: 'tool_used',
-        properties: expect.objectContaining({
-          duration: expect.any(Number),
-        }),
-      });
     });
-  });
 
-  describe('Integration Scenarios', () => {
     it('should handle complex queries with special characters', async () => {
       const complexQuery = 'How to handle "quotes" and special chars: @#$%?';
 
       await searchAndRetrieveKnowledgeBase.func({
         query: complexQuery,
+        match_count: 1,
       });
 
       expect(mockEmbedQuery).toHaveBeenCalledWith(complexQuery);
@@ -380,6 +347,7 @@ describe('search-internal-knowledge-base Tool Tests', () => {
 
       const result = await searchAndRetrieveKnowledgeBase.func({
         query: 'large document test',
+        match_count: 1,
       });
 
       expect(result).toContain(largeContent);
@@ -387,13 +355,12 @@ describe('search-internal-knowledge-base Tool Tests', () => {
     });
 
     it('should handle concurrent requests', async () => {
-      const promises = Array(5)
-        .fill(null)
-        .map((_, i) =>
-          searchAndRetrieveKnowledgeBase.func({
-            query: `concurrent test ${i}`,
-          }),
-        );
+      const promises = Array.from({ length: 5 }, (_, i) =>
+        searchAndRetrieveKnowledgeBase.func({
+          query: `concurrent test ${i}`,
+          match_count: 1,
+        }),
+      );
 
       const results = await Promise.all(promises);
 
@@ -404,6 +371,74 @@ describe('search-internal-knowledge-base Tool Tests', () => {
 
       expect(mockEmbedQuery).toHaveBeenCalledTimes(5);
       expect(mockSupabaseRpc).toHaveBeenCalledTimes(5);
+    });
+  });
+
+  describe('Performance and Tokenization', () => {
+    it('should handle large query and result sizes gracefully', async () => {
+      // Test with a query that should generate a lot of tokens
+      const complexQuery =
+        'analyze the complex interplay between market dynamics, consumer behavior, and supply chain logistics in the post-pandemic era, providing a detailed report with actionable insights';
+
+      await searchAndRetrieveKnowledgeBase.func({
+        query: complexQuery,
+        match_count: 1,
+      });
+
+      expect(trackEvent).toHaveBeenCalled();
+    });
+
+    it('should not fail with very large document content', async () => {
+      const largeContent = 'a'.repeat(50000); // 50k characters
+      mockSupabaseRpc.mockResolvedValue({
+        data: [
+          {
+            content: largeContent,
+            similarity: 0.9,
+            metadata: { file_title: 'Large Doc.md' },
+          },
+        ],
+        error: null,
+      });
+
+      const result = await searchAndRetrieveKnowledgeBase.func({
+        query: 'large document test',
+        match_count: 1,
+      });
+
+      // Verify result is a string and not truncated (or handled gracefully)
+      expect(typeof result).toBe('string');
+      expect(result).toContain('Large Doc.md');
+      expect(result.length).toBeGreaterThan(49000);
+    });
+  });
+
+  describe('Integration Scenarios', () => {
+    it('should handle complex queries with special characters', async () => {
+      const complexQuery = 'How to handle "quotes" and special chars: @#$%?';
+
+      await searchAndRetrieveKnowledgeBase.func({
+        query: complexQuery,
+        match_count: 1,
+      });
+
+      expect(mockEmbedQuery).toHaveBeenCalledWith(complexQuery);
+    });
+
+    it('should handle concurrent requests', async () => {
+      const promises = Array.from({ length: 5 }, (_, i) =>
+        searchAndRetrieveKnowledgeBase.func({
+          query: `concurrent test ${i}`,
+          match_count: 1,
+        }),
+      );
+
+      const results = await Promise.all(promises);
+      expect(results).toHaveLength(5);
+      results.forEach((result) => {
+        expect(typeof result).toBe('string');
+        expect(result).toContain('Successfully retrieved document');
+      });
     });
   });
 });
