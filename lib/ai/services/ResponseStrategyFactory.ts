@@ -96,7 +96,7 @@ export class ResponseStrategyFactory {
 
     for (const type of strategyTypes) {
       const strategy = this.strategies.get(type);
-      if (strategy && strategy.canHandle(state)) {
+      if (strategy?.canHandle(state)) {
         this.logger.info(
           `[ResponseStrategyFactory] Selected strategy: ${type}`,
           {

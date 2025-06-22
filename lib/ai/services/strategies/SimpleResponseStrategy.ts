@@ -22,9 +22,12 @@ import type {
 } from '../ResponseStrategyFactory';
 import type { GraphState } from '../QueryIntentAnalyzer';
 import {
-  ContentFormatter,
+  StandardizedResponseFormatter,
+  UnifiedSystemPromptManager,
   type ToolResult,
-} from '../../formatting/ContentFormatter';
+  type FormattingOptions,
+  type PromptContext,
+} from '../index';
 
 /**
  * Strategy for handling simple responses with tool result formatting
@@ -66,20 +69,7 @@ export class SimpleResponseStrategy implements IResponseStrategy {
           '[SimpleResponseStrategy] Formatting tool results for direct output',
         );
 
-        // Extract tool results using centralized approach
-        const toolMessages =
-          state.messages?.filter((msg) => msg._getType() === 'tool') || [];
-
-        if (toolMessages.length === 0) {
-          // No tool results, provide a simple acknowledgment
-          return [
-            new SystemMessage({
-              content: ContentFormatter.getSystemPrompt('generic'),
-            }),
-          ];
-        }
-
-        // Extract user query
+        // Extract user query first
         const userMessages =
           state.messages?.filter((msg) => msg._getType() === 'human') || [];
         const lastUserMessage = userMessages[userMessages.length - 1];
@@ -87,6 +77,25 @@ export class SimpleResponseStrategy implements IResponseStrategy {
           typeof lastUserMessage?.content === 'string'
             ? lastUserMessage.content
             : JSON.stringify(lastUserMessage?.content) || '';
+
+        // Extract tool results using centralized approach
+        const toolMessages =
+          state.messages?.filter((msg) => msg._getType() === 'tool') || [];
+
+        if (toolMessages.length === 0) {
+          // No tool results, provide a simple acknowledgment
+          const promptContext: PromptContext = {
+            responseType: 'generic',
+            userQuery,
+            hasToolResults: false,
+          };
+          return [
+            new SystemMessage({
+              content:
+                UnifiedSystemPromptManager.getSystemPrompt(promptContext),
+            }),
+          ];
+        }
 
         this.config.logger.info(
           '[SimpleResponseStrategy] Query intent analysis',
@@ -101,21 +110,35 @@ export class SimpleResponseStrategy implements IResponseStrategy {
           content: msg.content,
         }));
 
-        // Use centralized formatter - SINGLE point of formatting (fixes duplication)
-        const formattedContent = ContentFormatter.formatToolResults(
-          toolResults,
+        // Determine response type and formatting options
+        const responseType = UnifiedSystemPromptManager.determineResponseType(
           userQuery,
+          true,
         );
+        const formattingOptions: FormattingOptions = {
+          contentType:
+            responseType === 'document_list' ? 'document_list' : 'content',
+          userQuery,
+        };
 
-        // Determine content type for appropriate system prompt
-        const isDocumentListing = formattedContent.includes(
-          '📋 **Available Documents:**',
-        );
-        const contentType = isDocumentListing ? 'document_list' : 'content';
+        // Use new standardized formatter
+        const formattedContent =
+          StandardizedResponseFormatter.formatToolResults(
+            toolResults,
+            formattingOptions,
+          );
+
+        // Get unified system prompt
+        const promptContext: PromptContext = {
+          responseType,
+          userQuery,
+          hasToolResults: true,
+        };
 
         return [
           new SystemMessage({
-            content: ContentFormatter.getSystemPrompt(contentType),
+            content:
+              UnifiedSystemPromptManager.buildCompletePrompt(promptContext),
           }),
           new HumanMessage({
             content: formattedContent,

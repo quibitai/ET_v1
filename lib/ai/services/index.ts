@@ -36,3 +36,14 @@ export type {
 export { ConversationalResponseStrategy } from './strategies/ConversationalResponseStrategy';
 export { SimpleResponseStrategy } from './strategies/SimpleResponseStrategy';
 export { SynthesisResponseStrategy } from './strategies/SynthesisResponseStrategy';
+
+// Phase 3.5: Formatting Consolidation Services
+export { StandardizedResponseFormatter } from './StandardizedResponseFormatter';
+export type {
+  ToolResult,
+  DocumentResult,
+  FormattingOptions,
+} from './StandardizedResponseFormatter';
+
+export { UnifiedSystemPromptManager } from './UnifiedSystemPromptManager';
+export type { PromptContext } from './UnifiedSystemPromptManager';

@@ -14,7 +14,7 @@
 
 import type { RequestLogger } from '../../services/observabilityService';
 import type { RunnableConfig } from '@langchain/core/runnables';
-import { AIMessage, ToolMessage } from '@langchain/core/messages';
+import { AIMessage, type ToolMessage } from '@langchain/core/messages';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { ToolCache } from './ToolCache';
 import type { ToolCall } from './ToolCache';
