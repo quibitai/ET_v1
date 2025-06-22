@@ -165,7 +165,7 @@ const SpecialistSection = memo(function SpecialistSection({
   return (
     <div className="mb-3">
       <div className="p-2 text-sm font-semibold text-foreground border-b border-border/50">
-        {specialistName} ({totalChats})
+        {specialistName}
       </div>
 
       <div className="ml-1 mt-1">

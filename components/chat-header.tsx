@@ -10,6 +10,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  TooltipPortal,
 } from '@/components/ui/tooltip';
 import { type VisibilityType, VisibilitySelector } from './visibility-selector';
 import {
@@ -283,7 +284,9 @@ function PureChatHeader({
             <span className="md:sr-only">New Chat</span>
           </Button>
         </TooltipTrigger>
-        <TooltipContent>New Chat</TooltipContent>
+        <TooltipPortal>
+          <TooltipContent>New Chat</TooltipContent>
+        </TooltipPortal>
       </Tooltip>
 
       {/* Mobile specialist selector */}

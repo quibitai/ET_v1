@@ -10,8 +10,8 @@ config({
   path: '.env.local',
 });
 
-/* Use process.env.PORT by default and fallback to port 3000 */
-const PORT = process.env.PORT || 3000;
+/* Use process.env.PORT by default and fallback to port 8081 */
+const PORT = process.env.PORT || 8081;
 
 /**
  * Set webServer.url and use.baseURL with the location
@@ -125,7 +125,7 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'pnpm dev',
+    command: 'pnpm dev --port 8081',
     url: baseURL,
     timeout: 120 * 1000,
     reuseExistingServer: !process.env.CI,
