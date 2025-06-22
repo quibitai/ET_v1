@@ -22,13 +22,10 @@ import { ContextWindowManager } from '../core/contextWindowManager';
 import {
   StandardizedResponseFormatter,
   UnifiedSystemPromptManager,
-  StateManagementService,
   WorkflowOrchestrator,
   type ToolResult,
   type FormattingOptions,
   type PromptContext,
-  type MultiDocumentScenario,
-  type QueryIntentAnalysis,
 } from '../services';
 import { StreamingCoordinator } from '../formatting/StreamingCoordinator';
 import { DocumentOrchestrator } from '../core/DocumentOrchestrator';
@@ -108,432 +105,6 @@ export interface LangGraphWrapperConfig {
   tools: any[];
   logger: RequestLogger;
   forceToolCall?: { name: string } | 'required' | null;
-}
-
-/**
- * Tool Workflow Manager
- * Orchestrates tool execution sequences and manages workflow state
- */
-class ToolWorkflowManager {
-  private executedTools: Map<string, any> = new Map();
-  private workflowState: {
-    documentsListed: boolean;
-    documentsRetrieved: string[];
-    webSearchCompleted: boolean;
-    extractionCompleted: boolean;
-    multiDocAnalysisCompleted: boolean;
-  } = {
-    documentsListed: false,
-    documentsRetrieved: [],
-    webSearchCompleted: false,
-    extractionCompleted: false,
-    multiDocAnalysisCompleted: false,
-  };
-  private logger: RequestLogger;
-
-  constructor(logger: RequestLogger) {
-    this.logger = logger;
-  }
-
-  /**
-   * Analyze tool results and update workflow state
-   */
-  analyzeToolResults(toolName: string, toolResult: any, toolArgs: any): void {
-    this.executedTools.set(toolName, { result: toolResult, args: toolArgs });
-
-    switch (toolName) {
-      case 'listDocuments':
-        this.workflowState.documentsListed = true;
-        this.logger.info('[Workflow] Documents listed - ready for retrieval');
-        break;
-
-      case 'getDocumentContents': {
-        const docId = toolArgs?.id || toolArgs?.title || 'unknown';
-        if (!this.workflowState.documentsRetrieved.includes(docId)) {
-          this.workflowState.documentsRetrieved.push(docId);
-        }
-        this.logger.info('[Workflow] Document retrieved:', { docId });
-        break;
-      }
-
-      case 'tavilySearch':
-        this.workflowState.webSearchCompleted = true;
-        this.logger.info('[Workflow] Web search completed');
-        break;
-
-      case 'tavilyExtract':
-        this.workflowState.extractionCompleted = true;
-        this.logger.info('[Workflow] Content extraction completed');
-        break;
-
-      case 'multiDocumentRetrieval':
-        this.workflowState.multiDocAnalysisCompleted = true;
-        this.logger.info('[Workflow] Multi-document analysis completed');
-        break;
-    }
-  }
-
-  /**
-   * Get suggested next tools based on workflow state
-   */
-  getSuggestedNextTools(currentQuery: string): Array<{
-    toolName: string;
-    priority: 'high' | 'medium' | 'low';
-    reason: string;
-    forceCall?: boolean;
-    suggestedArgs?: any; // **ADDED**: Support for suggested arguments
-  }> {
-    const suggestions: Array<{
-      toolName: string;
-      priority: 'high' | 'medium' | 'low';
-      reason: string;
-      forceCall?: boolean;
-      suggestedArgs?: any; // **ADDED**: Support for suggested arguments
-    }> = [];
-
-    // **CRITICAL FIX**: Force getDocumentContents after listDocuments
-    if (
-      this.workflowState.documentsListed &&
-      this.workflowState.documentsRetrieved.length === 0
-    ) {
-      const listResult = this.executedTools.get('listDocuments');
-      if (listResult?.result) {
-        try {
-          const parsedResult =
-            typeof listResult.result === 'string'
-              ? JSON.parse(listResult.result)
-              : listResult.result;
-
-          if (parsedResult.available_documents?.length > 0) {
-            // Get the most relevant documents for the query
-            const relevantDocs = parsedResult.available_documents
-              .filter((doc: any) => {
-                const title = doc.title?.toLowerCase() || '';
-                const query = currentQuery.toLowerCase();
-                return (
-                  title.includes('ideal') ||
-                  title.includes('client') ||
-                  title.includes('research') ||
-                  title.includes('example') ||
-                  query.includes(title.split('_')[0]) ||
-                  query.includes(title.split('.')[0])
-                );
-              })
-              .slice(0, 3); // Limit to 3 most relevant
-
-            if (relevantDocs.length > 0) {
-              suggestions.push({
-                toolName: 'getDocumentContents',
-                priority: 'high',
-                reason: `Documents were listed but content not retrieved. Found ${relevantDocs.length} relevant documents for analysis.`,
-                forceCall: true, // **FORCE** this call
-              });
-            }
-          }
-        } catch (e) {
-          this.logger.warn('[Workflow] Could not parse listDocuments result');
-        }
-      }
-    }
-
-    // **ENHANCED**: Force tavilyExtract after tavilySearch for deeper analysis
-    if (
-      this.workflowState.webSearchCompleted &&
-      !this.workflowState.extractionCompleted
-    ) {
-      suggestions.push({
-        toolName: 'tavilyExtract',
-        priority: 'high', // Upgraded to high priority
-        reason:
-          'Web search completed - extract detailed content for comprehensive analysis',
-        forceCall: true, // **FORCE** this call for better content
-      });
-    }
-
-    // **ENHANCED**: Suggest multiDocumentRetrieval for comparative analysis
-    const hasMultipleDocRefs =
-      currentQuery.toLowerCase().includes('compare') ||
-      currentQuery.toLowerCase().includes('align') ||
-      currentQuery.toLowerCase().includes('relationship') ||
-      currentQuery.toLowerCase().includes('vs') ||
-      this.workflowState.documentsRetrieved.length > 1;
-
-    if (hasMultipleDocRefs && !this.workflowState.multiDocAnalysisCompleted) {
-      suggestions.push({
-        toolName: 'multiDocumentRetrieval',
-        priority: 'high', // Upgraded to high priority
-        reason:
-          'Multiple documents referenced - comparative analysis recommended',
-        forceCall: false, // Don't force, but strongly suggest
-      });
-    }
-
-    // **NEW**: Query-based intelligent suggestions
-    const queryLower = currentQuery.toLowerCase();
-
-    // Research queries should prioritize document workflow
-    if (
-      (queryLower.includes('research') ||
-        queryLower.includes('report') ||
-        queryLower.includes('analysis')) &&
-      !this.workflowState.documentsListed
-    ) {
-      suggestions.push({
-        toolName: 'listDocuments',
-        priority: 'high',
-        reason:
-          'Research query detected - need to discover available documents first',
-        forceCall: false,
-      });
-    }
-
-    // Company/organization queries should use comprehensive web research
-    if (
-      (queryLower.includes('company') ||
-        queryLower.includes('organization') ||
-        queryLower.includes('business')) &&
-      !this.workflowState.webSearchCompleted
-    ) {
-      suggestions.push({
-        toolName: 'tavilySearch',
-        priority: 'high',
-        reason: 'Company research query detected - need external information',
-        forceCall: false,
-      });
-    }
-
-    // **ENHANCED**: Suggest comprehensive web search instead of multiple narrow ones
-    if (
-      !this.workflowState.webSearchCompleted &&
-      this.isWebSearchNeeded(currentQuery)
-    ) {
-      // Extract company/entity names for comprehensive search
-      const entities = this.extractEntitiesFromQuery(currentQuery);
-      const searchAspects = this.determineSearchAspects(currentQuery);
-
-      if (entities.length > 0) {
-        const comprehensiveQuery = this.buildComprehensiveSearchQuery(
-          entities[0],
-          searchAspects,
-        );
-
-        suggestions.push({
-          toolName: 'tavilySearch',
-          reason: `Comprehensive web search needed for ${entities[0]} covering: ${searchAspects.join(', ')}`,
-          forceCall: true,
-          priority: 'high',
-          suggestedArgs: { query: comprehensiveQuery },
-        });
-      } else {
-        suggestions.push({
-          toolName: 'tavilySearch',
-          reason: 'Web search needed for external information',
-          forceCall: false,
-          priority: 'medium',
-        });
-      }
-    }
-
-    this.logger.info('[Workflow] Generated tool suggestions:', {
-      suggestionsCount: suggestions.length,
-      suggestions: suggestions.map((s) => ({
-        tool: s.toolName,
-        priority: s.priority,
-        force: s.forceCall,
-        reason: `${s.reason.substring(0, 50)}...`,
-      })),
-      workflowState: this.workflowState,
-    });
-
-    return suggestions;
-  }
-
-  /**
-   * Get executed tools for validation
-   */
-  getExecutedTools(): Array<{
-    name: string;
-    success: boolean;
-    result?: any;
-    args?: any;
-  }> {
-    const tools: Array<{
-      name: string;
-      success: boolean;
-      result?: any;
-      args?: any;
-    }> = [];
-
-    for (const [toolName, toolData] of this.executedTools.entries()) {
-      tools.push({
-        name: toolName,
-        success: toolData.result !== null && toolData.result !== undefined,
-        result: toolData.result,
-        args: toolData.args,
-      });
-    }
-
-    return tools;
-  }
-
-  /**
-   * Check if workflow is complete enough for synthesis
-   */
-  isWorkflowReadyForSynthesis(currentQuery: string): boolean {
-    // For research queries, ensure we have both external and internal data
-    const isResearchQuery =
-      currentQuery.toLowerCase().includes('research') ||
-      currentQuery.toLowerCase().includes('report') ||
-      currentQuery.toLowerCase().includes('analysis');
-
-    if (isResearchQuery) {
-      const hasInternalData = this.workflowState.documentsRetrieved.length > 0;
-      const hasExternalData = this.workflowState.webSearchCompleted;
-
-      if (!hasInternalData || !hasExternalData) {
-        this.logger.info('[Workflow] Research workflow incomplete:', {
-          hasInternalData,
-          hasExternalData,
-          documentsRetrieved: this.workflowState.documentsRetrieved.length,
-        });
-        return false;
-      }
-    }
-
-    // For document queries, ensure documents are actually retrieved
-    if (
-      this.workflowState.documentsListed &&
-      this.workflowState.documentsRetrieved.length === 0
-    ) {
-      this.logger.info('[Workflow] Documents listed but not retrieved');
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Reset workflow state for new conversation
-   */
-  reset(): void {
-    this.executedTools.clear();
-    this.workflowState = {
-      documentsListed: false,
-      documentsRetrieved: [],
-      webSearchCompleted: false,
-      extractionCompleted: false,
-      multiDocAnalysisCompleted: false,
-    };
-    this.logger.info('[Workflow] State reset for new conversation');
-  }
-
-  /**
-   * Get workflow status for debugging
-   */
-  getWorkflowStatus() {
-    return {
-      documentsListed: this.workflowState.documentsListed,
-      documentsRetrieved: this.workflowState.documentsRetrieved.length,
-      webSearchCompleted: this.workflowState.webSearchCompleted,
-      extractionCompleted: this.workflowState.extractionCompleted,
-      multiDocAnalysisCompleted: this.workflowState.multiDocAnalysisCompleted,
-      executedTools: Array.from(this.executedTools.keys()),
-    };
-  }
-
-  /**
-   * Helper methods for comprehensive search query building
-   */
-  private isWebSearchNeeded(query: string): boolean {
-    const webSearchKeywords = [
-      'company',
-      'organization',
-      'business',
-      'profile',
-      'mission',
-      'values',
-      'leadership',
-      'news',
-      'recent',
-      'current',
-      'industry',
-      'market',
-      'competitors',
-      'financial',
-      'revenue',
-      'services',
-      'products',
-    ];
-
-    const lowerQuery = query.toLowerCase();
-    return webSearchKeywords.some((keyword) => lowerQuery.includes(keyword));
-  }
-
-  private extractEntitiesFromQuery(query: string): string[] {
-    // Simple entity extraction - look for capitalized words that might be company names
-    const entities: string[] = [];
-
-    // Common company patterns
-    const companyPatterns = [
-      /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:\s+(?:Inc|LLC|Corp|Company|Corporation|Ltd|Limited))?)\b/g,
-      /\b(LWCC)\b/g, // Specific pattern for LWCC
-    ];
-
-    companyPatterns.forEach((pattern) => {
-      const matches = query.match(pattern);
-      if (matches) {
-        entities.push(...matches);
-      }
-    });
-
-    return Array.from(new Set(entities)); // Remove duplicates
-  }
-
-  private determineSearchAspects(query: string): string[] {
-    const aspects: string[] = [];
-    const lowerQuery = query.toLowerCase();
-
-    const aspectMap = {
-      'company profile': ['profile', 'about', 'overview', 'company'],
-      mission: ['mission', 'purpose', 'goal'],
-      values: ['values', 'culture', 'principles'],
-      leadership: [
-        'leadership',
-        'management',
-        'executives',
-        'ceo',
-        'president',
-      ],
-      'recent news': ['news', 'recent', 'latest', 'updates', 'announcements'],
-      services: ['services', 'products', 'offerings', 'solutions'],
-      industry: ['industry', 'sector', 'market', 'business'],
-      financial: ['financial', 'revenue', 'earnings', 'performance'],
-    };
-
-    Object.entries(aspectMap).forEach(([aspect, keywords]) => {
-      if (keywords.some((keyword) => lowerQuery.includes(keyword))) {
-        aspects.push(aspect);
-      }
-    });
-
-    // Default aspects if none detected
-    if (aspects.length === 0) {
-      aspects.push('company profile', 'recent news');
-    }
-
-    return aspects;
-  }
-
-  private buildComprehensiveSearchQuery(
-    entity: string,
-    aspects: string[],
-  ): string {
-    // Build a comprehensive search query that captures multiple aspects
-    const baseQuery = entity;
-    const aspectTerms = aspects.join(' ');
-
-    return `${baseQuery} ${aspectTerms}`.trim();
-  }
 }
 
 /**
@@ -1512,11 +1083,6 @@ export class SimpleLangGraphWrapper {
    * Simple Response Node
    * Formats tool results for direct output without synthesis
    */
-  /**
-   * Simple Response Node - REFACTORED with centralized formatting
-   * Formats tool results for direct output without synthesis
-   * FIXES: Content duplication bug by using single formatting path
-   */
   private simpleResponseNode(): Runnable<GraphState, Partial<GraphState>> {
     const simpleResponseChain = RunnableSequence.from([
       RunnableLambda.from((state: GraphState): BaseMessage[] => {
@@ -2232,7 +1798,7 @@ Create the ${responseType} now.`,
       this.logger.warn(
         '[LangGraph Tools] No tool calls found in the last message.',
       );
-      // If no tools are called, we might need to route to synthesis or finish
+      // If no tools are called, we might need to route to synthesize or finish
       return {};
     }
 
@@ -2663,7 +2229,7 @@ Create the ${responseType} now.`,
           msg.content.includes('available_documents'),
       );
 
-      // Circuit breaker: If this is a document listing request and we already have results, skip tools
+      // Circuit breaker: If this is a document listing request with existing results, skip tools
       if (isDocumentListingRequest && hasListDocumentsResult) {
         this.logger.info(
           '[LangGraph Router] 🛑 CIRCUIT BREAKER: Document listing request with existing results - skipping tools and routing to synthesis',
@@ -3524,7 +3090,7 @@ The user has attached the above document. Please analyze and respond based on th
     const requiredWebSearch = this.requiresWebSearch(userMessage);
     const requiredDocuments = this.requiresDocuments(userMessage);
 
-    const executedTools = this.workflowManager.getExecutedTools();
+    const executedTools = this.workflowOrchestrator.getExecutedTools();
     const hasWebSearch = executedTools.some((t) => t.name === 'tavilySearch');
     const hasDocuments = executedTools.some(
       (t) => t.name === 'listDocuments' || t.name === 'getDocumentContents',
@@ -3596,7 +3162,7 @@ The user has attached the above document. Please analyze and respond based on th
     const userMessage =
       state.messages?.find((msg: any) => msg._getType() === 'human')?.content ||
       '';
-    const executedTools = this.workflowManager.getExecutedTools();
+    const executedTools = this.workflowOrchestrator.getExecutedTools();
     const toolValidation = this.validateRequiredToolsExecuted(
       userMessage,
       executedTools,
