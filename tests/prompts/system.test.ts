@@ -14,7 +14,7 @@ const mockClientConfig = null; // Or provide a mock config object
 test.describe('Prompt System Refactoring Tests', () => {
   // Test Orchestrator Prompt Loading & Content
   test('loadPrompt should return Orchestrator prompt for orchestrator model', async () => {
-    const prompt = loadPrompt({
+    const prompt = await loadPrompt({
       modelId: 'global-orchestrator',
       contextId: null,
       clientConfig: mockClientConfig,
@@ -26,7 +26,14 @@ test.describe('Prompt System Refactoring Tests', () => {
   });
 
   test('getOrchestratorPrompt should return the correct prompt', async () => {
-    const prompt = getOrchestratorPrompt();
+    const prompt = getOrchestratorPrompt(
+      'test',
+      'test',
+      'test',
+      'test',
+      ['test'],
+      'test',
+    );
     expect(prompt).toEqual(
       expect.stringContaining('# Role: Quibit Orchestrator'),
     );
@@ -34,7 +41,7 @@ test.describe('Prompt System Refactoring Tests', () => {
 
   // Test Specialist Prompt Loading & Content
   test('loadPrompt should return Echo Tango prompt for specialist context', async () => {
-    const prompt = loadPrompt({
+    const prompt = await loadPrompt({
       modelId: 'gpt-4.1-mini',
       contextId: 'echo-tango-specialist',
       clientConfig: mockClientConfig,
@@ -61,7 +68,7 @@ test.describe('Prompt System Refactoring Tests', () => {
 
   // Test Default/Fallback Prompt Loading
   test('loadPrompt should return Default Assistant prompt for non-orchestrator, unknown context', async () => {
-    const prompt = loadPrompt({
+    const prompt = await loadPrompt({
       modelId: 'gpt-4.1-mini',
       contextId: null,
       clientConfig: mockClientConfig,

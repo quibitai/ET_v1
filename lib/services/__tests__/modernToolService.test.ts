@@ -54,9 +54,7 @@ describe('ModernToolService', () => {
   };
 
   const mockContext: ToolContext = {
-    hasDocumentAccess: true,
-    hasUploadedContent: false,
-    isFromGlobalPane: false,
+    userQuery: 'test query',
     logger: mockLogger,
   };
 
@@ -106,40 +104,53 @@ describe('ModernToolService', () => {
   });
 
   describe('selectRelevantTools', () => {
-    it('should select document tool for document-related queries', () => {
-      const tools = selectRelevantTools('create a document', mockContext, 1);
+    it('should select document tool for document-related queries', async () => {
+      const tools = await selectRelevantTools(
+        { ...mockContext, userQuery: 'create a document' },
+        null,
+        1,
+      );
 
       expect(tools).toHaveLength(1);
       expect(tools[0].name).toBe('createDocument');
     });
 
-    it('should select search tool for search queries', () => {
-      const tools = selectRelevantTools('search for information', mockContext);
+    it('should select search tool for search queries', async () => {
+      const tools = await selectRelevantTools({
+        ...mockContext,
+        userQuery: 'search for information',
+      });
 
       const hasSearchTool = tools.some(
-        (t) => t.name === 'searchInternalKnowledgeBase',
+        (t: any) => t.name === 'searchInternalKnowledgeBase',
       );
       expect(hasSearchTool).toBe(true);
     });
 
-    it('should select asana tool for task queries', () => {
-      const tools = selectRelevantTools('create a task in asana', mockContext);
+    it('should select asana tool for task queries', async () => {
+      const tools = await selectRelevantTools({
+        ...mockContext,
+        userQuery: 'create a task in asana',
+      });
 
-      const hasAsanaTool = tools.some((t) => t.name === 'asanaCreateTask');
+      const hasAsanaTool = tools.some((t: any) => t.name === 'asanaCreateTask');
       expect(hasAsanaTool).toBe(true);
     });
 
-    it('should always include document tool as fallback', () => {
-      const tools = selectRelevantTools('random query', mockContext);
+    it('should always include document tool as fallback', async () => {
+      const tools = await selectRelevantTools({
+        ...mockContext,
+        userQuery: 'random query',
+      });
 
-      const hasDocTool = tools.some((t) => t.name === 'createDocument');
+      const hasDocTool = tools.some((t: any) => t.name === 'createDocument');
       expect(hasDocTool).toBe(true);
     });
 
-    it('should respect maxTools parameter', () => {
-      const tools = selectRelevantTools(
-        'search document asana weather',
-        mockContext,
+    it('should respect maxTools parameter', async () => {
+      const tools = await selectRelevantTools(
+        { ...mockContext, userQuery: 'search document asana weather' },
+        null,
         2,
       );
 

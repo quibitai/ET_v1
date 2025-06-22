@@ -12,9 +12,11 @@
  */
 
 import { formatAgentPrompt } from './agent.prompt';
-import { formatSynthesisPrompt } from './synthesis.prompt';
 import { formatSimpleResponsePrompt } from './simpleResponse.prompt';
-import { formatConversationalPrompt } from './conversational.prompt';
+import {
+  UnifiedSystemPromptManager,
+  type PromptContext,
+} from '../../services/UnifiedSystemPromptManager';
 import type { GraphState } from '../state';
 import { getLastHumanMessage, getToolMessages } from '../state';
 // NEW: Import ExecutionPlan type for strategic planning
@@ -27,7 +29,13 @@ export interface GraphPromptParams {
   nodeType: 'agent' | 'synthesis' | 'simple' | 'conversational';
   state?: GraphState;
   currentDateTime?: string;
-  responseMode?: 'synthesis' | 'simple' | 'conversational';
+  responseType?:
+    | 'synthesis'
+    | 'simple'
+    | 'conversational'
+    | 'document_list'
+    | 'content'
+    | 'generic';
   availableTools?: string[];
   clientConfig?: {
     client_display_name?: string;
@@ -45,7 +53,7 @@ export async function loadGraphPrompt({
   nodeType,
   state,
   currentDateTime = new Date().toISOString(),
-  responseMode = 'synthesis',
+  responseType = 'synthesis',
   availableTools = [],
   clientConfig,
   executionPlan, // NEW: Accept execution plan parameter
@@ -57,7 +65,8 @@ export async function loadGraphPrompt({
 
   // Prepare common context
   const userQuery = state ? getLastHumanMessage(state) : '';
-  const toolResults = state ? extractToolResultsAsString(state) : '';
+  const toolMessages = state ? getToolMessages(state) : [];
+  const hasToolResults = toolMessages.length > 0;
   const referencesContext = state ? buildReferencesContext(state) : '';
   const availableToolsString =
     availableTools.join(', ') ||
@@ -69,17 +78,23 @@ export async function loadGraphPrompt({
         return await formatAgentPrompt({
           current_date: currentDateTime,
           available_tools: availableToolsString,
-          response_mode: responseMode,
+          response_mode: responseType as
+            | 'synthesis'
+            | 'simple'
+            | 'conversational'
+            | undefined,
           execution_plan: executionPlan, // NEW: Pass execution plan to agent prompt
         });
 
-      case 'synthesis':
-        return await formatSynthesisPrompt({
-          user_query: userQuery,
-          tool_results: toolResults,
-          references_context: referencesContext,
-          current_date: currentDateTime,
-        });
+      case 'synthesis': {
+        const context: PromptContext = {
+          responseType: 'synthesis',
+          userQuery,
+          hasToolResults,
+          currentDate: currentDateTime,
+        };
+        return UnifiedSystemPromptManager.getSystemPrompt(context);
+      }
 
       case 'simple':
         if (!state) {
@@ -87,13 +102,15 @@ export async function loadGraphPrompt({
         }
         return formatSimpleResponsePrompt(state);
 
-      case 'conversational':
-        return await formatConversationalPrompt({
-          user_query: userQuery,
-          tool_results: toolResults,
-          references_context: referencesContext,
-          current_date: currentDateTime,
-        });
+      case 'conversational': {
+        const context: PromptContext = {
+          responseType: 'conversational',
+          userQuery,
+          hasToolResults,
+          currentDate: currentDateTime,
+        };
+        return UnifiedSystemPromptManager.getSystemPrompt(context);
+      }
 
       default:
         throw new Error(`Unknown graph node type: ${nodeType}`);

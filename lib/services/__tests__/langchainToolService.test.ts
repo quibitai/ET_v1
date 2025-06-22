@@ -69,8 +69,8 @@ describe('LangChainToolService', () => {
   });
 
   describe('selectTools', () => {
-    it('should select all tools by default', () => {
-      const result = toolService.selectTools();
+    it('should select all tools by default', async () => {
+      const result = await toolService.selectTools();
 
       expect(result.tools).toBeDefined();
       expect(result.totalAvailable).toBeGreaterThan(0);
@@ -80,61 +80,61 @@ describe('LangChainToolService', () => {
       expect(typeof result.clientSpecificConfigs).toBe('boolean');
     });
 
-    it('should return empty tools when tool execution is disabled', () => {
+    it('should return empty tools when tool execution is disabled', async () => {
       const config: LangChainToolConfig = {
         enableToolExecution: false,
       };
 
       const toolService = new LangChainToolService(mockLogger, config);
-      const result = toolService.selectTools();
+      const result = await toolService.selectTools();
 
       expect(result.tools).toEqual([]);
       expect(result.selected).toBe(0);
       expect(result.appliedFilters).toContain('tool_execution_disabled');
     });
 
-    it('should limit tools when maxTools is specified', () => {
+    it('should limit tools when maxTools is specified', async () => {
       const config: LangChainToolConfig = {
         maxTools: 3,
       };
 
       const toolService = new LangChainToolService(mockLogger, config);
-      const result = toolService.selectTools();
+      const result = await toolService.selectTools();
 
       expect(result.tools.length).toBeLessThanOrEqual(3);
       expect(result.appliedFilters).toContain('count_limiting');
     });
 
-    it('should apply client-specific configurations', () => {
+    it('should apply client-specific configurations', async () => {
       const config: LangChainToolConfig = {
         clientConfig: mockClientConfig,
       };
 
       const toolService = new LangChainToolService(mockLogger, config);
-      const result = toolService.selectTools();
+      const result = await toolService.selectTools();
 
       expect(result.clientSpecificConfigs).toBe(true);
       expect(result.appliedFilters).toContain('client_filtering');
     });
 
-    it('should apply context filtering', () => {
+    it('should apply context filtering', async () => {
       const config: LangChainToolConfig = {
         contextId: 'test-context-id',
       };
 
       const toolService = new LangChainToolService(mockLogger, config);
-      const result = toolService.selectTools();
+      const result = await toolService.selectTools();
 
       expect(result.appliedFilters).toContain('context_filtering');
     });
 
-    it('should apply custom tool filters', () => {
+    it('should apply custom tool filters', async () => {
       const config: LangChainToolConfig = {
         toolFilters: ['search', 'document'],
       };
 
       const toolService = new LangChainToolService(mockLogger, config);
-      const result = toolService.selectTools();
+      const result = await toolService.selectTools();
 
       expect(result.appliedFilters).toContain('custom_filters');
       // Verify filtered tools contain the keywords
@@ -168,8 +168,8 @@ describe('LangChainToolService', () => {
       expect(Array.isArray(asanaTools)).toBe(true);
     });
 
-    it('should provide tool metadata', () => {
-      const result = toolService.selectTools();
+    it('should provide tool metadata', async () => {
+      const result = await toolService.selectTools();
 
       if (result.tools.length > 0) {
         const firstTool = result.tools[0];
@@ -189,8 +189,8 @@ describe('LangChainToolService', () => {
   });
 
   describe('performance and logging', () => {
-    it('should log tool selection process', () => {
-      toolService.selectTools();
+    it('should log tool selection process', async () => {
+      await toolService.selectTools();
 
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Starting LangChain tool selection',
@@ -212,8 +212,8 @@ describe('LangChainToolService', () => {
       );
     });
 
-    it('should track selection performance', () => {
-      const result = toolService.selectTools();
+    it('should track selection performance', async () => {
+      const result = await toolService.selectTools();
 
       expect(result.selectionTime).toBeGreaterThanOrEqual(0);
       expect(typeof result.selectionTime).toBe('number');
@@ -226,12 +226,12 @@ describe('LangChainToolService', () => {
       expect(service).toBeInstanceOf(LangChainToolService);
     });
 
-    it('should work with selectLangChainTools utility', () => {
+    it('should work with selectLangChainTools utility', async () => {
       const config: LangChainToolConfig = {
         maxTools: 3,
       };
 
-      const result = selectLangChainTools(mockLogger, config);
+      const result = await selectLangChainTools(mockLogger, config);
 
       expect(result.tools.length).toBeLessThanOrEqual(3);
       expect(result.totalAvailable).toBeGreaterThan(0);
@@ -239,54 +239,64 @@ describe('LangChainToolService', () => {
   });
 
   describe('error handling and edge cases', () => {
-    it('should handle empty tool filters gracefully', () => {
+    it('should handle empty tool filters gracefully', async () => {
       const config: LangChainToolConfig = {
         toolFilters: [],
       };
 
       const toolService = new LangChainToolService(mockLogger, config);
-      const result = toolService.selectTools();
+      const result = await toolService.selectTools();
 
       // Should not apply custom filters for empty array
       expect(result.appliedFilters).not.toContain('custom_filters');
     });
 
-    it('should handle client config without tool_configs', () => {
-      const configWithoutTools: ClientConfig = {
-        id: 'test-client-id',
-        name: 'Test Client',
-        client_display_name: 'Test Client Display',
-        configJson: {},
-      };
+    it('should handle no available tools gracefully', async () => {
+      // Mock the tools module to return an empty array
+      vi.mock('@/lib/ai/tools/index', () => ({
+        availableTools: [],
+      }));
 
+      const toolService = new LangChainToolService(mockLogger);
+      const result = await toolService.selectTools();
+
+      expect(result.tools).toEqual([]);
+      expect(result.totalAvailable).toBe(0);
+      expect(result.selected).toBe(0);
+    });
+
+    it('should handle client config without tool_configs', async () => {
       const config: LangChainToolConfig = {
-        clientConfig: configWithoutTools,
+        clientConfig: {
+          ...mockClientConfig,
+          configJson: {},
+        },
       };
 
       const toolService = new LangChainToolService(mockLogger, config);
-      const result = toolService.selectTools();
+      const result = await toolService.selectTools();
 
       expect(result.clientSpecificConfigs).toBe(false);
     });
 
-    it('should handle undefined context gracefully', () => {
+    it('should not apply context filtering if contextId is not in registry', async () => {
       const config: LangChainToolConfig = {
-        contextId: undefined,
+        contextId: 'non-existent-context',
       };
 
       const toolService = new LangChainToolService(mockLogger, config);
-      const result = toolService.selectTools();
+      const result = await toolService.selectTools();
 
       expect(result.appliedFilters).not.toContain('context_filtering');
     });
 
-    it('should handle maxTools of 0', () => {
+    it('should not apply custom filters if filter term is not found', async () => {
       const config: LangChainToolConfig = {
-        maxTools: 0,
+        toolFilters: ['nonexistentfilter'],
       };
 
       const toolService = new LangChainToolService(mockLogger, config);
-      const result = toolService.selectTools();
+      const result = await toolService.selectTools();
 
       expect(result.tools).toEqual([]);
       expect(result.selected).toBe(0);

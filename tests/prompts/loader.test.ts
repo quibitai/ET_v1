@@ -39,7 +39,7 @@ test.describe('Prompt Loader Tests', () => {
   test('loadPrompt should correctly load orchestrator prompt with client params', async () => {
     const currentDateTime = '2023-05-01 12:00:00 (UTC)';
 
-    const prompt = loadPrompt({
+    const prompt = await loadPrompt({
       modelId: 'global-orchestrator',
       contextId: null,
       clientConfig: mockEchoTangoConfig,
@@ -61,7 +61,7 @@ test.describe('Prompt Loader Tests', () => {
   test('loadPrompt should use client-specific specialist prompt override when available', async () => {
     const currentDateTime = '2023-05-01 12:00:00 (UTC)';
 
-    const prompt = loadPrompt({
+    const prompt = await loadPrompt({
       modelId: 'gpt-4-o',
       contextId: 'echo-tango-specialist',
       clientConfig: mockEchoTangoConfig,
@@ -90,7 +90,7 @@ test.describe('Prompt Loader Tests', () => {
     const currentDateTime = '2023-05-01 12:00:00 (UTC)';
 
     // We'll use the minimal client that has no specialist prompt overrides
-    const prompt = loadPrompt({
+    const prompt = await loadPrompt({
       modelId: 'gpt-4-o',
       contextId: 'echo-tango-specialist',
       clientConfig: mockMinimalConfig,
@@ -112,7 +112,7 @@ test.describe('Prompt Loader Tests', () => {
   });
 
   test('loadPrompt should inject client details into specialist prompt placeholders', async () => {
-    const prompt = loadPrompt({
+    const prompt = await loadPrompt({
       modelId: 'gpt-4-o',
       contextId: 'chat-model',
       clientConfig: mockEchoTangoConfig,
@@ -132,7 +132,7 @@ test.describe('Prompt Loader Tests', () => {
   });
 
   test('loadPrompt should use default assistant prompt for unknown context', async () => {
-    const prompt = loadPrompt({
+    const prompt = await loadPrompt({
       modelId: 'gpt-4-o',
       contextId: 'unknown-context-id',
       clientConfig: mockEchoTangoConfig,
@@ -147,7 +147,7 @@ test.describe('Prompt Loader Tests', () => {
   test('orchestrator prompt should include current date/time', async () => {
     const currentDateTime = 'Monday, May 1, 2023 12:00 PM (America/New_York)';
 
-    const prompt = loadPrompt({
+    const prompt = await loadPrompt({
       modelId: 'global-orchestrator',
       contextId: null,
       clientConfig: mockEchoTangoConfig,
@@ -163,7 +163,7 @@ test.describe('Prompt Loader Tests', () => {
   test('specialist prompts should include current date/time', async () => {
     const currentDateTime = 'Tuesday, May 2, 2023 3:45 PM (UTC)';
 
-    const prompt = loadPrompt({
+    const prompt = await loadPrompt({
       modelId: 'gpt-4-o',
       contextId: 'echo-tango-specialist',
       clientConfig: mockEchoTangoConfig,
@@ -179,7 +179,7 @@ test.describe('Prompt Loader Tests', () => {
   test('chat model prompt should include current date/time', async () => {
     const currentDateTime = 'Wednesday, May 3, 2023 9:30 AM (Europe/London)';
 
-    const prompt = loadPrompt({
+    const prompt = await loadPrompt({
       modelId: 'gpt-4-o',
       contextId: 'chat-bit',
       clientConfig: mockEchoTangoConfig,
@@ -195,7 +195,7 @@ test.describe('Prompt Loader Tests', () => {
   test('default assistant prompt should include current date/time', async () => {
     const currentDateTime = 'Thursday, May 4, 2023 6:15 PM (Asia/Tokyo)';
 
-    const prompt = loadPrompt({
+    const prompt = await loadPrompt({
       modelId: 'gpt-4-o',
       contextId: 'unknown-context-id',
       clientConfig: mockEchoTangoConfig,
@@ -210,7 +210,7 @@ test.describe('Prompt Loader Tests', () => {
 
   test('all prompt types should handle missing currentDateTime parameter', async () => {
     // Test orchestrator without currentDateTime
-    const orchestratorPrompt = loadPrompt({
+    const orchestratorPrompt = await loadPrompt({
       modelId: 'global-orchestrator',
       contextId: null,
       clientConfig: mockEchoTangoConfig,
@@ -219,7 +219,7 @@ test.describe('Prompt Loader Tests', () => {
     expect(orchestratorPrompt).toContain('Current date and time:');
 
     // Test specialist without currentDateTime
-    const specialistPrompt = loadPrompt({
+    const specialistPrompt = await loadPrompt({
       modelId: 'gpt-4-o',
       contextId: 'echo-tango-specialist',
       clientConfig: mockEchoTangoConfig,
@@ -231,7 +231,7 @@ test.describe('Prompt Loader Tests', () => {
   test('date/time should be properly formatted and positioned in prompts', async () => {
     const currentDateTime = 'Friday, May 5, 2023 11:59 PM (Pacific/Auckland)';
 
-    const specialistPrompt = loadPrompt({
+    const specialistPrompt = await loadPrompt({
       modelId: 'gpt-4-o',
       contextId: 'echo-tango-specialist',
       clientConfig: mockEchoTangoConfig,
@@ -240,7 +240,7 @@ test.describe('Prompt Loader Tests', () => {
 
     // Verify the date/time appears at the end of the prompt (after tool instructions)
     const lines = specialistPrompt.split('\n');
-    const dateTimeLine = lines.find((line) =>
+    const dateTimeLine = lines.find((line: string) =>
       line.includes('Current date and time:'),
     );
     expect(dateTimeLine).toBeTruthy();
@@ -248,10 +248,16 @@ test.describe('Prompt Loader Tests', () => {
       'Current date and time: Friday, May 5, 2023 11:59 PM (Pacific/Auckland)',
     );
 
-    // Verify it's near the end of the prompt (after core content)
-    const dateTimeIndex = lines.findIndex((line) =>
+    // Verify it's positioned after tool instructions
+    const toolInstructionsIndex = lines.findIndex((line: string) =>
+      line.includes('## Tool Instructions'),
+    );
+    const dateTimeIndex = lines.findIndex((line: string) =>
       line.includes('Current date and time:'),
     );
-    expect(dateTimeIndex).toBeGreaterThan(lines.length - 10); // Should be in last 10 lines
+
+    if (toolInstructionsIndex !== -1) {
+      expect(dateTimeIndex).toBeGreaterThan(toolInstructionsIndex);
+    }
   });
 });

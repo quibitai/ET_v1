@@ -57,11 +57,11 @@ export async function generateResponseNode(
   const startTime = Date.now();
 
   // Determine response mode (use existing or auto-detect using unified utility)
-  const responseMode =
+  const responseType =
     state.response_mode || unifiedDetermineResponseMode(state).mode;
 
   logger.info('[GenerateResponse] Starting response generation', {
-    mode: responseMode,
+    mode: responseType,
     messageCount: state.messages.length,
     toolResultsCount: getToolMessages(state).length,
     userQuery: `${getLastHumanMessage(state).substring(0, 100)}...`,
@@ -70,7 +70,7 @@ export async function generateResponseNode(
   try {
     const result = await generateResponseByMode(
       state,
-      responseMode,
+      responseType,
       dependencies,
     );
 
@@ -95,7 +95,7 @@ export async function generateResponseNode(
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     logger.error('[GenerateResponse] Response generation failed', {
-      mode: responseMode,
+      mode: responseType,
       error: errorMessage,
       duration,
     });
@@ -132,7 +132,7 @@ async function generateResponseByMode(
     nodeType: mode,
     state,
     currentDateTime: currentDateTime || new Date().toISOString(),
-    responseMode: mode,
+    responseType: mode,
     clientConfig,
   });
 
