@@ -3,6 +3,7 @@
 import { z } from 'zod';
 
 import { createUser, getUser } from '@/lib/db/queries';
+import { AuthError } from 'next-auth';
 
 import { signIn } from './auth';
 
@@ -26,24 +27,23 @@ export const login = async (
   formData: FormData,
 ): Promise<LoginActionState> => {
   try {
-    const validatedData = loginFormSchema.parse({
-      email: formData.get('email'),
-      password: formData.get('password'),
-    });
-
-    await signIn('credentials', {
-      email: validatedData.email,
-      password: validatedData.password,
-      redirect: false,
-    });
+    await signIn('credentials', formData);
 
     return { status: 'success' };
   } catch (error) {
+    if (error instanceof AuthError) {
+      switch (error.type) {
+        case 'CredentialsSignin':
+          return { status: 'failed' };
+        default:
+          return { status: 'failed' };
+      }
+    }
     if (error instanceof z.ZodError) {
       return { status: 'invalid_data' };
     }
 
-    return { status: 'failed' };
+    throw error;
   }
 };
 

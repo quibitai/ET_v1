@@ -11,6 +11,7 @@ import type {
   BaseMCPClient,
 } from './BaseMCPClient';
 import { AsanaMCPClient } from './AsanaMCPClient';
+import { GoogleWorkspaceMCPClient } from './GoogleWorkspaceMCPClient';
 import { HealthMonitor } from './health/HealthMonitor';
 import type { HealthAlert } from './health/HealthMonitor';
 import { StreamingMCPWrapper } from './streaming/StreamingMCPWrapper';
@@ -110,6 +111,18 @@ export class MultiMCPClient {
       this.registerService('asana', new AsanaMCPClient(), 10);
     }
 
+    // Google Workspace service
+    if (
+      process.env.GOOGLE_CLIENT_SECRETS ||
+      process.env.GOOGLE_WORKSPACE_MCP_SERVER_URL
+    ) {
+      this.registerService(
+        'google-workspace',
+        new GoogleWorkspaceMCPClient(),
+        10,
+      );
+    }
+
     // Future services can be added here
     // if (process.env.NOTION_ACCESS_TOKEN) {
     //   this.registerService('notion', new NotionMCPClient(), 10);
@@ -146,6 +159,8 @@ export class MultiMCPClient {
     switch (serviceName.toLowerCase()) {
       case 'asana':
         return new AsanaMCPClient(config);
+      case 'google-workspace':
+        return new GoogleWorkspaceMCPClient(config);
       // Add more services as they're implemented
       default:
         console.warn(`Unknown service type: ${serviceName}`);

@@ -309,6 +309,34 @@ export async function getAvailableTools(session?: any) {
       if (mcpTools.length > 0) {
         integrationTools.push(...mcpTools);
       }
+
+      // Load Google Workspace tools if user has valid session with access token
+      if (session.accessToken && session.user.email) {
+        try {
+          const { createGoogleWorkspaceTools } = await import(
+            './mcp/google-workspace'
+          );
+          const googleWorkspaceTools = await createGoogleWorkspaceTools(
+            session.user.id,
+            `session-${session.user.id}`,
+            session.accessToken,
+            session.user.email,
+          );
+
+          if (googleWorkspaceTools.length > 0) {
+            integrationTools.push(...googleWorkspaceTools);
+            console.log(
+              `[MCP] getAvailableTools: Loaded ${googleWorkspaceTools.length} Google Workspace tools`,
+            );
+          }
+        } catch (error) {
+          console.error(
+            '[MCP] getAvailableTools: Google Workspace client failed:',
+            error,
+          );
+          // Silently handle error in production
+        }
+      }
     } catch (error) {
       integrationTools = [];
     }

@@ -19,6 +19,7 @@ import {
   afterAll,
 } from 'vitest';
 import { listDocumentsTool } from '@/lib/ai/tools/list-documents';
+import { StandardizedResponseFormatter } from '@/lib/ai/services/StandardizedResponseFormatter';
 
 // Mock environment variables
 const mockEnv = {
@@ -404,6 +405,52 @@ describe('List Documents Tool Tests', () => {
 
       expect(mockSelect).toHaveBeenCalledTimes(5);
       expect(mockOrder).toHaveBeenCalledTimes(5);
+    });
+  });
+
+  describe('Response Formatting Integration', () => {
+    it('should format as a clean list when responseType is list', () => {
+      const toolResults = [
+        {
+          name: 'listDocuments',
+          content: JSON.stringify({
+            available_documents: [
+              {
+                id: 'doc1',
+                title: 'Test Document 1',
+                url: 'https://example.com/doc1',
+                created_at: '2024-01-01T00:00:00Z',
+                schema: 'markdown',
+                clickable_link: '[Test Document 1](https://example.com/doc1)',
+              },
+              {
+                id: 'doc2',
+                title: 'Test Document 2',
+                url: 'https://example.com/doc2',
+                created_at: '2024-01-02T00:00:00Z',
+                schema: 'pdf',
+                clickable_link: '[Test Document 2](https://example.com/doc2)',
+              },
+            ],
+            formatted_list:
+              '- [Test Document 1](https://example.com/doc1)\n- [Test Document 2](https://example.com/doc2)',
+          }),
+          metadata: { responseType: 'list' },
+        },
+      ];
+      const options: import(
+        '@/lib/ai/services/StandardizedResponseFormatter',
+      ).FormattingOptions = {
+        contentType: 'document_list',
+        userQuery: 'list documents',
+      };
+      const output = StandardizedResponseFormatter.formatToolResults(
+        toolResults,
+        options,
+      );
+      expect(output).toContain('- [Test Document 1](https://example.com/doc1)');
+      expect(output).toContain('- [Test Document 2](https://example.com/doc2)');
+      expect(output).not.toMatch(/Executive Summary|Overview|Recommendations/);
     });
   });
 });

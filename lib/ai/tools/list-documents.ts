@@ -212,3 +212,8 @@ export const listDocumentsTool = new DynamicStructuredTool({
     }
   },
 });
+
+// FIX: Replaced the ambiguous parenthesized expression with Object.assign
+Object.assign(listDocumentsTool, {
+  responseType: 'list',
+});

@@ -26,6 +26,21 @@ export {
   type AsanaProject,
 } from './AsanaMCPClient';
 
+export {
+  GoogleWorkspaceMCPClient,
+  type GoogleWorkspaceMCPConfig,
+  type GoogleWorkspaceEmailRequest,
+  type GoogleWorkspaceDriveRequest,
+  type GoogleWorkspaceCalendarRequest,
+  GMAIL_TOOLS,
+  DRIVE_TOOLS,
+  CALENDAR_TOOLS,
+  DOCS_TOOLS,
+  SHEETS_TOOLS,
+  FORMS_TOOLS,
+  CHAT_TOOLS,
+} from './GoogleWorkspaceMCPClient';
+
 // Multi-service manager
 export {
   MultiMCPClient,
