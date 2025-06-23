@@ -413,3 +413,9 @@ export function convertLangChainTool(
     metadata,
   };
 }
+
+// If DynamicStructuredTool is imported from a library, extend it locally for development purposes:
+
+export interface ExtendedDynamicStructuredTool extends DynamicStructuredTool {
+  responseType?: string;
+}

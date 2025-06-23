@@ -1,0 +1,80 @@
+[
+  {
+    "id": "list_calendars",
+    "service": "google-workspace",
+    "streamingSupported": false,
+    "category": "calendar",
+    "priority": "high",
+    "description": "List all calendars accessible to the user, including primary calendar and shared calendars.",
+    "estimatedDuration": 1000,
+    "batchCompatible": false,
+    "tags": ["calendar", "list", "discovery", "core"],
+    "requiredScopes": ["calendar.readonly"],
+    "manifestVersion": "1.0.0"
+  },
+  {
+    "id": "get_events",
+    "service": "google-workspace",
+    "streamingSupported": false,
+    "category": "calendar",
+    "priority": "high",
+    "description": "Retrieve events from a Google Calendar within a specified time range with filtering options.",
+    "estimatedDuration": 2000,
+    "batchCompatible": false,
+    "tags": ["calendar", "events", "list", "core"],
+    "requiredScopes": ["calendar.readonly"],
+    "manifestVersion": "1.0.0"
+  },
+  {
+    "id": "get_event",
+    "service": "google-workspace",
+    "streamingSupported": false,
+    "category": "calendar",
+    "priority": "medium",
+    "description": "Get detailed information about a specific calendar event by ID.",
+    "estimatedDuration": 1000,
+    "batchCompatible": true,
+    "tags": ["calendar", "event", "details"],
+    "requiredScopes": ["calendar.readonly"],
+    "manifestVersion": "1.0.0"
+  },
+  {
+    "id": "create_event",
+    "service": "google-workspace",
+    "streamingSupported": false,
+    "category": "calendar",
+    "priority": "high",
+    "description": "Create a new calendar event with full customization including attendees, location, and attachments.",
+    "estimatedDuration": 2500,
+    "batchCompatible": false,
+    "tags": ["calendar", "create", "event", "core"],
+    "requiredScopes": ["calendar.events"],
+    "manifestVersion": "1.0.0"
+  },
+  {
+    "id": "modify_event",
+    "service": "google-workspace",
+    "streamingSupported": false,
+    "category": "calendar",
+    "priority": "high",
+    "description": "Update an existing calendar event's properties including time, attendees, and description.",
+    "estimatedDuration": 2000,
+    "batchCompatible": false,
+    "tags": ["calendar", "update", "event", "core"],
+    "requiredScopes": ["calendar.events"],
+    "manifestVersion": "1.0.0"
+  },
+  {
+    "id": "delete_event",
+    "service": "google-workspace",
+    "streamingSupported": false,
+    "category": "calendar",
+    "priority": "medium",
+    "description": "Delete a calendar event by ID from the specified calendar.",
+    "estimatedDuration": 1500,
+    "batchCompatible": true,
+    "tags": ["calendar", "delete", "event"],
+    "requiredScopes": ["calendar.events"],
+    "manifestVersion": "1.0.0"
+  }
+] 

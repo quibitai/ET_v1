@@ -52,7 +52,12 @@ export namespace StandardizedResponseFormatter {
     let formattedContent = '';
 
     for (const toolResult of toolResults) {
-      const formatted = formatSingleToolResult(toolResult, options);
+      // Prefer responseType from toolResult.metadata if present
+      const responseType = toolResult.metadata?.responseType;
+      const mergedOptions = responseType
+        ? { ...options, contentType: responseType }
+        : options;
+      const formatted = formatSingleToolResult(toolResult, mergedOptions);
       if (formatted) {
         formattedContent = `${formattedContent}${formatted}\n\n`;
       }

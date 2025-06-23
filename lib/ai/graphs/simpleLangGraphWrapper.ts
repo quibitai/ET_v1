@@ -340,6 +340,17 @@ export class SimpleLangGraphWrapper {
         'asana_get_attachments_for_object',
         'asana_upload_attachment_for_object',
         'asana_download_attachment',
+        // Google Workspace tools (properly designed with Zod schemas)
+        'search_drive_files',
+        'get_drive_file_content',
+        'list_drive_items',
+        'create_drive_file',
+        'search_gmail_messages',
+        'get_gmail_message_content',
+        'send_gmail_message',
+        'list_calendars',
+        'get_calendar_events',
+        'create_calendar_event',
       ];
 
       if (fixedTools.includes(tool.name)) {
@@ -1127,6 +1138,9 @@ export class SimpleLangGraphWrapper {
         const toolResults: ToolResult[] = toolMessages.map((msg) => ({
           name: (msg as any)?.name || 'tool',
           content: msg.content,
+          metadata: {
+            responseType: (msg as any)?.responseType,
+          },
         }));
 
         // Determine response type and formatting options
@@ -3291,6 +3305,9 @@ Current date: ${new Date().toISOString()}`;
           const toolResults: ToolResult[] = toolMessages.map((msg: any) => ({
             name: msg?.name || 'tool',
             content: msg.content,
+            metadata: {
+              responseType: (msg as any)?.responseType,
+            },
           }));
 
           // Use new standardized formatter

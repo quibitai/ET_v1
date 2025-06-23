@@ -14,6 +14,8 @@ declare module 'next-auth' {
       /** Custom fields */
       clientId?: string;
     } & DefaultSession['user'];
+    /** Google OAuth access token for Workspace integration */
+    accessToken?: string;
   }
 
   /**

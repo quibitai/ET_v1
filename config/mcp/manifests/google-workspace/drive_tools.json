@@ -1,0 +1,54 @@
+[
+  {
+    "id": "search_drive_files",
+    "service": "google-workspace",
+    "streamingSupported": false,
+    "category": "file_management",
+    "priority": "high",
+    "description": "Search for files and folders in Google Drive using advanced query operators. Supports both structured queries and free text search.",
+    "estimatedDuration": 2000,
+    "batchCompatible": false,
+    "tags": ["drive", "search", "files", "core"],
+    "requiredScopes": ["drive.readonly"],
+    "manifestVersion": "1.0.0"
+  },
+  {
+    "id": "get_drive_file_content",
+    "service": "google-workspace",
+    "streamingSupported": false,
+    "category": "file_management",
+    "priority": "high",
+    "description": "Retrieve the content of a Google Drive file. Supports Google Docs/Sheets/Slides, Office files (.docx, .xlsx, .pptx), and text files.",
+    "estimatedDuration": 3000,
+    "batchCompatible": true,
+    "tags": ["drive", "content", "files", "core"],
+    "requiredScopes": ["drive.readonly"],
+    "manifestVersion": "1.0.0"
+  },
+  {
+    "id": "list_drive_items",
+    "service": "google-workspace",
+    "streamingSupported": false,
+    "category": "file_management",
+    "priority": "medium",
+    "description": "List files and folders within a specific Google Drive folder, including shared drives.",
+    "estimatedDuration": 1500,
+    "batchCompatible": false,
+    "tags": ["drive", "list", "folder", "navigation"],
+    "requiredScopes": ["drive.readonly"],
+    "manifestVersion": "1.0.0"
+  },
+  {
+    "id": "create_drive_file",
+    "service": "google-workspace",
+    "streamingSupported": false,
+    "category": "file_management",
+    "priority": "medium",
+    "description": "Create a new file in Google Drive with specified content, or upload content from a URL.",
+    "estimatedDuration": 3000,
+    "batchCompatible": false,
+    "tags": ["drive", "create", "upload", "files"],
+    "requiredScopes": ["drive.file"],
+    "manifestVersion": "1.0.0"
+  }
+] 
