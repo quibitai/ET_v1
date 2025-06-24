@@ -17,8 +17,14 @@ export type {
   InterruptionReason,
 } from './types';
 
-// Import the simple graph wrapper implementation for now
-// We'll add more sophisticated graphs as we build them
+// NEW: Use ModularLangGraphWrapper as the primary implementation
+export {
+  ModularLangGraphWrapper,
+  createModularLangGraphWrapper,
+} from './ModularLangGraphWrapper';
+export type { ModularLangGraphConfig } from './ModularLangGraphWrapper';
+
+// Legacy wrapper for compatibility (to be removed)
 export {
   SimpleLangGraphWrapper,
   createLangGraphWrapper,
@@ -27,20 +33,12 @@ export type { LangGraphWrapperConfig } from './simpleLangGraphWrapper';
 
 /**
  * Create a LangGraph based on query complexity and patterns
- *
- * This factory function will grow to support different graph types
- * based on the detected patterns from QueryClassifier
+ * UPDATED: Now uses ModularLangGraphWrapper by default
  */
 export function createGraphForPatterns(patterns: string[], config: any) {
-  // For now, we'll use the simple wrapper for all patterns
-  // In the future, this could route to:
-  // - MultiStepReasoningGraph for MULTI_STEP patterns
-  // - KnowledgeRetrievalGraph for KNOWLEDGE_RETRIEVAL patterns
-  // - WorkflowGraph for WORKFLOW patterns
-  // - etc.
-
-  const { createLangGraphWrapper } = require('./simpleLangGraphWrapper');
-  return createLangGraphWrapper(config);
+  // Use the new ModularLangGraphWrapper for all patterns
+  const { createModularLangGraphWrapper } = require('./ModularLangGraphWrapper');
+  return createModularLangGraphWrapper(config);
 }
 
 /**

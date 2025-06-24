@@ -16,9 +16,9 @@ import {
 import { modelMapping } from '@/lib/ai/models';
 import { createLangChainToolService } from './langchainToolService';
 
-// Import LangGraph support with UI capabilities
-import { createLangGraphWrapper } from '@/lib/ai/graphs';
-import type { SimpleLangGraphWrapper } from '@/lib/ai/graphs/simpleLangGraphWrapper';
+// Import LangGraph support with UI capabilities - UPDATED to use ModularLangGraphWrapper
+import { createModularLangGraphWrapper } from '@/lib/ai/graphs';
+import type { ModularLangGraphWrapper } from '@/lib/ai/graphs/ModularLangGraphWrapper';
 
 // Import message saving dependencies
 import { saveMessages } from '@/lib/db/queries';
@@ -30,7 +30,7 @@ import type { DBMessage } from '@/lib/db/schema';
 import type { RequestLogger } from './observabilityService';
 import type { ClientConfig } from '@/lib/db/queries';
 import type { LangChainToolConfig } from './langchainToolService';
-import type { LangGraphWrapperConfig } from '@/lib/ai/graphs';
+import type { ModularLangGraphConfig } from '@/lib/ai/graphs/ModularLangGraphWrapper';
 import type { BrainRequest } from '@/lib/validation/brainValidation';
 // NEW: Import ExecutionPlan type for strategic planning integration
 import type { ExecutionPlan } from '@/lib/ai/graphs/services/PlannerService';
@@ -52,10 +52,10 @@ export interface LangChainBridgeConfig {
 }
 
 /**
- * LangChain agent and executor wrapper
+ * LangChain agent and executor wrapper - UPDATED for ModularLangGraphWrapper
  */
 export interface LangChainAgent {
-  langGraphWrapper: SimpleLangGraphWrapper;
+  langGraphWrapper: ModularLangGraphWrapper;
   tools: any[];
   llm: ChatOpenAI;
   executionType: 'langgraph';
@@ -63,7 +63,7 @@ export interface LangChainAgent {
 
 /**
  * Create LangChain agent with tools and prompt
- * Now supports only the LangGraph execution path.
+ * UPDATED: Now uses ModularLangGraphWrapper by default.
  */
 export async function createLangChainAgent(
   systemPrompt: string,
@@ -72,7 +72,7 @@ export async function createLangChainAgent(
   session?: any, // Session for MCP tool loading
 ): Promise<LangChainAgent> {
   const startTime = performance.now();
-  logger.info('Creating LangChain agent with config', { ...config });
+  logger.info('Creating LangChain agent with ModularLangGraphWrapper', { ...config });
 
   // Determine the correct model
   let selectedModel: string;
@@ -101,18 +101,23 @@ export async function createLangChainAgent(
       ? await selectTools(config, logger, session)
       : [];
 
-  // Always use LangGraph
-  const langGraphConfig: LangGraphWrapperConfig = {
-    systemPrompt,
+  // Use ModularLangGraphWrapper
+  const langGraphConfig: ModularLangGraphConfig = {
     llm,
     tools,
     logger,
-    forceToolCall: config.forceToolCall,
+    currentDateTime: new Date().toISOString(),
+    clientConfig: config.clientConfig ? {
+      client_display_name: config.clientConfig.client_display_name || undefined,
+      client_core_mission: config.clientConfig.client_core_mission || undefined,
+    } : undefined,
+    enableCaching: true,
+    enableMetrics: true,
   };
-  const langGraphWrapper = createLangGraphWrapper(langGraphConfig);
+  const langGraphWrapper = createModularLangGraphWrapper(langGraphConfig);
 
   const duration = performance.now() - startTime;
-  logger.info('LangChain agent created successfully', {
+  logger.info('LangChain agent created successfully with ModularLangGraphWrapper', {
     duration: `${duration.toFixed(2)}ms`,
     executionType: 'langgraph',
     toolCount: tools.length,
@@ -164,7 +169,6 @@ export async function streamLangChainAgent(
 
   const wrapperConfig = agent.langGraphWrapper.getConfig();
   const fullConversation: BaseMessage[] = [
-    new SystemMessage(wrapperConfig.systemPrompt),
     ...messages,
     new HumanMessage(input),
   ];
@@ -186,11 +190,10 @@ export async function streamLangChainAgent(
     },
   };
 
-  // Directly return the raw stream from the graph with synthesis preference and strategic context
+  // Directly return the raw stream from the graph with strategic context
   const stream = agent.langGraphWrapper.stream(
     fullConversation,
     runnableConfig, // ← Pass the config containing fileContext and executionPlan
-    needsSynthesis,
   );
 
   // Note: We are no longer saving the message here.
