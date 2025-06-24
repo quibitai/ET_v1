@@ -33,6 +33,51 @@ export interface FormattingOptions {
   maxLength?: number;
 }
 
+/**
+ * Standard Response Schema - As specified in Development Roadmap v6.0.0
+ * Critical Issue #4: Response Standardization
+ */
+export interface StandardResponse {
+  content: string;
+  sources?: Array<{ title: string; url: string }>;
+  actions?: Array<{ type: string; data: any }>;
+  metadata: { 
+    timestamp: string; 
+    model: string; 
+    tools_used: string[];
+    response_type?: string;
+    processing_time_ms?: number;
+  };
+}
+
+/**
+ * Create a standard response with consistent metadata
+ */
+export function createStandardResponse(
+  content: string,
+  options: {
+    sources?: Array<{ title: string; url: string }>;
+    actions?: Array<{ type: string; data: any }>;
+    model?: string;
+    tools_used?: string[];
+    response_type?: string;
+    processing_time_ms?: number;
+  } = {}
+): StandardResponse {
+  return {
+    content,
+    sources: options.sources || [],
+    actions: options.actions || [],
+    metadata: {
+      timestamp: new Date().toISOString(),
+      model: options.model || 'unknown',
+      tools_used: options.tools_used || [],
+      response_type: options.response_type,
+      processing_time_ms: options.processing_time_ms,
+    },
+  };
+}
+
 export namespace StandardizedResponseFormatter {
   const MAX_CONTENT_LENGTH = 10000;
   const PREVIEW_LENGTH = 500;
