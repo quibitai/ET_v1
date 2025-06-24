@@ -70,15 +70,18 @@ export async function createGoogleWorkspaceTools(
         page_size: z
           .number()
           .optional()
+          .nullable()
           .default(10)
           .describe('Maximum number of files to return'),
         drive_id: z
           .string()
           .optional()
+          .nullable()
           .describe('ID of shared drive to search'),
         include_items_from_all_drives: z
           .boolean()
           .optional()
+          .nullable()
           .default(true)
           .describe('Include items from shared drives'),
       }),
@@ -121,17 +124,20 @@ export async function createGoogleWorkspaceTools(
         folder_id: z
           .string()
           .optional()
+          .nullable()
           .default('root')
           .describe('Folder ID to list (default: root)'),
         page_size: z
           .number()
           .optional()
+          .nullable()
           .default(100)
           .describe('Maximum number of items to return'),
-        drive_id: z.string().optional().describe('ID of shared drive'),
+        drive_id: z.string().optional().nullable().describe('ID of shared drive'),
         include_items_from_all_drives: z
           .boolean()
           .optional()
+          .nullable()
           .default(true)
           .describe('Include items from shared drives'),
       }),
@@ -151,15 +157,17 @@ export async function createGoogleWorkspaceTools(
       description: 'Create a new file in Google Drive.',
       schema: z.object({
         file_name: z.string().describe('Name for the new file'),
-        content: z.string().optional().describe('Content for the file'),
+        content: z.string().optional().nullable().describe('Content for the file'),
         folder_id: z
           .string()
           .optional()
+          .nullable()
           .default('root')
           .describe('Folder ID to create file in'),
         mime_type: z
           .string()
           .optional()
+          .nullable()
           .default('text/plain')
           .describe('MIME type of the file'),
       }),
@@ -190,6 +198,7 @@ export async function createGoogleWorkspaceTools(
           max_results: z
             .number()
             .optional()
+            .nullable()
             .default(10)
             .describe('Maximum number of messages to return'),
         }),
@@ -230,10 +239,11 @@ export async function createGoogleWorkspaceTools(
           to: z.string().describe('Recipient email address'),
           subject: z.string().describe('Email subject'),
           body: z.string().describe('Email body content'),
-          cc: z.string().optional().describe('CC recipients (comma-separated)'),
+          cc: z.string().optional().nullable().describe('CC recipients (comma-separated)'),
           bcc: z
             .string()
             .optional()
+            .nullable()
             .describe('BCC recipients (comma-separated)'),
         }),
         func: async (args) => {
@@ -268,13 +278,15 @@ export async function createGoogleWorkspaceTools(
           calendar_id: z
             .string()
             .optional()
+            .nullable()
             .default('primary')
             .describe('Calendar ID (default: primary)'),
-          time_min: z.string().optional().describe('Start time (ISO format)'),
-          time_max: z.string().optional().describe('End time (ISO format)'),
+          time_min: z.string().optional().nullable().describe('Start time (ISO format)'),
+          time_max: z.string().optional().nullable().describe('End time (ISO format)'),
           max_results: z
             .number()
             .optional()
+            .nullable()
             .default(50)
             .describe('Maximum number of events'),
         }),
@@ -294,11 +306,12 @@ export async function createGoogleWorkspaceTools(
           summary: z.string().describe('Event title/summary'),
           start_time: z.string().describe('Start time (ISO format)'),
           end_time: z.string().describe('End time (ISO format)'),
-          description: z.string().optional().describe('Event description'),
-          location: z.string().optional().describe('Event location'),
+          description: z.string().optional().nullable().describe('Event description'),
+          location: z.string().optional().nullable().describe('Event location'),
           calendar_id: z
             .string()
             .optional()
+            .nullable()
             .default('primary')
             .describe('Calendar ID'),
         }),
