@@ -78,10 +78,8 @@ export async function POST(req: NextRequest) {
             // Accumulate the assistant response content
             assistantContent += text;
 
-            // Format as data stream part with proper JSON escaping
-            const escapedText = JSON.stringify(text).slice(1, -1); // Remove outer quotes from JSON.stringify
-            const dataStreamPart = `0:"${escapedText}"\n`;
-            controller.enqueue(encoder.encode(dataStreamPart));
+            // Send plain text directly for useChat compatibility
+            controller.enqueue(encoder.encode(text));
 
             // CRITICAL: Add small delay to ensure visible streaming
             // This prevents chunks from being batched together
