@@ -1,16 +1,19 @@
 /**
  * LangGraph Integration Tests
  *
- * Tests for the SimpleLangGraphWrapper integration with the existing architecture
+ * Tests for the ModularLangGraphWrapper integration with the existing architecture
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
+  ModularLangGraphWrapper,
+  createModularLangGraphWrapper,
+  shouldUseLangGraph,
+  // Backwards compatibility aliases
   SimpleLangGraphWrapper,
   createLangGraphWrapper,
-  shouldUseLangGraph,
 } from '../index';
-import type { LangGraphWrapperConfig } from '../simpleLangGraphWrapper';
+import type { ModularLangGraphConfig } from '../ModularLangGraphWrapper';
 import type { ChatOpenAI } from '@langchain/openai';
 
 // Mock the logger
@@ -50,39 +53,37 @@ describe('LangGraph Integration', () => {
     });
   });
 
-  describe('SimpleLangGraphWrapper', () => {
-    let config: LangGraphWrapperConfig;
+  describe('ModularLangGraphWrapper', () => {
+    let config: ModularLangGraphConfig;
 
     beforeEach(() => {
       config = {
-        systemPrompt: 'Test system prompt',
         llm: mockLLM,
         logger: mockLogger as any,
         tools: [],
+        currentDateTime: new Date().toISOString(),
       };
     });
 
     it('should create wrapper successfully', () => {
-      const wrapper = createLangGraphWrapper(config);
-      expect(wrapper).toBeInstanceOf(SimpleLangGraphWrapper);
+      const wrapper = createModularLangGraphWrapper(config);
+      expect(wrapper).toBeInstanceOf(ModularLangGraphWrapper);
     });
 
     it('should initialize with correct configuration', () => {
-      const wrapper = createLangGraphWrapper(config);
+      const wrapper = createModularLangGraphWrapper(config);
       const retrievedConfig = wrapper.getConfig();
 
-      expect(retrievedConfig.systemPrompt).toBe('Test system prompt');
       expect(retrievedConfig.llm.modelName).toBe('gpt-4.1-mini');
+      expect(retrievedConfig.currentDateTime).toBeDefined();
     });
 
     it('should log initialization without tools', () => {
-      createLangGraphWrapper(config);
+      createModularLangGraphWrapper(config);
 
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'Initializing LangGraph with proper state management',
-        expect.objectContaining({
-          model: 'gpt-4.1-mini',
-        }),
+        expect.stringContaining('ModularLangGraphWrapper'),
+        expect.any(Object),
       );
     });
 
@@ -92,7 +93,7 @@ describe('LangGraph Integration', () => {
         tools: [{ name: 'testTool', description: 'Test tool' }],
       };
 
-      createLangGraphWrapper(toolsConfig);
+      createModularLangGraphWrapper(toolsConfig);
 
       // Should attempt to bind tools
       expect(mockLogger.info).toHaveBeenCalled();
@@ -110,13 +111,14 @@ describe('LangGraph Integration', () => {
 
       const patterns = ['TOOL_OPERATION'];
       const config = {
-        systemPrompt: 'Test prompt',
+        llm: mockLLM,
         logger: mockLogger as any,
         tools: [],
+        currentDateTime: new Date().toISOString(),
       };
 
       const graph = createGraphForPatterns(patterns, config);
-      expect(graph).toBeInstanceOf(SimpleLangGraphWrapper);
+      expect(graph).toBeInstanceOf(ModularLangGraphWrapper);
     });
   });
 });

@@ -107,7 +107,7 @@ export abstract class BaseMCPClient {
   protected mergeConfig(config: MCPClientConfig): Required<MCPClientConfig> {
     return {
       serverUrl: config.serverUrl || '', // Don't auto-detect during construction
-      timeout: config.timeout || 30000,
+      timeout: config.timeout || 5000, // Reduced from 30000
       retries: config.retries || 3,
       autoDetect: config.autoDetect !== false,
       maxConcurrentRequests: config.maxConcurrentRequests || 10,
@@ -196,7 +196,7 @@ export abstract class BaseMCPClient {
   }>;
 
   /**
-   * Check if the MCP server is available
+   * Check if the MCP server is available with fast timeout
    */
   async isAvailable(): Promise<boolean> {
     try {

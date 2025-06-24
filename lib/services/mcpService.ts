@@ -29,7 +29,7 @@ interface McpConnectionConfig {
 
 const DEFAULT_CONFIG: McpConnectionConfig = {
   maxConnectionAttempts: 3,
-  connectionTimeout: 30000, // 30 seconds
+  connectionTimeout: 5000, // 5 seconds (reduced from 30)
   idleTimeout: 300000, // 5 minutes
   maxIdleConnections: 10,
 };

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createLangChainAgent, streamLangChainAgent } from '../langchainBridge';
 import type { RequestLogger } from '../observabilityService';
-import type { SimpleLangGraphWrapper } from '@/lib/ai/graphs/simpleLangGraphWrapper';
+import type { ModularLangGraphWrapper } from '@/lib/ai/graphs/ModularLangGraphWrapper';
 
 // Mock dependencies
 vi.mock('@langchain/openai', () => ({
@@ -43,8 +43,8 @@ vi.mock('@/lib/ai/tools/index', () => ({
 }));
 
 vi.mock('@/lib/ai/graphs', () => ({
-  createLangGraphWrapper: vi.fn(() => ({
-    getConfig: vi.fn(() => ({ systemPrompt: 'mock prompt' })),
+  createModularLangGraphWrapper: vi.fn(() => ({
+    getConfig: vi.fn(() => ({ llm: { modelName: 'gpt-4' }, currentDateTime: new Date().toISOString() })),
     stream: vi.fn(),
   })),
 }));
@@ -182,7 +182,7 @@ describe('LangChain Bridge Service', () => {
             .fn()
             .mockResolvedValue([{ output: 'chunk1' }, { output: 'chunk2' }]),
           getConfig: vi.fn(() => ({ systemPrompt: 'mock prompt' })),
-        } as unknown as SimpleLangGraphWrapper,
+        } as unknown as ModularLangGraphWrapper,
         tools: [],
         llm: {} as any,
         executionType: 'langgraph' as const,
@@ -215,7 +215,7 @@ describe('LangChain Bridge Service', () => {
         langGraphWrapper: {
           stream: vi.fn().mockRejectedValue(new Error('Stream error')),
           getConfig: vi.fn(() => ({ systemPrompt: 'mock prompt' })),
-        } as unknown as SimpleLangGraphWrapper,
+        } as unknown as ModularLangGraphWrapper,
         tools: [],
         llm: {} as any,
         executionType: 'langgraph' as const,

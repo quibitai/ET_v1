@@ -17,19 +17,17 @@ export type {
   InterruptionReason,
 } from './types';
 
-// NEW: Use ModularLangGraphWrapper as the primary implementation
+// Primary LangGraph implementation (ModularLangGraphWrapper)
 export {
   ModularLangGraphWrapper,
   createModularLangGraphWrapper,
 } from './ModularLangGraphWrapper';
 export type { ModularLangGraphConfig } from './ModularLangGraphWrapper';
 
-// Legacy wrapper for compatibility (to be removed)
-export {
-  SimpleLangGraphWrapper,
-  createLangGraphWrapper,
-} from './simpleLangGraphWrapper';
-export type { LangGraphWrapperConfig } from './simpleLangGraphWrapper';
+// Maintain backwards compatibility with existing aliases
+export { ModularLangGraphWrapper as SimpleLangGraphWrapper } from './ModularLangGraphWrapper';
+export { createModularLangGraphWrapper as createLangGraphWrapper } from './ModularLangGraphWrapper';
+export type { ModularLangGraphConfig as LangGraphWrapperConfig } from './ModularLangGraphWrapper';
 
 /**
  * Create a LangGraph based on query complexity and patterns

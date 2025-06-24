@@ -354,20 +354,27 @@ export const RetryStrategy = {
 
   shouldRetry(
     error: MCPError,
-    attemptNumber: number,
+    attempt: number,
     maxAttempts: number,
   ): boolean {
-    if (!error.isRetryable) {
+    if (attempt >= maxAttempts) return false;
+
+    // Don't retry certain error types
+    if (
+      error.category === MCPErrorCategory.AUTHENTICATION ||
+      error.category === MCPErrorCategory.AUTHORIZATION ||
+      error.category === MCPErrorCategory.VALIDATION
+    ) {
       return false;
     }
 
-    if (attemptNumber >= maxAttempts) {
-      return false;
-    }
-
-    // Don't retry configuration errors
-    if (error.category === MCPErrorCategory.CONFIGURATION) {
-      return false;
+    // For connection/timeout errors, use fast fail for known unhealthy services
+    if (
+      error.category === MCPErrorCategory.NETWORK ||
+      error.category === MCPErrorCategory.TIMEOUT
+    ) {
+      // Fast fail after first attempt for known connection issues
+      return attempt < 2; // Only one retry for connection issues
     }
 
     return true;

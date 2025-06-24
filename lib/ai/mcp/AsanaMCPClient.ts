@@ -137,6 +137,9 @@ export class AsanaMCPClient extends BaseMCPClient {
             '3. Verify ASANA_MCP_SERVER_URL points to the correct server\n',
           );
         }
+
+        // Set short timeout to prevent hanging
+        client.config.timeout = 2000; // 2 seconds for unhealthy services
       }
     }
 

@@ -59,7 +59,7 @@ class McpSchemaService {
     }
 
     return z.object({
-      input: z.any().optional().describe('Input parameters for the tool'),
+      input: z.any().optional().nullable().describe('Input parameters for the tool'),
     });
   }
 
@@ -130,6 +130,25 @@ class McpSchemaService {
         );
       }
 
+      // Fix #2b: Special handling for 'input' property that's missing type
+      if ((path.endsWith('.input') || path === 'input') && !node.type) {
+        // If input has properties, it should be an object
+        if (node.properties) {
+          node.type = 'object';
+          patchCount++;
+          issues.push(
+            `Added missing 'type: "object"' for input parameter with properties at path: '${path}'`,
+          );
+        } else {
+          // If input has no properties and no type, make it a generic object
+          node.type = 'object';
+          patchCount++;
+          issues.push(
+            `Added default 'type: "object"' for input parameter at path: '${path}'`,
+          );
+        }
+      }
+
       // Fix #3: Ensure 'enum' values are always in an array
       if (node.enum && !Array.isArray(node.enum)) {
         node.enum = [node.enum];
@@ -187,7 +206,7 @@ class McpSchemaService {
         }
 
         if (!schema.required?.includes(key)) {
-          zodType = zodType.optional();
+          zodType = zodType.optional().nullable();
         }
 
         shape[key] = zodType;
