@@ -16,6 +16,7 @@ services:
       - ASANA_CLIENT_ID=${ASANA_CLIENT_ID}
       - ASANA_CLIENT_SECRET=${ASANA_CLIENT_SECRET}
       - ASANA_REDIRECT_URI=${ASANA_REDIRECT_URI}
+      - ASANA_ACCESS_TOKEN=${ASANA_ACCESS_TOKEN}
     networks:
       - quibit-network
     restart: unless-stopped
@@ -70,15 +71,13 @@ services:
       context: ./mcp-server-google-workspace
       dockerfile: Dockerfile
     ports:
-      - '8000:8000'
+      - '8001:8001'
     environment:
-      - PORT=8000
-      - WORKSPACE_MCP_PORT=8000
+      - PORT=8001
+      - WORKSPACE_MCP_PORT=8001
       - WORKSPACE_MCP_BASE_URI=http://localhost
       - OAUTHLIB_INSECURE_TRANSPORT=1
-      - MCP_SINGLE_USER_MODE=1
-      - GOOGLE_CLIENT_SECRETS=/app/client_secret.json
-    command: ["python", "main.py", "--single-user", "--transport", "streamable-http", "--tools", "gmail", "drive", "calendar", "docs", "sheets"]
+    command: ["uv", "run", "main.py", "--single-user", "--transport", "streamable-http", "--tools", "gmail", "drive", "calendar", "docs", "sheets", "forms", "chat", "slides"]
     volumes:
       - ./mcp-server-google-workspace:/app
       - ./credentials:/app/.credentials
@@ -86,7 +85,7 @@ services:
       - quibit-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
