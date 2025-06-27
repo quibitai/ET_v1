@@ -3,13 +3,16 @@
 import { useChat, type Message } from 'ai/react';
 import { generateUUID } from '@/lib/utils';
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { Chat } from '@/components/chat';
+import { Chat, type ChatRef } from '@/components/chat';
 import type { VisibilityType } from './visibility-selector';
 import { useChatCacheInvalidation } from '@/lib/utils/chatCacheInvalidation';
 import { useChatHistory } from '@/hooks/use-chat-history';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import type { UIMessage } from '@/lib/types';
+import { useDragAndDrop } from '@/hooks/use-drag-and-drop';
+import { useFileUpload } from '@/hooks/use-file-upload';
+import { DragOverlay } from '@/components/drag-overlay';
 
 // Define FileContext here since it's not in lib/types
 type FileContext = {
@@ -53,6 +56,37 @@ export function ChatWrapper({
 
   // File context state
   const [fileContext, setFileContext] = useState<FileContext | null>(null);
+
+  // Ref to access Chat component methods
+  const chatRef = useRef<ChatRef>(null);
+
+  // Global drag and drop for file uploads
+  const { handleFileUpload: uploadFiles } = useFileUpload({
+    onFileProcessed: (fileMeta) => {
+      console.log(
+        '[ChatWrapper] Global drag and drop file processed:',
+        fileMeta,
+      );
+      setFileContext(fileMeta);
+    },
+  });
+
+  const { isDragging } = useDragAndDrop({
+    onFilesDropped: async (files) => {
+      console.log('[ChatWrapper] Files dropped globally:', files);
+      const attachments = await uploadFiles(files);
+
+      // Add attachments to MultimodalInput to show pills
+      if (attachments.length > 0 && chatRef.current) {
+        console.log(
+          '[ChatWrapper] Adding attachments to MultimodalInput:',
+          attachments,
+        );
+        chatRef.current.addAttachments(attachments);
+      }
+    },
+    disabled: isReadonly, // Disable drag and drop in readonly mode
+  });
 
   // Store the first user message for title generation (using ref for immediate access)
   const firstUserMessageRef = useRef<string | null>(null);
@@ -335,7 +369,10 @@ export function ChatWrapper({
       url: string;
       extractedText: string;
     }) => {
-      console.log('[ChatWrapper] File processed:', fileMeta);
+      console.log(
+        '[ChatWrapper] File processed from MultimodalInput:',
+        fileMeta,
+      );
       console.log('🔍 [DEBUG] Setting fileContext:', {
         filename: fileMeta.filename,
         contentType: fileMeta.contentType,
@@ -474,27 +511,33 @@ export function ChatWrapper({
 
   // Pass all state and handlers as props to the Chat component
   return (
-    <Chat
-      id={id}
-      selectedChatModel={selectedChatModel}
-      selectedVisibilityType={selectedVisibilityType}
-      isReadonly={isReadonly}
-      currentActiveSpecialistId={currentActiveSpecialistId}
-      setCurrentActiveSpecialistId={setCurrentActiveSpecialistId}
-      isCurrentChatCommitted={isCurrentChatCommitted}
-      messages={messages}
-      input={input}
-      setInput={setInput}
-      isLoading={isLoading}
-      error={error}
-      data={data}
-      setMessages={setMessages}
-      stop={stop}
-      reload={reload}
-      status={status}
-      handleSubmit={handleSubmit}
-      append={append}
-      onFileProcessed={handleFileProcessed}
-    />
+    <>
+      <Chat
+        ref={chatRef}
+        id={id}
+        selectedChatModel={selectedChatModel}
+        selectedVisibilityType={selectedVisibilityType}
+        isReadonly={isReadonly}
+        currentActiveSpecialistId={currentActiveSpecialistId}
+        setCurrentActiveSpecialistId={setCurrentActiveSpecialistId}
+        isCurrentChatCommitted={isCurrentChatCommitted}
+        messages={messages}
+        input={input}
+        setInput={setInput}
+        isLoading={isLoading}
+        error={error}
+        data={data}
+        setMessages={setMessages}
+        stop={stop}
+        reload={reload}
+        status={status}
+        handleSubmit={handleSubmit}
+        append={append}
+        onFileProcessed={handleFileProcessed}
+      />
+
+      {/* Global drag and drop overlay */}
+      <DragOverlay isVisible={isDragging && !isReadonly} />
+    </>
   );
 }
