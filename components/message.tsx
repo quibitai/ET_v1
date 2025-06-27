@@ -9,6 +9,7 @@ import { PencilEditIcon, SparklesIcon } from './icons';
 import { Markdown } from './markdown';
 import { MessageActions } from './message-actions';
 import { PreviewAttachment } from './preview-attachment';
+import { FilePill } from './file-pill';
 import equal from 'fast-deep-equal';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
@@ -152,12 +153,21 @@ const PurePreviewMessage = ({
             {message.experimental_attachments && (
               <div
                 data-testid={`message-attachments`}
-                className="flex flex-row justify-end gap-2"
+                className={cn(
+                  'flex flex-wrap gap-2 mb-2',
+                  message.role === 'user' ? 'justify-end' : 'justify-start',
+                )}
               >
                 {message.experimental_attachments.map((attachment) => (
-                  <PreviewAttachment
+                  <FilePill
                     key={attachment.url}
-                    attachment={attachment}
+                    filename={attachment.name || 'Unknown file'}
+                    contentType={
+                      attachment.contentType || 'application/octet-stream'
+                    }
+                    url={attachment.url}
+                    size="sm"
+                    showRemove={false}
                   />
                 ))}
               </div>

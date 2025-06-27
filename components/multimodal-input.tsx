@@ -13,6 +13,7 @@ import {
 import { SendButton, StopButton } from './chat-buttons';
 import { AttachmentsButton } from './attachments-button';
 import { PreviewAttachment } from './preview-attachment';
+import { FilePill } from './file-pill';
 import { Textarea } from './ui/textarea';
 import { toast } from 'sonner';
 
@@ -231,27 +232,24 @@ function PureMultimodalInput({
 
   return (
     <div className="relative flex w-full flex-col items-center justify-center gap-y-2 rounded-2xl border bg-background p-2 transition-all">
-      {/* File attachments preview */}
+      {/* File attachments preview - compact pills */}
       {attachments.length > 0 && (
-        <div className="flex w-full flex-wrap gap-2 p-2">
+        <div className="flex w-full flex-wrap gap-2 px-3 py-2">
           {attachments.map((attachment, index) => (
-            <div
+            <FilePill
               key={`${attachment.name}-${attachment.url}`}
-              className="relative group"
-            >
-              <PreviewAttachment
-                attachment={attachment}
-                isUploading={isUploading && index === attachments.length - 1}
-              />
-              <button
-                type="button"
-                onClick={() => removeAttachment(index)}
-                className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full size-4 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                aria-label="Remove attachment"
-              >
-                ×
-              </button>
-            </div>
+              filename={attachment.name || 'Unknown file'}
+              contentType={attachment.contentType || 'application/octet-stream'}
+              url={attachment.url}
+              size="sm"
+              showRemove={true}
+              onRemove={() => removeAttachment(index)}
+              className={
+                isUploading && index === attachments.length - 1
+                  ? 'opacity-60'
+                  : ''
+              }
+            />
           ))}
         </div>
       )}

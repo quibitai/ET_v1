@@ -417,7 +417,33 @@ export function ChatWrapper({
           messages.length === 0 && input.trim() && !firstUserMessageRef.current,
       });
 
-      // Call the original handleSubmit
+      // If we have file context, add it as an attachment to the user message
+      if (fileContext && input.trim()) {
+        console.log('🔍 [DEBUG] Adding file attachment to user message:', {
+          filename: fileContext.filename,
+          contentType: fileContext.contentType,
+          url: fileContext.url,
+        });
+
+        const userMessage = {
+          role: 'user' as const,
+          content: input,
+          experimental_attachments: [
+            {
+              name: fileContext.filename,
+              url: fileContext.url,
+              contentType: fileContext.contentType,
+            },
+          ],
+        };
+
+        // Use append to add the message with attachments
+        append(userMessage);
+        setInput(''); // Clear the input manually since we're using append
+        return;
+      }
+
+      // Call the original handleSubmit for regular messages
       return originalHandleSubmit(event, chatRequestOptions);
     },
     // FIXED: Stabilize dependencies to prevent infinite re-renders
