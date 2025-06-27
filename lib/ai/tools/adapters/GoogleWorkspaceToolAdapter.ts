@@ -117,8 +117,8 @@ export class GoogleWorkspaceToolAdapter {
   // Gmail Tools
   private createGmailSearchTool(): Tool {
     return {
-      name: 'search_gmail',
-      displayName: 'Search Gmail',
+      name: 'search_gmail_messages',
+      displayName: 'Search Gmail Messages',
       description: 'Search Gmail messages using query terms',
       usage: 'Use when user wants to search for specific emails',
       examples: [
@@ -137,7 +137,7 @@ export class GoogleWorkspaceToolAdapter {
           required: true,
         },
         {
-          name: 'max_results',
+          name: 'page_size',
           type: 'number',
           description: 'Maximum number of results to return',
           required: false,
@@ -163,7 +163,8 @@ export class GoogleWorkspaceToolAdapter {
             'search_gmail_messages',
             {
               query: params.query,
-              page_size: params.max_results || 10,
+              page_size: params.page_size || 10,
+              user_google_email: context.user.email,
             },
           );
 
@@ -173,7 +174,7 @@ export class GoogleWorkspaceToolAdapter {
               data: result.result,
               metadata: {
                 source: 'google-workspace',
-                toolName: 'search_gmail',
+                toolName: 'search_gmail_messages',
               },
             };
           } else {
@@ -182,7 +183,7 @@ export class GoogleWorkspaceToolAdapter {
               success: false,
               error: result.error || 'Gmail search failed',
               metadata: {
-                toolName: 'search_gmail',
+                toolName: 'search_gmail_messages',
               },
             };
           }
@@ -194,7 +195,7 @@ export class GoogleWorkspaceToolAdapter {
               error:
                 'Unable to connect to Google Workspace service. Please ensure the service is running.',
               metadata: {
-                toolName: 'search_gmail',
+                toolName: 'search_gmail_messages',
               },
             };
           }
@@ -203,7 +204,7 @@ export class GoogleWorkspaceToolAdapter {
             success: false,
             error: error.message || 'Gmail search failed',
             metadata: {
-              toolName: 'search_gmail',
+              toolName: 'search_gmail_messages',
             },
           };
         }
@@ -216,25 +217,12 @@ export class GoogleWorkspaceToolAdapter {
       name: 'list_gmail_messages',
       displayName: 'List Gmail Messages',
       description: 'List recent Gmail messages',
-      usage: 'Use when user wants to see recent emails or inbox',
-      examples: [
-        'show my recent emails',
-        'list my messages',
-        'show my inbox',
-        'recent gmail messages',
-      ],
+      usage: 'Use when user wants to see recent emails',
+      examples: ['show my recent emails', 'list my messages'],
       category: ToolCategory.EMAIL,
       parameters: [
         {
-          name: 'query',
-          type: 'string',
-          description:
-            'Gmail search query (default: "in:inbox" for recent messages)',
-          required: false,
-          default: 'in:inbox',
-        },
-        {
-          name: 'max_results',
+          name: 'page_size',
           type: 'number',
           description: 'Maximum number of messages to return',
           required: false,
@@ -250,22 +238,39 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
+
+          if (!context.user?.email) {
+            throw new Error('User email is required for Gmail access');
+          }
+
+          // Use search with empty query to get recent messages
           const result = await client.executeGmailTool(
             'search_gmail_messages',
             {
-              query: params.query || 'in:inbox',
-              page_size: params.max_results || 10,
+              query: 'in:inbox',
+              page_size: params.page_size || 10,
+              user_google_email: context.user.email,
             },
           );
 
-          return {
-            success: true,
-            data: result,
-            metadata: {
-              source: 'google-workspace',
-              toolName: 'list_gmail_messages',
-            },
-          };
+          if (result.success) {
+            return {
+              success: true,
+              data: result.result,
+              metadata: {
+                source: 'google-workspace',
+                toolName: 'list_gmail_messages',
+              },
+            };
+          } else {
+            return {
+              success: false,
+              error: result.error || 'Failed to list Gmail messages',
+              metadata: {
+                toolName: 'list_gmail_messages',
+              },
+            };
+          }
         } catch (error: any) {
           return {
             success: false,
@@ -283,14 +288,9 @@ export class GoogleWorkspaceToolAdapter {
     return {
       name: 'send_gmail_message',
       displayName: 'Send Gmail Message',
-      description: 'Send an email via Gmail',
+      description: 'Send an email message through Gmail',
       usage: 'Use when user wants to send an email',
-      examples: [
-        'send an email to',
-        'compose and send',
-        'email someone',
-        'send a message',
-      ],
+      examples: ['send email to', 'compose and send message'],
       category: ToolCategory.EMAIL,
       parameters: [
         {
@@ -308,20 +308,8 @@ export class GoogleWorkspaceToolAdapter {
         {
           name: 'body',
           type: 'string',
-          description: 'Email body content',
+          description: 'Email body content (plain text)',
           required: true,
-        },
-        {
-          name: 'cc',
-          type: 'string',
-          description: 'CC recipients (comma-separated)',
-          required: false,
-        },
-        {
-          name: 'bcc',
-          type: 'string',
-          description: 'BCC recipients (comma-separated)',
-          required: false,
         },
       ],
       source: 'google-workspace',
@@ -333,22 +321,38 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
+
+          if (!context.user?.email) {
+            throw new Error(
+              'User email is required for sending Gmail messages',
+            );
+          }
+
           const result = await client.executeGmailTool('send_gmail_message', {
             to: params.to,
             subject: params.subject,
             body: params.body,
-            cc: params.cc,
-            bcc: params.bcc,
+            user_google_email: context.user.email,
           });
 
-          return {
-            success: true,
-            data: result,
-            metadata: {
-              source: 'google-workspace',
-              toolName: 'send_gmail_message',
-            },
-          };
+          if (result.success) {
+            return {
+              success: true,
+              data: result.result,
+              metadata: {
+                source: 'google-workspace',
+                toolName: 'send_gmail_message',
+              },
+            };
+          } else {
+            return {
+              success: false,
+              error: result.error || 'Failed to send Gmail message',
+              metadata: {
+                toolName: 'send_gmail_message',
+              },
+            };
+          }
         } catch (error: any) {
           return {
             success: false,
@@ -366,29 +370,42 @@ export class GoogleWorkspaceToolAdapter {
   private createDriveSearchTool(): Tool {
     return {
       name: 'search_drive_files',
-      displayName: 'Search Google Drive',
-      description: 'Search for files in Google Drive',
-      usage: 'Use when user wants to search for files in Drive',
+      displayName: 'Search Drive Files',
+      description: 'Search for files and folders in Google Drive',
+      usage: 'Use when user wants to find specific files in Drive',
       examples: [
-        'search my drive for',
-        'find files named',
-        'look for documents',
-        'search google drive',
+        'find document about',
+        'search for file named',
+        'look for spreadsheet',
       ],
       category: ToolCategory.FILES,
       parameters: [
         {
           name: 'query',
           type: 'string',
-          description: 'Search query for Drive files',
+          description:
+            'Search query for Drive files (supports Drive search operators)',
           required: true,
         },
         {
-          name: 'max_results',
+          name: 'page_size',
           type: 'number',
-          description: 'Maximum number of results to return',
+          description: 'Maximum number of files to return',
           required: false,
           default: 10,
+        },
+        {
+          name: 'drive_id',
+          type: 'string',
+          description: 'Optional shared drive ID to search in',
+          required: false,
+        },
+        {
+          name: 'include_items_from_all_drives',
+          type: 'boolean',
+          description: 'Whether to include items from all drives',
+          required: false,
+          default: true,
         },
       ],
       source: 'google-workspace',
@@ -400,19 +417,38 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
+
+          if (!context.user?.email) {
+            throw new Error('User email is required for Drive search');
+          }
+
           const result = await client.executeDriveTool('search_drive_files', {
             query: params.query,
-            page_size: params.max_results || 10,
+            page_size: params.page_size || 10,
+            drive_id: params.drive_id,
+            include_items_from_all_drives:
+              params.include_items_from_all_drives ?? true,
+            user_google_email: context.user.email,
           });
 
-          return {
-            success: true,
-            data: result,
-            metadata: {
-              source: 'google-workspace',
-              toolName: 'search_drive_files',
-            },
-          };
+          if (result.success) {
+            return {
+              success: true,
+              data: result.result,
+              metadata: {
+                source: 'google-workspace',
+                toolName: 'search_drive_files',
+              },
+            };
+          } else {
+            return {
+              success: false,
+              error: result.error || 'Drive search failed',
+              metadata: {
+                toolName: 'search_drive_files',
+              },
+            };
+          }
         } catch (error: any) {
           return {
             success: false,
@@ -428,29 +464,31 @@ export class GoogleWorkspaceToolAdapter {
 
   private createDriveListTool(): Tool {
     return {
-      name: 'list_drive_files',
-      displayName: 'List Google Drive Files',
-      description: 'List recent files in Google Drive',
-      usage: 'Use when user wants to see their Drive files',
-      examples: [
-        'list my drive files',
-        'show my google drive',
-        'recent drive files',
-        'my files in drive',
-      ],
+      name: 'list_drive_items',
+      displayName: 'List Drive Items',
+      description: 'List files and folders in a Google Drive folder',
+      usage: 'Use when user wants to browse Drive folder contents',
+      examples: ['list files in folder', 'show folder contents'],
       category: ToolCategory.FILES,
       parameters: [
         {
-          name: 'max_results',
-          type: 'number',
-          description: 'Maximum number of files to return',
-          required: false,
-          default: 10,
-        },
-        {
           name: 'folder_id',
           type: 'string',
-          description: 'Folder ID to list files from (default: root)',
+          description: 'Folder ID to list contents of (default: root)',
+          required: false,
+          default: 'root',
+        },
+        {
+          name: 'page_size',
+          type: 'number',
+          description: 'Maximum number of items to return',
+          required: false,
+          default: 100,
+        },
+        {
+          name: 'drive_id',
+          type: 'string',
+          description: 'Optional shared drive ID',
           required: false,
         },
       ],
@@ -463,25 +501,42 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
-          const result = await client.executeDriveTool('list_drive_files', {
+
+          if (!context.user?.email) {
+            throw new Error('User email is required for Drive access');
+          }
+
+          const result = await client.executeDriveTool('list_drive_items', {
             folder_id: params.folder_id || 'root',
-            page_size: params.max_results || 10,
+            page_size: params.page_size || 100,
+            drive_id: params.drive_id,
+            user_google_email: context.user.email,
           });
 
-          return {
-            success: true,
-            data: result,
-            metadata: {
-              source: 'google-workspace',
-              toolName: 'list_drive_files',
-            },
-          };
+          if (result.success) {
+            return {
+              success: true,
+              data: result.result,
+              metadata: {
+                source: 'google-workspace',
+                toolName: 'list_drive_items',
+              },
+            };
+          } else {
+            return {
+              success: false,
+              error: result.error || 'Failed to list Drive items',
+              metadata: {
+                toolName: 'list_drive_items',
+              },
+            };
+          }
         } catch (error: any) {
           return {
             success: false,
-            error: error.message || 'Failed to list Drive files',
+            error: error.message || 'Failed to list Drive items',
             metadata: {
-              toolName: 'list_drive_files',
+              toolName: 'list_drive_items',
             },
           };
         }
@@ -491,40 +546,43 @@ export class GoogleWorkspaceToolAdapter {
 
   private createDriveUploadTool(): Tool {
     return {
-      name: 'upload_drive_file',
-      displayName: 'Upload to Google Drive',
-      description: 'Upload a file to Google Drive',
-      usage: 'Use when user wants to upload or create a file in Drive',
-      examples: [
-        'upload file to drive',
-        'create file in drive',
-        'save to google drive',
-        'upload document',
-      ],
+      name: 'create_drive_file',
+      displayName: 'Create Drive File',
+      description: 'Create a new file in Google Drive',
+      usage: 'Use when user wants to create a new file in Drive',
+      examples: ['create document', 'upload file to Drive'],
       category: ToolCategory.FILES,
       parameters: [
         {
           name: 'file_name',
           type: 'string',
-          description: 'Name for the file',
+          description: 'Name for the new file',
           required: true,
         },
         {
           name: 'content',
           type: 'string',
-          description: 'File content',
-          required: true,
+          description: 'Content for the file (optional)',
+          required: false,
         },
         {
           name: 'folder_id',
           type: 'string',
-          description: 'Folder ID to upload to (default: root)',
+          description: 'Folder ID to create file in (default: root)',
           required: false,
+          default: 'root',
         },
         {
           name: 'mime_type',
           type: 'string',
           description: 'MIME type of the file (default: text/plain)',
+          required: false,
+          default: 'text/plain',
+        },
+        {
+          name: 'fileUrl',
+          type: 'string',
+          description: 'Optional URL to fetch content from',
           required: false,
         },
       ],
@@ -537,27 +595,44 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
-          const result = await client.executeDriveTool('upload_drive_file', {
+
+          if (!context.user?.email) {
+            throw new Error('User email is required for Drive file creation');
+          }
+
+          const result = await client.executeDriveTool('create_drive_file', {
             file_name: params.file_name,
             content: params.content,
             folder_id: params.folder_id || 'root',
             mime_type: params.mime_type || 'text/plain',
+            fileUrl: params.fileUrl,
+            user_google_email: context.user.email,
           });
 
-          return {
-            success: true,
-            data: result,
-            metadata: {
-              source: 'google-workspace',
-              toolName: 'upload_drive_file',
-            },
-          };
+          if (result.success) {
+            return {
+              success: true,
+              data: result.result,
+              metadata: {
+                source: 'google-workspace',
+                toolName: 'create_drive_file',
+              },
+            };
+          } else {
+            return {
+              success: false,
+              error: result.error || 'Failed to create Drive file',
+              metadata: {
+                toolName: 'create_drive_file',
+              },
+            };
+          }
         } catch (error: any) {
           return {
             success: false,
-            error: error.message || 'Failed to upload file to Drive',
+            error: error.message || 'Failed to create Drive file',
             metadata: {
-              toolName: 'upload_drive_file',
+              toolName: 'create_drive_file',
             },
           };
         }
@@ -568,14 +643,13 @@ export class GoogleWorkspaceToolAdapter {
   private createDriveGetContentTool(): Tool {
     return {
       name: 'get_drive_file_content',
-      displayName: 'Get Google Drive File Content',
-      description: 'Get the content of a Google Drive file',
-      usage: 'Use when user wants to retrieve the content of a file in Drive',
+      displayName: 'Get Drive File Content',
+      description: 'Retrieve the content of a specific Google Drive file',
+      usage: 'Use when user wants to read the contents of a Drive file',
       examples: [
-        'get content of',
-        'retrieve file content',
-        'show file content',
-        'get drive file content',
+        'read file content',
+        'get document text',
+        'show file contents',
       ],
       category: ToolCategory.FILES,
       parameters: [
@@ -595,25 +669,41 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
+
+          if (!context.user?.email) {
+            throw new Error('User email is required for Drive file access');
+          }
+
           const result = await client.executeDriveTool(
             'get_drive_file_content',
             {
               file_id: params.file_id,
+              user_google_email: context.user.email,
             },
           );
 
-          return {
-            success: true,
-            data: result,
-            metadata: {
-              source: 'google-workspace',
-              toolName: 'get_drive_file_content',
-            },
-          };
+          if (result.success) {
+            return {
+              success: true,
+              data: result.result,
+              metadata: {
+                source: 'google-workspace',
+                toolName: 'get_drive_file_content',
+              },
+            };
+          } else {
+            return {
+              success: false,
+              error: result.error || 'Failed to get Drive file content',
+              metadata: {
+                toolName: 'get_drive_file_content',
+              },
+            };
+          }
         } catch (error: any) {
           return {
             success: false,
-            error: error.message || 'Failed to get file content',
+            error: error.message || 'Failed to get Drive file content',
             metadata: {
               toolName: 'get_drive_file_content',
             },
@@ -647,16 +737,32 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
-          const result = await client.executeCalendarTool('list_calendars', {});
+          if (!context.user?.email) {
+            throw new Error('User email is required for calendar access');
+          }
 
-          return {
-            success: true,
-            data: result,
-            metadata: {
-              source: 'google-workspace',
-              toolName: 'list_calendars',
-            },
-          };
+          const result = await client.executeCalendarTool('list_calendars', {
+            user_google_email: context.user.email,
+          });
+
+          if (result.success) {
+            return {
+              success: true,
+              data: result.result,
+              metadata: {
+                source: 'google-workspace',
+                toolName: 'list_calendars',
+              },
+            };
+          } else {
+            return {
+              success: false,
+              error: result.error || 'Failed to list calendars',
+              metadata: {
+                toolName: 'list_calendars',
+              },
+            };
+          }
         } catch (error: any) {
           return {
             success: false,
@@ -672,9 +778,9 @@ export class GoogleWorkspaceToolAdapter {
 
   private createCalendarEventsTool(): Tool {
     return {
-      name: 'list_calendar_events',
-      displayName: 'List Calendar Events',
-      description: 'List events from Google Calendar',
+      name: 'get_events',
+      displayName: 'Get Calendar Events',
+      description: 'Retrieve events from Google Calendar within a time range',
       usage: 'Use when user wants to see their calendar events or schedule',
       examples: [
         'show my calendar events',
@@ -720,30 +826,42 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
-          const result = await client.executeCalendarTool(
-            'list_calendar_events',
-            {
-              calendar_id: params.calendar_id || 'primary',
-              time_min: params.time_min,
-              time_max: params.time_max,
-              max_results: params.max_results || 10,
-            },
-          );
+          if (!context.user?.email) {
+            throw new Error('User email is required for calendar access');
+          }
 
-          return {
-            success: true,
-            data: result,
-            metadata: {
-              source: 'google-workspace',
-              toolName: 'list_calendar_events',
-            },
-          };
+          const result = await client.executeCalendarTool('get_events', {
+            calendar_id: params.calendar_id || 'primary',
+            time_min: params.time_min,
+            time_max: params.time_max,
+            max_results: params.max_results || 25,
+            user_google_email: context.user.email,
+          });
+
+          if (result.success) {
+            return {
+              success: true,
+              data: result.result,
+              metadata: {
+                source: 'google-workspace',
+                toolName: 'get_events',
+              },
+            };
+          } else {
+            return {
+              success: false,
+              error: result.error || 'Failed to get calendar events',
+              metadata: {
+                toolName: 'get_events',
+              },
+            };
+          }
         } catch (error: any) {
           return {
             success: false,
-            error: error.message || 'Failed to list calendar events',
+            error: error.message || 'Failed to get calendar events',
             metadata: {
-              toolName: 'list_calendar_events',
+              toolName: 'get_events',
             },
           };
         }
@@ -753,7 +871,7 @@ export class GoogleWorkspaceToolAdapter {
 
   private createCalendarCreateEventTool(): Tool {
     return {
-      name: 'create_calendar_event',
+      name: 'create_event',
       displayName: 'Create Calendar Event',
       description: 'Create a new event in Google Calendar',
       usage: 'Use when user wants to create or schedule an event',
@@ -812,26 +930,38 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
-          const result = await client.executeCalendarTool(
-            'create_calendar_event',
-            {
-              summary: params.summary,
-              start_time: params.start_time,
-              end_time: params.end_time,
-              description: params.description,
-              location: params.location,
-              calendar_id: params.calendar_id || 'primary',
-            },
-          );
+          if (!context.user?.email) {
+            throw new Error('User email is required for calendar access');
+          }
 
-          return {
-            success: true,
-            data: result,
-            metadata: {
-              source: 'google-workspace',
-              toolName: 'create_calendar_event',
-            },
-          };
+          const result = await client.executeCalendarTool('create_event', {
+            summary: params.summary,
+            start_time: params.start_time,
+            end_time: params.end_time,
+            description: params.description,
+            location: params.location,
+            calendar_id: params.calendar_id || 'primary',
+            user_google_email: context.user.email,
+          });
+
+          if (result.success) {
+            return {
+              success: true,
+              data: result.result,
+              metadata: {
+                source: 'google-workspace',
+                toolName: 'create_event',
+              },
+            };
+          } else {
+            return {
+              success: false,
+              error: result.error || 'Failed to create calendar event',
+              metadata: {
+                toolName: 'create_event',
+              },
+            };
+          }
         } catch (error: any) {
           return {
             success: false,
