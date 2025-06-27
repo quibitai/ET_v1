@@ -190,6 +190,90 @@ export const googleWorkspaceToolInstructions = {
   - Data summary statistics
   - Suggest analysis or actions`,
 
+  // Chat Tools
+  list_chat_spaces: `**Google Chat Space Discovery with Participant Names**
+  
+  **CRITICAL**: When users mention "LCBA Catch & Cook", "chat spaces", "chat messages", or any space names, this is ALWAYS Google Chat, NOT Gmail. Never search Gmail for chat-related queries.
+  
+  **USE CASES**:
+  - "What chat spaces do I have?"
+  - "Show me LCBA Catch & Cook messages" → Use Google Chat tools
+  - Finding specific team chats
+  - Discovering direct message conversations
+  
+  **PARTICIPANT NAME RESOLUTION**:
+  - Direct Message spaces show actual participant names (e.g., "DM with John Smith (john@company.com)")
+  - Group chats show group names or "Group Chat (Unnamed)"
+  - Named spaces show their display names
+  
+  **WORKFLOW INTELLIGENCE**:
+  - First list spaces to find the right conversation
+  - Look for direct message spaces vs. group spaces
+  - Match user email addresses to find DM spaces
+  - Participant names help identify the right conversation
+  
+  **STRUCTURED OUTPUT**:
+  - Space names with participant details for DMs
+  - Space types (DIRECT_MESSAGE, GROUP_CHAT, SPACE)
+  - Space IDs for follow-up actions
+  - Clear identification of conversation partners`,
+
+  send_chat_message: `**Google Chat Message Sending - ALWAYS USE GOOGLE CHAT FOR CHAT REQUESTS**
+  
+  **CRITICAL**: When users mention "chat", "Google Chat", "send message", or reference space IDs like "hBsJscAAAAE", this is ALWAYS Google Chat. Never ask for platform clarification.
+  
+  **USER INTENT PATTERNS**:
+  - "Send [person] a message saying [content]" → Find DM space first
+  - "Message [team/group] about [topic]" → Find group space
+  - "Send chat message to [email]" → Look for direct message space
+  - "Send hBsJscAAAAE [message]" → Use the space ID directly (Google Chat format)
+  
+  **WORKFLOW PROCESS**:
+  1. **If space ID provided**: Use it directly (format: spaces/XXXXX or XXXXX)
+  2. **If recipient email provided**: Use list_chat_spaces to find DM space
+  3. **Send**: Use send_chat_message with space_id and message
+  
+  **SPACE ID HANDLING**:
+  - Accept both formats: "hBsJscAAAAE" or "spaces/hBsJscAAAAE"
+  - System automatically adds "spaces/" prefix if needed
+  - Never ask for clarification about space ID format
+  
+  **STRUCTURED OUTPUT**:
+  - Confirm message sent successfully
+  - Show recipient and space context
+  - Ready for next message without re-asking platform`,
+
+  get_chat_messages: `**Google Chat Message Retrieval**
+  
+  **CRITICAL**: When users ask for "latest message in LCBA Catch & Cook" or any chat space messages, this is ALWAYS Google Chat, NOT Gmail. Never search Gmail.
+  
+  **USE CASES**:
+  - "Show me recent messages from [person/space]"
+  - "What did [person] say in chat?"
+  - "Get chat history with [team]"
+  - "Latest message in LCBA Catch & Cook" → Use Google Chat tools
+  
+  **WORKFLOW PROCESS**:
+  1. Use list_chat_spaces to find the right space
+  2. Use space_id to retrieve messages
+  
+  **STRUCTURED OUTPUT**:
+  - Chronological message list
+  - Sender names and timestamps
+  - Message content formatted clearly`,
+
+  search_chat_messages: `**Google Chat Message Search**
+  
+  **SEARCH INTELLIGENCE**:
+  - Search within specific spaces
+  - Look for keywords, mentions, or topics
+  - Time-based filtering when relevant
+  
+  **STRUCTURED OUTPUT**:
+  - Relevant messages with context
+  - Highlight search terms
+  - Provide space and time context`,
+
   // Advanced Integration Instructions
   workflow_integration: `**Cross-Service Workflow Intelligence**
   
@@ -247,6 +331,12 @@ export const googleWorkspaceInstructions = {
   // Sheets
   list_sheets: googleWorkspaceToolInstructions.list_sheets,
   read_sheets_values: googleWorkspaceToolInstructions.read_sheets_values,
+
+  // Chat
+  list_chat_spaces: googleWorkspaceToolInstructions.list_chat_spaces,
+  send_chat_message: googleWorkspaceToolInstructions.send_chat_message,
+  get_chat_messages: googleWorkspaceToolInstructions.get_chat_messages,
+  search_chat_messages: googleWorkspaceToolInstructions.search_chat_messages,
 };
 
 /**

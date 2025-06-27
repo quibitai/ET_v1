@@ -53,6 +53,24 @@ export async function POST(req: NextRequest) {
     console.log('[BRAIN API] Validation passed, extracting request data...');
     const request = validationResult.data;
 
+    // DEBUG: Log fileContext information
+    console.log('[BRAIN API] Request analysis:', {
+      hasFileContext: !!request.fileContext,
+      fileContextKeys: request.fileContext
+        ? Object.keys(request.fileContext)
+        : [],
+      fileContextPreview: request.fileContext
+        ? {
+            filename: request.fileContext.filename,
+            contentType: request.fileContext.contentType,
+            hasExtractedText: !!request.fileContext.extractedText,
+            extractedTextLength: request.fileContext.extractedText?.length || 0,
+          }
+        : null,
+      messageCount: request.messages?.length || 0,
+      chatId: request.chatId || request.id,
+    });
+
     console.log('[BRAIN API] Getting session...');
     const session = await auth();
     console.log('[BRAIN API] Session obtained:', {
@@ -210,12 +228,30 @@ export async function POST(req: NextRequest) {
                   );
                 }
 
+                // Apply hyperlink formatting to the final assistant content
+                const { StandardizedResponseFormatter } = await import(
+                  '@/lib/ai/services/StandardizedResponseFormatter'
+                );
+                const formattedContent =
+                  StandardizedResponseFormatter.convertToHyperlinks(
+                    assistantContent.trim(),
+                  );
+
+                console.log('[BRAIN API] Applied hyperlink formatting:', {
+                  originalLength: assistantContent.trim().length,
+                  formattedLength: formattedContent.length,
+                  hasHyperlinks:
+                    formattedContent.includes('[spaces/') ||
+                    formattedContent.includes('[http') ||
+                    formattedContent.includes('mailto:'),
+                });
+
                 // MEMORY FIX: Use saveMessagesWithMemory for memory storage
                 const assistantMessage: DBMessage = {
                   id: randomUUID(),
                   chatId: chatId,
                   role: 'assistant',
-                  parts: [{ type: 'text', text: assistantContent.trim() }],
+                  parts: [{ type: 'text', text: formattedContent }],
                   attachments: [],
                   createdAt: new Date(),
                   clientId: clientId,

@@ -8,9 +8,9 @@
  */
 
 import {
+  AIMessage,
   HumanMessage,
   SystemMessage,
-  type AIMessage,
   type BaseMessage,
 } from '@langchain/core/messages';
 import { RunnableSequence, RunnableLambda } from '@langchain/core/runnables';
@@ -165,9 +165,13 @@ export class SimpleResponseStrategy implements IResponseStrategy {
         this.config.logger.info(
           '[SimpleResponseStrategy] Simple response completed',
         );
+
+        // Apply hyperlink formatting to the final response
+        const processedMessage = this.applyHyperlinkFormatting(aiMessage);
+
         // Mark that simple response has streamed content to prevent duplication
         this.config.streamingCoordinator?.markContentStreamed('simple');
-        return { messages: [aiMessage] };
+        return { messages: [processedMessage] };
       }),
     ]);
 
@@ -181,5 +185,25 @@ export class SimpleResponseStrategy implements IResponseStrategy {
         enableTokenStreaming: true,
       },
     }) as Runnable<GraphState, Partial<GraphState>>;
+  }
+
+  /**
+   * Apply hyperlink formatting to the final AI response
+   */
+  private applyHyperlinkFormatting(response: AIMessage): AIMessage {
+    if (typeof response.content !== 'string') {
+      return response;
+    }
+
+    // Use the universal hyperlink converter from StandardizedResponseFormatter
+    const processedContent = StandardizedResponseFormatter.convertToHyperlinks(
+      response.content,
+    );
+
+    return new AIMessage({
+      content: processedContent,
+      additional_kwargs: response.additional_kwargs,
+      response_metadata: response.response_metadata,
+    });
   }
 }

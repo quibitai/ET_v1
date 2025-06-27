@@ -8,11 +8,11 @@
  */
 
 import {
+  AIMessage,
   HumanMessage,
   SystemMessage,
-  type AIMessage,
-  type BaseMessage,
 } from '@langchain/core/messages';
+import type { BaseMessage } from '@langchain/core/messages';
 import { RunnableSequence, RunnableLambda } from '@langchain/core/runnables';
 import type { Runnable } from '@langchain/core/runnables';
 import type {
@@ -134,11 +134,23 @@ export class SynthesisResponseStrategy implements IResponseStrategy {
           },
         );
 
+        // Apply hyperlink formatting to the final response
+        const processedMessage =
+          typeof aiMessage.content === 'string'
+            ? new AIMessage({
+                content: StandardizedResponseFormatter.convertToHyperlinks(
+                  aiMessage.content,
+                ),
+                additional_kwargs: aiMessage.additional_kwargs,
+                response_metadata: aiMessage.response_metadata,
+              })
+            : aiMessage;
+
         // Mark synthesis as completed and validate quality
-        this.markSynthesisCompleted(aiMessage);
+        this.markSynthesisCompleted(processedMessage);
 
         return {
-          messages: [aiMessage],
+          messages: [processedMessage],
           needsSynthesis: false, // Mark synthesis as completed
         };
       }),

@@ -73,6 +73,7 @@ export class GoogleWorkspaceToolAdapter {
         this.createChatGetMessagesTool(),
         this.createChatSendMessageTool(),
         this.createChatSearchMessagesTool(),
+        this.createChatGetParticipantsTool(),
       ];
 
       this.initialized = true;
@@ -958,7 +959,7 @@ export class GoogleWorkspaceToolAdapter {
               success: false,
               error: result.error || 'Failed to create calendar event',
               metadata: {
-                toolName: 'create_event',
+                toolName: 'create_calendar_event',
               },
             };
           }
@@ -1974,7 +1975,9 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
-          const result = await client.executeChatTool('list_chat_spaces', {});
+          const result = await client.executeChatTool('list_spaces', {
+            user_google_email: context.user?.email,
+          });
 
           return {
             success: true,
@@ -2027,8 +2030,9 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
-          const result = await client.executeChatTool('get_chat_messages', {
+          const result = await client.executeChatTool('get_messages', {
             space_id: params.space_id,
+            user_google_email: context.user?.email,
           });
 
           return {
@@ -2088,9 +2092,10 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
-          const result = await client.executeChatTool('send_chat_message', {
+          const result = await client.executeChatTool('send_message', {
             space_id: params.space_id,
-            message: params.message,
+            message_text: params.message,
+            user_google_email: context.user?.email,
           });
 
           return {
@@ -2150,9 +2155,10 @@ export class GoogleWorkspaceToolAdapter {
       ): Promise<ToolResult> => {
         try {
           const client = this.createClient({ userEmail: context.user?.email });
-          const result = await client.executeChatTool('search_chat_messages', {
+          const result = await client.executeChatTool('search_messages', {
             space_id: params.space_id,
             query: params.query,
+            user_google_email: context.user?.email,
           });
 
           return {
@@ -2169,6 +2175,65 @@ export class GoogleWorkspaceToolAdapter {
             error: error.message || 'Failed to search chat messages',
             metadata: {
               toolName: 'search_chat_messages',
+            },
+          };
+        }
+      },
+    };
+  }
+
+  private createChatGetParticipantsTool(): Tool {
+    return {
+      name: 'get_chat_space_participants',
+      displayName: 'Get Google Chat Space Participants',
+      description: 'Get participants/members of a Google Chat space',
+      usage: 'Use when user wants to see who is in a Chat space',
+      examples: [
+        'get chat space participants',
+        'show chat space members',
+        'who is in this chat space',
+        'list chat space participants',
+      ],
+      category: ToolCategory.CHAT,
+      parameters: [
+        {
+          name: 'space_id',
+          type: 'string',
+          description: 'Google Chat space ID',
+          required: true,
+        },
+      ],
+      source: 'google-workspace',
+      isEnabled: true,
+      requiresAuth: true,
+      execute: async (
+        params: Record<string, any>,
+        context: ToolContext,
+      ): Promise<ToolResult> => {
+        try {
+          const client = this.createClient({ userEmail: context.user?.email });
+          const result = await client.executeChatTool(
+            'get_space_participants',
+            {
+              space_id: params.space_id,
+              user_google_email: context.user?.email,
+            },
+          );
+
+          return {
+            success: true,
+            data: result,
+            metadata: {
+              source: 'google-workspace',
+              toolName: 'get_chat_space_participants',
+            },
+          };
+        } catch (error: any) {
+          return {
+            success: false,
+            error: error.message || 'Failed to get chat space participants',
+            metadata: {
+              toolName: 'get_chat_space_participants',
             },
           };
         }

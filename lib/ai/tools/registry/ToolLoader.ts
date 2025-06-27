@@ -162,13 +162,10 @@ export class ToolLoader {
       execute: async (params: Record<string, any>, context: ToolContext) => {
         try {
           // Import the actual search tool
-          const { searchInternalKnowledgeBase } = await import(
+          const { searchAndRetrieveKnowledgeBase } = await import(
             '../search-internal-knowledge-base'
           );
-          const result = await searchInternalKnowledgeBase.execute(
-            params,
-            context,
-          );
+          const result = await searchAndRetrieveKnowledgeBase.invoke(params);
 
           return {
             success: true,
@@ -218,8 +215,8 @@ export class ToolLoader {
       execute: async (params: Record<string, any>, context: ToolContext) => {
         try {
           // Import the actual list documents tool
-          const { listDocuments } = await import('../list-documents');
-          const result = await listDocuments.execute(params, context);
+          const { listDocumentsTool } = await import('../list-documents');
+          const result = await listDocumentsTool.invoke(params);
 
           return {
             success: true,

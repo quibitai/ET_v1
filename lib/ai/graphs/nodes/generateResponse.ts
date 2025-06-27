@@ -19,6 +19,7 @@ import { getLastHumanMessage, getToolMessages } from '../state';
 import { loadGraphPrompt } from '../prompts/loader';
 import { determineResponseMode as unifiedDetermineResponseMode } from '../../utils/responseMode';
 import { buildReferencesContext } from '../prompts/loader';
+import { StandardizedResponseFormatter } from '../../services/StandardizedResponseFormatter';
 
 /**
  * Dependencies for the response generation node
@@ -130,7 +131,7 @@ async function generateResponseByMode(
 
   // Extract tool results for context
   const { toolResults, referencesContext } = extractToolResultsContext(state);
-  
+
   // For simple document listing, use the formatted results directly
   if (mode === 'simple' && toolResults.includes('formatted_list')) {
     try {
@@ -143,7 +144,7 @@ async function generateResponseByMode(
 ${parsed.formatted_list}
 
 If you want me to retrieve or summarize any specific file, just let me know!`;
-          
+
           const response = new AIMessage(simpleResponse);
           return { response, mode, duration: Date.now() - startTime };
         }
@@ -187,17 +188,20 @@ Please provide a direct, helpful response based on the tool results above. Do no
     toolResultsLength: toolResults.length,
     referencesContextLength: referencesContext.length,
     hasReferences: referencesContext.length > 0,
-    referencesPreview: referencesContext.substring(0, 200) + '...',
-    totalPromptLength: contextualPrompt.length
+    referencesPreview: `${referencesContext.substring(0, 200)}...`,
+    totalPromptLength: contextualPrompt.length,
   });
 
   // Generate the response
   const response = await llm.invoke([new SystemMessage(contextualPrompt)]);
 
+  // Apply hyperlink formatting to the final response
+  const processedResponse = applyHyperlinkFormatting(response as AIMessage);
+
   const duration = Date.now() - startTime;
 
   return {
-    response: response as AIMessage,
+    response: processedResponse,
     mode,
     duration,
     // Note: Token usage would come from the LLM response if available
@@ -238,12 +242,12 @@ function extractToolResultsContext(state: GraphState): {
   const toolResults = toolMessages
     .map((msg, index) => {
       let content: string;
-      
+
       if (typeof msg.content === 'string') {
         try {
           // Try to parse as JSON to extract formatted content
           const parsed = JSON.parse(msg.content);
-          
+
           // If it's a structured tool response, use formatted_list or appropriate display field
           if (parsed.formatted_list) {
             content = parsed.formatted_list;
@@ -255,7 +259,10 @@ function extractToolResultsContext(state: GraphState): {
             content = parsed.content;
           } else if (parsed.result) {
             // Handle general tool results
-            content = typeof parsed.result === 'string' ? parsed.result : JSON.stringify(parsed.result, null, 2);
+            content =
+              typeof parsed.result === 'string'
+                ? parsed.result
+                : JSON.stringify(parsed.result, null, 2);
           } else {
             // Fallback to the full response, but format it nicely
             content = JSON.stringify(parsed, null, 2);
@@ -376,4 +383,24 @@ export function analyzeResponseQuality(
     citationCount,
     recommendations,
   };
+}
+
+/**
+ * Apply hyperlink formatting to the final AI response
+ */
+function applyHyperlinkFormatting(response: AIMessage): AIMessage {
+  if (typeof response.content !== 'string') {
+    return response;
+  }
+
+  // Use the universal hyperlink converter from StandardizedResponseFormatter
+  const processedContent = StandardizedResponseFormatter.convertToHyperlinks(
+    response.content,
+  );
+
+  return new AIMessage({
+    content: processedContent,
+    additional_kwargs: response.additional_kwargs,
+    response_metadata: response.response_metadata,
+  });
 }

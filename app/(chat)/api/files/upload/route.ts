@@ -89,14 +89,53 @@ export async function POST(request: Request) {
     const contentType = file.type || 'application/octet-stream';
 
     try {
-      const data = await put(`${filename}`, fileBuffer, {
-        access: 'public',
-        contentType: contentType,
-      });
+      // Check if we have Vercel Blob token
+      if (process.env.BLOB_READ_WRITE_TOKEN) {
+        // Use Vercel Blob if token is available
+        const data = await put(`${filename}`, fileBuffer, {
+          access: 'public',
+          contentType: contentType,
+          token: process.env.BLOB_READ_WRITE_TOKEN,
+        });
+        return NextResponse.json(data);
+      } else {
+        // Fallback to local storage for development
+        console.log(
+          '[Upload] Using local storage fallback (no BLOB_READ_WRITE_TOKEN)',
+        );
 
-      return NextResponse.json(data);
+        const { writeFile, mkdir } = await import('node:fs/promises');
+        const { join } = await import('node:path');
+        const { existsSync } = await import('node:fs');
+
+        // Create uploads directory if it doesn't exist
+        const uploadsDir = join(process.cwd(), 'public', 'uploads');
+        if (!existsSync(uploadsDir)) {
+          await mkdir(uploadsDir, { recursive: true });
+        }
+
+        // Generate unique filename to avoid conflicts
+        const timestamp = Date.now();
+        const uniqueFilename = `${timestamp}-${filename}`;
+        const filePath = join(uploadsDir, uniqueFilename);
+
+        // Write file to local storage
+        await writeFile(filePath, Buffer.from(fileBuffer));
+
+        // Return local URL
+        const url = `/uploads/${uniqueFilename}`;
+        const data = {
+          url,
+          pathname: uniqueFilename,
+          contentType,
+          contentDisposition: `attachment; filename="${filename}"`,
+        };
+
+        console.log('[Upload] File saved locally:', data);
+        return NextResponse.json(data);
+      }
     } catch (error) {
-      console.error('Upload to Vercel Blob failed:', error);
+      console.error('Upload failed:', error);
       return NextResponse.json(
         { error: 'Upload failed. Please try again.' },
         { status: 500 },

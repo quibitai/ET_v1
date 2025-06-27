@@ -31,6 +31,7 @@ export interface FormattingOptions {
   includeMetadata?: boolean;
   userQuery?: string;
   maxLength?: number;
+  enableHyperlinks?: boolean;
 }
 
 /**
@@ -41,9 +42,9 @@ export interface StandardResponse {
   content: string;
   sources?: Array<{ title: string; url: string }>;
   actions?: Array<{ type: string; data: any }>;
-  metadata: { 
-    timestamp: string; 
-    model: string; 
+  metadata: {
+    timestamp: string;
+    model: string;
     tools_used: string[];
     response_type?: string;
     processing_time_ms?: number;
@@ -62,7 +63,7 @@ export function createStandardResponse(
     tools_used?: string[];
     response_type?: string;
     processing_time_ms?: number;
-  } = {}
+  } = {},
 ): StandardResponse {
   return {
     content,
@@ -360,7 +361,7 @@ export namespace StandardizedResponseFormatter {
   }
 
   /**
-   * Apply final formatting rules
+   * Apply final formatting rules including universal hyperlink conversion
    */
   function applyFinalFormatting(
     content: string,
@@ -368,12 +369,135 @@ export namespace StandardizedResponseFormatter {
   ): string {
     if (!content) return getEmptyResultsMessage(options.contentType);
 
-    // Apply length limits
-    if (options.maxLength && content.length > options.maxLength) {
-      return `${content.substring(0, options.maxLength)}...`;
+    let processedContent = content;
+
+    // Apply length limits first
+    if (options.maxLength && processedContent.length > options.maxLength) {
+      processedContent = `${processedContent.substring(0, options.maxLength)}...`;
     }
 
-    return content;
+    // Apply universal hyperlink formatting (enabled by default)
+    if (options.enableHyperlinks !== false) {
+      processedContent = convertToHyperlinks(processedContent);
+    }
+
+    return processedContent;
+  }
+
+  /**
+   * Universal hyperlink converter - detects and converts common patterns to clickable links
+   */
+  export function convertToHyperlinks(content: string): string {
+    // Skip if content is already heavily formatted with markdown links
+    const existingLinkCount = (content.match(/\[.*?\]\(.*?\)/g) || []).length;
+    const totalLines = content.split('\n').length;
+
+    // If more than 50% of lines already have markdown links, skip conversion
+    if (existingLinkCount > totalLines * 0.5) {
+      return content;
+    }
+
+    let result = content;
+
+    // 1. Google Chat Space IDs - Convert spaces/XXXXXXXXX to clickable links
+    result = result.replace(
+      /\b(spaces\/[A-Za-z0-9_-]+)\b/g,
+      (match, spaceId) => {
+        // Don't convert if already in a markdown link
+        if (
+          result.substring(0, result.indexOf(match)).includes('[') &&
+          result.substring(result.indexOf(match)).includes('](')
+        ) {
+          return match;
+        }
+        return `[${spaceId}](https://chat.google.com/room/${spaceId.replace('spaces/', '')})`;
+      },
+    );
+
+    // 2. Email addresses - Convert to mailto links
+    result = result.replace(
+      /\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/g,
+      (match, email) => {
+        // Don't convert if already in a markdown link or code block
+        const beforeMatch = result.substring(0, result.indexOf(match));
+        if (
+          beforeMatch.includes('[') ||
+          beforeMatch.includes('`') ||
+          result.substring(result.indexOf(match)).includes('](')
+        ) {
+          return match;
+        }
+        return `[${email}](mailto:${email})`;
+      },
+    );
+
+    // 3. URLs - Convert http/https URLs to clickable links (if not already linked)
+    result = result.replace(/\b(https?:\/\/[^\s\)]+)/g, (match, url) => {
+      // Don't convert if already in a markdown link
+      const beforeMatch = result.substring(0, result.indexOf(match));
+      if (
+        beforeMatch.includes('[') &&
+        result.substring(result.indexOf(match)).includes('](')
+      ) {
+        return match;
+      }
+      // Clean up trailing punctuation
+      const cleanUrl = url.replace(/[.,;:!?]+$/, '');
+      const trailingPunct = url.substring(cleanUrl.length);
+      return `[${cleanUrl}](${cleanUrl})${trailingPunct}`;
+    });
+
+    // 4. Google Drive file IDs - Convert to Google Drive links
+    result = result.replace(/\b(1[A-Za-z0-9_-]{32,})\b/g, (match, fileId) => {
+      // Don't convert if already in a markdown link or if it looks like another ID
+      const beforeMatch = result.substring(0, result.indexOf(match));
+      if (
+        beforeMatch.includes('[') ||
+        beforeMatch.includes('`') ||
+        result.substring(result.indexOf(match)).includes('](')
+      ) {
+        return match;
+      }
+      // Only convert if it's likely a Google Drive file ID (starts with 1 and is long enough)
+      if (fileId.length >= 33) {
+        return `[${fileId}](https://drive.google.com/file/d/${fileId}/view)`;
+      }
+      return match;
+    });
+
+    // 5. Google Calendar event IDs - Convert to calendar links (basic pattern)
+    result = result.replace(
+      /\b([a-z0-9]{26}@google\.com)\b/g,
+      (match, eventId) => {
+        // Don't convert if already in a markdown link
+        const beforeMatch = result.substring(0, result.indexOf(match));
+        if (
+          beforeMatch.includes('[') ||
+          result.substring(result.indexOf(match)).includes('](')
+        ) {
+          return match;
+        }
+        return `[${eventId}](https://calendar.google.com/calendar/event?eid=${eventId})`;
+      },
+    );
+
+    // 6. Asana task URLs - Enhance existing Asana links (if not already formatted)
+    result = result.replace(
+      /\b(https:\/\/app\.asana\.com\/0\/[0-9]+\/[0-9]+)\b/g,
+      (match, url) => {
+        // Don't convert if already in a markdown link
+        const beforeMatch = result.substring(0, result.indexOf(match));
+        if (
+          beforeMatch.includes('[') &&
+          result.substring(result.indexOf(match)).includes('](')
+        ) {
+          return match;
+        }
+        return `[Asana Task](${url})`;
+      },
+    );
+
+    return result;
   }
 
   /**

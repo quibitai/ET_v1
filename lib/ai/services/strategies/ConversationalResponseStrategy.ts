@@ -8,9 +8,9 @@
  */
 
 import {
+  AIMessage,
   HumanMessage,
   SystemMessage,
-  type AIMessage,
   type BaseMessage,
 } from '@langchain/core/messages';
 import { RunnableSequence, RunnableLambda } from '@langchain/core/runnables';
@@ -21,6 +21,7 @@ import type {
   ResponseStrategyType,
 } from '../ResponseStrategyFactory';
 import type { GraphState } from '../QueryIntentAnalyzer';
+import { StandardizedResponseFormatter } from '../StandardizedResponseFormatter';
 
 /**
  * Strategy for handling conversational responses
@@ -129,7 +130,20 @@ export class ConversationalResponseStrategy implements IResponseStrategy {
         this.config.logger.info(
           '[ConversationalResponseStrategy] Conversational response completed',
         );
-        return { messages: [aiMessage] };
+
+        // Apply hyperlink formatting to the final response
+        const processedMessage =
+          typeof aiMessage.content === 'string'
+            ? new AIMessage({
+                content: StandardizedResponseFormatter.convertToHyperlinks(
+                  aiMessage.content,
+                ),
+                additional_kwargs: aiMessage.additional_kwargs,
+                response_metadata: aiMessage.response_metadata,
+              })
+            : aiMessage;
+
+        return { messages: [processedMessage] };
       }),
     ]);
 
