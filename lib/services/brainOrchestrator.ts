@@ -5,9 +5,9 @@ import type {
 import type { RequestLogger } from './observabilityService';
 import { MessageService } from './messageService';
 import { ChatRepository } from '@/lib/db/repositories/chatRepository';
+import { ContextService } from './contextService';
 import { auth } from '@/app/(auth)/auth';
 import type { BaseMessage } from '@langchain/core/messages';
-import type { RunnableConfig } from '@langchain/core/runnables';
 import { ChatOpenAI } from '@langchain/openai';
 import { getAvailableTools } from '@/lib/ai/tools';
 // Use our simplified graph implementation
@@ -18,11 +18,17 @@ export class BrainOrchestrator {
   private logger: RequestLogger;
   private messageService: MessageService;
   private chatRepository: ChatRepository;
+  private contextService: ContextService;
 
   constructor(logger: RequestLogger) {
     this.logger = logger;
     this.messageService = new MessageService(logger);
     this.chatRepository = new ChatRepository();
+    this.contextService = new ContextService(
+      logger,
+      null, // clientConfig will be set when processing
+      { enableMemory: true, maxMemoryDepth: 10 },
+    );
   }
 
   /**
@@ -157,6 +163,14 @@ export class BrainOrchestrator {
       this.logger.info('[BrainOrchestrator] Using unified tool registry', {
         toolCount: convertedTools.length,
         toolNames: convertedTools.map((t) => t.name),
+        hasListDocuments: convertedTools.some(
+          (t) => t.name === 'listDocuments',
+        ),
+        listDocumentsTool: convertedTools.find(
+          (t) => t.name === 'listDocuments',
+        )
+          ? 'found'
+          : 'missing',
       });
 
       return convertedTools;
@@ -176,7 +190,7 @@ export class BrainOrchestrator {
       );
       return [];
 
-      return await getAvailableTools(session);
+      // return await getAvailableTools(session);
     }
   }
 
@@ -241,12 +255,37 @@ export class BrainOrchestrator {
       );
 
       const authSession = await auth();
-      const langChainMessages = this.messageService.convertToLangChainFormat(
-        request.messages as MessageData[],
+
+      // Process context with conversational memory
+      const processedContext =
+        await this.contextService.processContext(request);
+
+      this.logger.info(
+        '[BrainOrchestrator] Context processed with memory integration',
+        {
+          hasConversationalMemory: !!(
+            processedContext.conversationalMemory &&
+            processedContext.conversationalMemory.length > 0
+          ),
+          memorySnippetCount:
+            processedContext.conversationalMemory?.length || 0,
+          hasProcessedHistory: !!(
+            processedContext.processedHistory &&
+            processedContext.processedHistory.length > 0
+          ),
+          processedHistoryCount: processedContext.processedHistory?.length || 0,
+        },
       );
 
+      // Use processed history if available, otherwise fall back to converted messages
+      const messagesToUse =
+        processedContext.processedHistory ||
+        this.messageService.convertToLangChainFormat(
+          request.messages as MessageData[],
+        );
+
       yield* this.streamWithGraph(
-        langChainMessages as BaseMessage[],
+        messagesToUse as BaseMessage[],
         request,
         authSession,
         llm,
@@ -289,12 +328,64 @@ export class BrainOrchestrator {
         '[BrainOrchestrator] Starting real-time token streaming with specialist context',
       );
 
-      // Simple graph input with specialist context
+      // FIXED: Process context and include fileContext in graph input
+      console.log(
+        '[BrainOrchestrator] DEBUG: Request before context processing:',
+        {
+          hasFileContext: !!request.fileContext,
+          fileContextKeys: request.fileContext
+            ? Object.keys(request.fileContext)
+            : [],
+          requestKeys: Object.keys(request),
+        },
+      );
+
+      const processedContext =
+        await this.contextService.processContext(request);
+
+      console.log('[BrainOrchestrator] Context processed for graph', {
+        hasFileContext: !!processedContext.fileContext,
+        fileContextFilename: processedContext.fileContext?.filename,
+        hasExtractedText: !!processedContext.fileContext?.extractedText,
+        extractedTextLength:
+          processedContext.fileContext?.extractedText?.length || 0,
+      });
+
+      this.logger.info('[BrainOrchestrator] Context processed for graph', {
+        hasFileContext: !!processedContext.fileContext,
+        fileContextFilename: processedContext.fileContext?.filename,
+        hasExtractedText: !!processedContext.fileContext?.extractedText,
+        extractedTextLength:
+          processedContext.fileContext?.extractedText?.length || 0,
+      });
+
+      // Enhanced graph input with file context and processed context
       const graphInput = {
         messages: messages,
         response_mode: (request.responseMode as string) || 'synthesis',
-        specialist_id: request.activeBitContextId || undefined, // Pass specialist ID to graph
+        specialist_id: request.activeBitContextId || undefined,
+        // NEW: Pass file context and processed context to graph
+        metadata: {
+          fileContext: processedContext.fileContext || undefined,
+          brainRequest: request,
+          processedContext: processedContext,
+        },
       };
+
+      this.logger.info('[BrainOrchestrator] Graph input prepared', {
+        messageCount: messages.length,
+        responseMode: graphInput.response_mode,
+        specialistId: graphInput.specialist_id,
+        hasFileContext: !!graphInput.metadata.fileContext,
+        fileContextPreview: graphInput.metadata.fileContext
+          ? {
+              filename: graphInput.metadata.fileContext.filename,
+              contentType: graphInput.metadata.fileContext.contentType,
+              extractedTextLength:
+                graphInput.metadata.fileContext.extractedText?.length || 0,
+            }
+          : null,
+      });
 
       // FIXED: Stream tokens directly from the graph (no more state object processing)
       let tokenCount = 0;
