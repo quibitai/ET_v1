@@ -5,6 +5,10 @@ import {
   enhancedToolInstructionMap,
   getEnhancedToolPromptInstructions,
 } from './modular-architecture';
+import {
+  googleWorkspaceInstructions,
+  masterGoogleWorkspaceInstructions,
+} from './google-workspace';
 // Document tool instructions removed as part of Echo Tango v1 simplification
 // Import instructions for other tools as they are created
 
@@ -63,6 +67,9 @@ BUDGET CREATION WORKFLOW: When users ask to create budgets or estimates:
 
   // Content Processing Instructions
   createBudget: `Use this tool to structure and calculate detailed budgets for video production projects. Pass project scope from uploaded content, rate card information from knowledge base searches, and additional project details. Always use this for budget creation requests.`,
+
+  // Google Workspace MCP Tools
+  ...googleWorkspaceInstructions,
 
   // MCP Tools (Dynamic Discovery)
   // NOTE: MCP tools are discovered dynamically from connected servers

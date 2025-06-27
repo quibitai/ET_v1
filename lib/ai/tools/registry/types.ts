@@ -1,173 +1,112 @@
 /**
- * Tool Manifest Types
+ * Unified Tool Registry Types
  *
- * Defines the metadata structure for enhanced tool discovery and management.
- * This is an additive layer that enriches existing tool loading without
- * modifying the core streaming pipeline.
+ * This module defines the core interfaces for a simple, modular tool system
+ * that works with both standard tools and MCP tools.
  */
 
-export interface ToolManifest {
-  /**
-   * Unique identifier for the tool (e.g., 'asana_list_projects')
-   */
-  id: string;
+export interface ToolContext {
+  userId?: string;
+  sessionId?: string;
+  clientId?: string;
+  specialistId?: string;
+  user?: {
+    id?: string;
+    email?: string;
+    name?: string;
+  };
+}
 
-  /**
-   * Service this tool belongs to (e.g., 'asana', 'notion', 'slack')
-   */
-  service: string;
+export interface ToolResult {
+  success: boolean;
+  data?: any;
+  error?: string;
+  metadata?: {
+    executionTime?: number;
+    source?: string;
+    toolName?: string;
+  };
+}
 
-  /**
-   * Whether this tool supports streaming responses
-   * Note: This is for future use - main chat streaming must not be modified
-   */
-  streamingSupported: boolean;
-
-  /**
-   * Category for better tool organization and discovery
-   */
-  category:
-    | 'project_management'
-    | 'task_management'
-    | 'team_operations'
-    | 'analytics'
-    | 'communication'
-    | 'general';
-
-  /**
-   * Priority level for tool selection when multiple tools could handle a request
-   */
-  priority: 'high' | 'medium' | 'low';
-
-  /**
-   * Enhanced description for better AI tool selection
-   */
+export interface ToolParameter {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array';
   description: string;
-
-  /**
-   * Estimated execution duration in milliseconds
-   * Helps with timeout management and user expectations
-   */
-  estimatedDuration?: number;
-
-  /**
-   * Whether this tool can be batched with similar operations
-   */
-  batchCompatible?: boolean;
-
-  /**
-   * Tags for additional categorization and discovery
-   */
-  tags?: string[];
-
-  /**
-   * Required permissions or scopes for this tool
-   */
-  requiredScopes?: string[];
-
-  /**
-   * Streaming configuration for tools that support streaming
-   */
-  streamingConfig?: {
-    /**
-     * Type of streaming this tool provides
-     * - progress: Shows completion percentage and status updates
-     * - incremental: Streams data as it becomes available
-     * - status: Provides real-time status messages
-     */
-    type: 'progress' | 'incremental' | 'status';
-
-    /**
-     * Preferred chunk size for incremental streaming
-     */
-    chunkSize?: number;
-
-    /**
-     * Expected progress steps for progress streaming
-     */
-    progressSteps?: string[];
-
-    /**
-     * Status messages for status streaming
-     */
-    statusMessages?: string[];
-
-    /**
-     * Whether this tool can stream partial results
-     */
-    supportsPartialResults?: boolean;
-  };
-
-  /**
-   * Version of the manifest format (for future compatibility)
-   */
-  manifestVersion?: string;
+  required?: boolean;
+  enum?: string[];
+  default?: any;
 }
 
-/**
- * Collection of manifests organized by service
- */
-export interface ManifestCollection {
-  [service: string]: {
-    [toolId: string]: ToolManifest;
-  };
+export interface Tool {
+  // Core identification
+  name: string;
+  description: string;
+  category: ToolCategory;
+
+  // LLM-friendly metadata
+  displayName: string;
+  usage: string; // When to use this tool
+  examples: string[]; // Example queries that should trigger this tool
+
+  // Parameters
+  parameters: ToolParameter[];
+
+  // Execution
+  execute: (
+    params: Record<string, any>,
+    context: ToolContext,
+  ) => Promise<ToolResult>;
+
+  // Metadata
+  source: 'standard' | 'mcp' | 'google-workspace';
+  mcpServer?: string;
+  isEnabled: boolean;
+  requiresAuth?: boolean;
 }
 
-/**
- * Tool enrichment result after applying manifest metadata
- */
-export interface EnrichedTool {
-  /**
-   * Original tool instance (unchanged)
-   */
-  tool: any;
+export enum ToolCategory {
+  // Productivity
+  TASK_MANAGEMENT = 'task_management',
+  PROJECT_MANAGEMENT = 'project_management',
+  CALENDAR = 'calendar',
+  EMAIL = 'email',
+  PRODUCTIVITY = 'productivity',
 
-  /**
-   * Manifest metadata if available
-   */
-  manifest?: ToolManifest;
+  // Information
+  SEARCH = 'search',
+  DOCUMENTS = 'documents',
+  KNOWLEDGE = 'knowledge',
+  FILES = 'files',
 
-  /**
-   * Combined description (tool + manifest)
-   */
-  enrichedDescription?: string;
+  // Communication
+  MESSAGING = 'messaging',
+  COLLABORATION = 'collaboration',
+
+  // Utilities
+  FILE_OPERATIONS = 'file_operations',
+  DATA_ANALYSIS = 'data_analysis',
+
+  // Google Workspace
+  DOCS = 'docs',
+  SHEETS = 'sheets',
+  FORMS = 'forms',
+  CHAT = 'chat',
+
+  // Other
+  GENERAL = 'general',
 }
 
-/**
- * Manifest validation result
- */
-export interface ManifestValidationResult {
-  isValid: boolean;
-  errors?: string[];
-  warnings?: string[];
+export interface ToolFilter {
+  categories?: ToolCategory[];
+  source?: 'standard' | 'mcp' | 'google-workspace' | 'all';
+  requiresAuth?: boolean;
+  isEnabled?: boolean;
+  specialistId?: string;
 }
 
-/**
- * Registry configuration options
- */
 export interface ToolRegistryConfig {
-  /**
-   * Path to manifest directory
-   */
-  manifestPath?: string;
-
-  /**
-   * Whether to cache manifests in memory
-   */
-  enableCaching?: boolean;
-
-  /**
-   * Cache TTL in milliseconds
-   */
-  cacheTTL?: number;
-
-  /**
-   * Whether to watch for manifest file changes (dev mode)
-   */
-  watchForChanges?: boolean;
-
-  /**
-   * Whether to validate manifests on load
-   */
-  validateOnLoad?: boolean;
+  enableMcp: boolean;
+  mcpServers: string[];
+  defaultTimeout: number;
+  enableCaching: boolean;
 }

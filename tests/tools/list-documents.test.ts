@@ -439,7 +439,7 @@ describe('List Documents Tool Tests', () => {
         },
       ];
       const options: import(
-        '@/lib/ai/services/StandardizedResponseFormatter',
+        '@/lib/ai/services/StandardizedResponseFormatter'
       ).FormattingOptions = {
         contentType: 'document_list',
         userQuery: 'list documents',

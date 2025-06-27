@@ -1,0 +1,185 @@
+/**
+ * Google Workspace OAuth Authentication Status API
+ *
+ * Returns the current authentication status for Google Workspace integration
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/app/(auth)/auth';
+import { GoogleWorkspaceOAuthBridge } from '@/lib/services/googleWorkspaceOAuthBridge';
+import { logger } from '@/lib/logger';
+
+export async function GET(request: NextRequest) {
+  try {
+    logger.info(
+      'AuthStatus',
+      'Checking Google Workspace authentication status',
+    );
+
+    // Get current session with detailed logging
+    const session = await auth();
+    logger.info('AuthStatus', 'Session details:', {
+      hasSession: !!session,
+      hasUser: !!session?.user,
+      userEmail: session?.user?.email,
+      hasAccessToken: !!(session as any)?.accessToken,
+      sessionKeys: session ? Object.keys(session) : [],
+      userKeys: session?.user ? Object.keys(session.user) : [],
+    });
+
+    if (!session?.user) {
+      logger.warn('AuthStatus', 'No authenticated session found');
+      return NextResponse.redirect(
+        new URL(
+          '/login?callbackUrl=' + encodeURIComponent(request.url),
+          request.url,
+        ),
+      );
+    }
+
+    // Check for Google OAuth tokens specifically
+    const accessToken = (session as any).accessToken;
+    const refreshToken = (session as any).refreshToken;
+    const expiresAt = (session as any).accessTokenExpires;
+
+    logger.info('AuthStatus', 'OAuth token details:', {
+      hasAccessToken: !!accessToken,
+      hasRefreshToken: !!refreshToken,
+      hasExpiresAt: !!expiresAt,
+      tokenPreview: accessToken ? `${accessToken.substring(0, 10)}...` : 'none',
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : 'none',
+      isExpired: expiresAt ? Date.now() > expiresAt : 'unknown',
+    });
+
+    // Test the OAuth bridge
+    const bridge = GoogleWorkspaceOAuthBridge.getInstance();
+    const tokens = await bridge.extractTokensFromSession();
+
+    logger.info('AuthStatus', 'OAuth bridge results:', {
+      bridgeSuccess: !!tokens,
+      bridgeTokens: tokens
+        ? {
+            hasAccessToken: !!tokens.accessToken,
+            hasRefreshToken: !!tokens.refreshToken,
+            userEmail: tokens.userEmail,
+            expiresAt: tokens.expiresAt
+              ? new Date(tokens.expiresAt).toISOString()
+              : 'none',
+          }
+        : null,
+    });
+
+    if (!tokens) {
+      return NextResponse.json({
+        authenticated: false,
+        error: 'No Google OAuth tokens found. Please sign in with Google.',
+        debug: {
+          hasSession: true,
+          userEmail: session.user.email,
+          authMethod: 'credentials', // Likely credentials-based auth
+          needsGoogleOAuth: true,
+        },
+      });
+    }
+
+    const authStatus = await bridge.getAuthenticationStatus();
+
+    return NextResponse.json({
+      authenticated: authStatus.authenticated,
+      userEmail: authStatus.userEmail,
+      expiresAt: authStatus.expiresAt,
+      scopes: authStatus.scopes,
+      debug: {
+        hasSession: true,
+        authMethod: 'google_oauth',
+        tokenValid: true,
+      },
+    });
+  } catch (error) {
+    logger.error('AuthStatus', 'Error checking authentication status:', error);
+    return NextResponse.json(
+      {
+        authenticated: false,
+        error: 'Failed to check authentication status',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    logger.info('AuthStatus', 'Testing Google Workspace client creation');
+
+    const bridge = GoogleWorkspaceOAuthBridge.getInstance();
+    const result = await bridge.createAuthenticatedClient();
+
+    logger.info('AuthStatus', 'Client creation result:', {
+      success: result.success,
+      hasClient: !!result.client,
+      error: result.error,
+    });
+
+    if (!result.success) {
+      return NextResponse.json({
+        success: false,
+        error: result.error,
+        authenticated: false,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      authenticated: true,
+      userEmail: result.tokens?.userEmail,
+      message: 'Google Workspace client created successfully',
+    });
+  } catch (error) {
+    logger.error('AuthStatus', 'Error testing client creation:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to test client creation',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const user = {
+      id: session.user.id || session.user.email,
+      email: session.user.email,
+      name: session.user.name || undefined,
+    };
+
+    const bridge = GoogleWorkspaceOAuthBridge.getInstance();
+    const syncSuccess = await bridge.syncTokensToMCPServer(user);
+
+    if (syncSuccess) {
+      return NextResponse.json({
+        success: true,
+        message: 'Successfully synced OAuth tokens to MCP server',
+      });
+    } else {
+      return NextResponse.json(
+        { error: 'Failed to sync OAuth tokens to MCP server' },
+        { status: 400 },
+      );
+    }
+  } catch (error) {
+    console.error('Error syncing OAuth tokens:', error);
+    return NextResponse.json(
+      { error: 'Failed to sync OAuth tokens' },
+      { status: 500 },
+    );
+  }
+}

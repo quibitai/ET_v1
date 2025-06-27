@@ -65,7 +65,7 @@ export const searchAndRetrieveKnowledgeBase = new DynamicStructuredTool({
       .number()
       .int()
       .positive()
-      .optional()
+      .nullable()
       .default(1)
       .describe(
         'Number of results to consider. The tool will return the content of the top result.',

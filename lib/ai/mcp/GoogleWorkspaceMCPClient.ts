@@ -1,11 +1,8 @@
 /**
  * Google Workspace MCP Client
  *
- * HTTP client for communicating with the containerized Google Workspace MCP server.
- * Extends BaseMCPClient to leverage common functionality while providing
- * Google Workspace-specific type-safe methods and interfaces.
- *
- * Supports OAuth credential injection via Authorization header for request-scoped authentication.
+ * HTTP client for communicating with the FastMCP-based Google Workspace MCP server.
+ * Uses the server's built-in OAuth authentication flow instead of token injection.
  */
 
 import {
@@ -21,29 +18,13 @@ import {
 
 // Re-export base types for backward compatibility
 export type GoogleWorkspaceMCPConfig = MCPClientConfig & {
-  /** OAuth access token for request-scoped authentication */
-  accessToken?: string;
-  /** User email for Google Workspace operations */
+  /** Maximum time to wait for server initialization (ms) */
+  initializationTimeout?: number;
+  /** User's Google email address */
   userEmail?: string;
 };
 
-// Google Workspace-specific types
-export interface GoogleWorkspaceEmailRequest extends MCPToolRequest {
-  user_google_email: string;
-  [key: string]: any;
-}
-
-export interface GoogleWorkspaceDriveRequest extends MCPToolRequest {
-  user_google_email: string;
-  [key: string]: any;
-}
-
-export interface GoogleWorkspaceCalendarRequest extends MCPToolRequest {
-  user_google_email: string;
-  [key: string]: any;
-}
-
-// Service-specific tool groups for better organization
+// Tool categories for Google Workspace
 export const GMAIL_TOOLS = [
   'search_gmail_messages',
   'get_gmail_message_content',
@@ -58,34 +39,34 @@ export const GMAIL_TOOLS = [
 
 export const DRIVE_TOOLS = [
   'search_drive_files',
+  'list_drive_files',
+  'upload_drive_file',
   'get_drive_file_content',
-  'list_drive_items',
-  'create_drive_file',
 ] as const;
 
 export const CALENDAR_TOOLS = [
   'list_calendars',
-  'get_events',
-  'get_event',
-  'create_event',
-  'modify_event',
-  'delete_event',
+  'list_calendar_events',
+  'create_calendar_event',
+  'update_calendar_event',
+  'delete_calendar_event',
+  'get_calendar_event',
 ] as const;
 
 export const DOCS_TOOLS = [
-  'search_docs',
-  'get_doc_content',
-  'list_docs_in_folder',
-  'create_doc',
+  'create_docs_document',
+  'get_docs_document',
+  'update_docs_document',
+  'export_docs_document',
 ] as const;
 
 export const SHEETS_TOOLS = [
-  'list_spreadsheets',
-  'get_spreadsheet_info',
-  'read_sheet_values',
-  'modify_sheet_values',
-  'create_spreadsheet',
-  'create_sheet',
+  'create_sheets_spreadsheet',
+  'get_sheets_values',
+  'update_sheets_values',
+  'append_sheets_values',
+  'clear_sheets_values',
+  'get_sheets_metadata',
 ] as const;
 
 export const FORMS_TOOLS = [
@@ -103,13 +84,25 @@ export const CHAT_TOOLS = [
   'search_messages',
 ] as const;
 
+export const SLIDES_TOOLS = [
+  'create_slides_presentation',
+  'get_slides_presentation',
+  'update_slides_presentation',
+  'export_slides_presentation',
+  'batch_update_slides_presentation',
+] as const;
+
+// Authentication tool
+export const AUTH_TOOLS = ['start_google_auth'] as const;
+
 /**
- * Google Workspace-specific MCP client implementation
+ * Google Workspace-specific MCP client implementation using FastMCP
  */
 export class GoogleWorkspaceMCPClient extends BaseMCPClient {
   readonly serviceName = 'google-workspace';
-  readonly defaultServerUrl = 'http://localhost:8000';
+  readonly defaultServerUrl = 'http://127.0.0.1:8000';
   readonly supportedTools = [
+    ...AUTH_TOOLS,
     ...GMAIL_TOOLS,
     ...DRIVE_TOOLS,
     ...CALENDAR_TOOLS,
@@ -117,229 +110,51 @@ export class GoogleWorkspaceMCPClient extends BaseMCPClient {
     ...SHEETS_TOOLS,
     ...FORMS_TOOLS,
     ...CHAT_TOOLS,
+    ...SLIDES_TOOLS,
   ];
 
-  /** OAuth access token for request-scoped authentication */
-  private accessToken?: string;
-  /** User email for Google Workspace operations */
+  private initializationTimeout: number;
+  private isInitialized = false;
+  private initializationAttempts = 0;
+  private readonly maxInitializationAttempts = 5;
+  private initializationInProgress = false;
+  private sessionId: string | undefined;
   private userEmail?: string;
 
   constructor(config: GoogleWorkspaceMCPConfig = {}) {
     super({
       ...config,
       serverUrl:
-        process.env.GOOGLE_WORKSPACE_MCP_SERVER_URL || config.serverUrl,
+        process.env.GOOGLE_WORKSPACE_MCP_SERVER_URL ||
+        config.serverUrl ||
+        'http://127.0.0.1:8000',
     });
 
-    // Store OAuth credentials for request-scoped authentication
-    this.accessToken = config.accessToken;
+    this.initializationTimeout = config.initializationTimeout || 30000;
     this.userEmail = config.userEmail;
   }
 
   /**
-   * Set OAuth credentials for request-scoped authentication
-   */
-  setCredentials(accessToken: string, userEmail?: string): void {
-    this.accessToken = accessToken;
-    this.userEmail = userEmail;
-  }
-
-  /**
-   * Clear OAuth credentials
-   */
-  clearCredentials(): void {
-    this.accessToken = undefined;
-    this.userEmail = undefined;
-  }
-
-  /**
-   * Check if OAuth credentials are available
-   */
-  hasCredentials(): boolean {
-    return !!this.accessToken;
-  }
-
-  /**
-   * Create a simplified client instance with auto-detection
-   */
-  static async create(
-    config: GoogleWorkspaceMCPConfig = {},
-  ): Promise<GoogleWorkspaceMCPClient> {
-    const client = new GoogleWorkspaceMCPClient(config);
-
-    // Ensure configuration is complete after inheritance
-    client.ensureConfigured();
-
-    // Validate configuration if auto-detect is enabled
-    if (client.configuration.autoDetect) {
-      const validation = await client.validateConfiguration();
-
-      if (!validation.isValid) {
-        console.warn(
-          '[GoogleWorkspaceMCPClient] Configuration issues detected:',
-          validation.errors,
-        );
-
-        // In development, provide helpful error messages
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('\n🔧 Google Workspace MCP Setup Help:');
-          console.warn(
-            '1. Ensure the MCP server is running: docker-compose -f docker-compose.dev.yml up google-workspace-mcp',
-          );
-          console.warn(
-            '2. Place your client_secret.json in mcp-server-google-workspace/ directory',
-          );
-          console.warn(
-            '3. Verify GOOGLE_WORKSPACE_MCP_SERVER_URL points to the correct server (default: http://localhost:8000/mcp/)',
-          );
-          console.warn('4. Complete OAuth authentication on first tool use\n');
-        }
-      }
-    }
-
-    return client;
-  }
-
-  /**
-   * Service-specific validation
-   */
-  protected async validateServiceSpecific(): Promise<{
-    errors: string[];
-    warnings?: string[];
-  }> {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    // Check if Google credentials are configured
-    if (
-      !process.env.GOOGLE_CLIENT_SECRETS &&
-      !process.env.GOOGLE_APPLICATION_CREDENTIALS
-    ) {
-      warnings.push(
-        'Neither GOOGLE_CLIENT_SECRETS nor GOOGLE_APPLICATION_CREDENTIALS environment variables are set. The MCP server will use the client_secret.json file in its directory.',
-      );
-    }
-
-    // Check if server URL is accessible
-    try {
-      const healthResponse = await this.healthCheck();
-      if (healthResponse.status !== 'ok') {
-        errors.push('Google Workspace MCP server health check failed');
-      }
-    } catch (error) {
-      errors.push(
-        `Cannot connect to Google Workspace MCP server at ${this.configuration.serverUrl}. Ensure the Docker container is running.`,
-      );
-    }
-
-    return { errors, warnings };
-  }
-
-  /**
-   * Execute Gmail-specific tool
-   */
-  async executeGmailTool(
-    toolName: string,
-    args: GoogleWorkspaceEmailRequest,
-  ): Promise<MCPToolResponse> {
-    if (!GMAIL_TOOLS.includes(toolName as any)) {
-      throw new Error(`Tool ${toolName} is not a valid Gmail tool`);
-    }
-    return this.executeTool(toolName, args);
-  }
-
-  /**
-   * Execute Drive-specific tool
-   */
-  async executeDriveTool(
-    toolName: string,
-    args: GoogleWorkspaceDriveRequest,
-  ): Promise<MCPToolResponse> {
-    if (!DRIVE_TOOLS.includes(toolName as any)) {
-      throw new Error(`Tool ${toolName} is not a valid Drive tool`);
-    }
-    return this.executeTool(toolName, args);
-  }
-
-  /**
-   * Execute Calendar-specific tool
-   */
-  async executeCalendarTool(
-    toolName: string,
-    args: GoogleWorkspaceCalendarRequest,
-  ): Promise<MCPToolResponse> {
-    if (!CALENDAR_TOOLS.includes(toolName as any)) {
-      throw new Error(`Tool ${toolName} is not a valid Calendar tool`);
-    }
-    return this.executeTool(toolName, args);
-  }
-
-  /**
-   * Override health check to handle FastMCP requirements
-   */
-  async healthCheck(): Promise<HealthStatus> {
-    try {
-      const response = await fetch(`${this.configuration.serverUrl}/health`, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json, text/event-stream',
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return {
-        status: 'ok',
-        service: this.serviceName,
-        timestamp: new Date().toISOString(),
-        ...data,
-      };
-    } catch (error) {
-      return {
-        status: 'error',
-        service: this.serviceName,
-        timestamp: new Date().toISOString(),
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
-    }
-  }
-
-  /**
-   * Override executeTool to handle Google Workspace-specific FastMCP JSON-RPC format and OAuth injection
-   */
-  /** Cached session ID for the current client instance */
-  private sessionId?: string;
-
-  /**
-   * Initialize a session with the FastMCP server
+   * Initialize session with FastMCP server
    */
   private async initializeSession(): Promise<void> {
+    if (this.isInitialized || this.initializationInProgress) {
+      return;
+    }
+
+    this.initializationInProgress = true;
+
     try {
-      const initHeaders: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Accept: 'application/json, text/event-stream',
-      };
-
-      // Add OAuth credentials for initialization
-      if (this.accessToken) {
-        initHeaders.Authorization = `Bearer ${this.accessToken}`;
-        if (this.userEmail) {
-          initHeaders['x-user-email'] = this.userEmail;
-        }
-      }
-
-      // Send proper MCP initialization
       const initBody = {
         jsonrpc: '2.0',
         id: 'initialize',
         method: 'initialize',
         params: {
           protocolVersion: '2024-11-05',
-          capabilities: {},
+          capabilities: {
+            roots: { listChanged: true },
+            sampling: {},
+          },
           clientInfo: {
             name: 'google-workspace-client',
             version: '1.0.0',
@@ -349,51 +164,61 @@ export class GoogleWorkspaceMCPClient extends BaseMCPClient {
 
       const response = await this.makeRequest('/mcp/', {
         method: 'POST',
-        headers: initHeaders,
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+        },
         body: JSON.stringify(initBody),
       });
 
       if (response.ok) {
-        // Parse the initialization response to extract session information
-        const initResponseText: string = await response.text();
-
-        // FastMCP responds with Server-Sent Events format
-        const lines: string[] = initResponseText.split('\n');
-        const dataLine: string | undefined = lines.find((line) =>
-          line.startsWith('data: '),
-        );
-        if (dataLine) {
-          const initResult: any = JSON.parse(dataLine.substring(6));
-          console.log(
-            '[GoogleWorkspaceMCP] Initialization response:',
-            initResult,
-          );
-        }
-
-        // Extract session ID from response headers or generate a compatible one
-        const sessionIdHeader: string | null =
+        // Extract session ID from response headers
+        const sessionIdHeader =
           response.headers.get('Mcp-Session-Id') ||
           response.headers.get('mcp-session-id') ||
           response.headers.get('X-Session-Id');
+
         if (sessionIdHeader) {
           this.sessionId = sessionIdHeader;
           console.log(
-            '[GoogleWorkspaceMCP] Extracted session ID from headers:',
+            '[GoogleWorkspaceMCP] Session initialized:',
             this.sessionId,
           );
         } else {
-          // Generate a session ID compatible with FastMCP format (32-character hex string)
-          this.sessionId = Array.from({ length: 32 }, () =>
-            Math.floor(Math.random() * 16).toString(16),
-          ).join('');
-          console.log(
-            '[GoogleWorkspaceMCP] Generated FastMCP-compatible session ID:',
-            this.sessionId,
+          throw new Error('No session ID received from server');
+        }
+
+        // Send initialized notification as required by MCP protocol
+        const initializedBody = {
+          jsonrpc: '2.0',
+          method: 'notifications/initialized',
+          params: {},
+        };
+
+        const initResponse = await this.makeRequest('/mcp/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'Mcp-Session-Id': this.sessionId,
+          },
+          body: JSON.stringify(initializedBody),
+        });
+
+        if (!initResponse.ok) {
+          console.warn(
+            '[GoogleWorkspaceMCP] Initialized notification failed, but continuing...',
           );
         }
+
+        this.isInitialized = true;
+        this.initializationAttempts = 0;
+
+        // Add a small delay to ensure server is ready for requests
+        await new Promise((resolve) => setTimeout(resolve, 300));
       } else {
         throw new Error(
-          `Session initialization failed: ${response.status} ${response.statusText}`,
+          `Initialization failed: ${response.status} ${response.statusText}`,
         );
       }
     } catch (error) {
@@ -401,233 +226,389 @@ export class GoogleWorkspaceMCPClient extends BaseMCPClient {
         '[GoogleWorkspaceMCP] Session initialization failed:',
         error,
       );
-      // Generate a fallback session ID
-      this.sessionId = `fallback_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      console.warn(
-        '[GoogleWorkspaceMCP] Using fallback session ID:',
-        this.sessionId,
-      );
+      this.initializationAttempts++;
+
+      if (this.initializationAttempts < this.maxInitializationAttempts) {
+        // Wait before retrying
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        this.initializationInProgress = false;
+        return this.initializeSession();
+      } else {
+        throw new Error(
+          `Failed to initialize after ${this.maxInitializationAttempts} attempts`,
+        );
+      }
+    } finally {
+      this.initializationInProgress = false;
     }
   }
 
+  /**
+   * Execute tool with proper FastMCP format
+   */
   async executeTool(
     toolName: string,
-    args: MCPToolRequest = {},
+    args: Record<string, any>,
   ): Promise<MCPToolResponse> {
-    // Ensure we have a session before making the tool call
-    if (!this.sessionId) {
-      await this.initializeSession();
-    }
-
-    // The Google Workspace MCP server uses standard MCP protocol format
-    const requestBody = {
-      jsonrpc: '2.0',
-      id: Math.random().toString(36).substring(2, 15), // Generate random ID
-      method: 'tools/call',
-      params: {
-        name: toolName,
-        arguments: {
-          ...args,
-          user_google_email: (args as any).user_google_email || this.userEmail,
-        },
-      },
-    };
-
-    // Prepare headers for OAuth credential injection and streaming support
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Accept: 'application/json, text/event-stream', // Required for Google Workspace MCP server
-    };
-
-    // Add session ID if we have one (FastMCP requires explicit session management)
-    if (this.sessionId && this.sessionId !== 'auto') {
-      headers['Mcp-Session-Id'] = this.sessionId;
-    }
-
-    // Add OAuth credentials if available (request-scoped authentication)
-    if (this.accessToken) {
-      headers.Authorization = `Bearer ${this.accessToken}`;
-
-      // Add user email header if available (note: header name is lowercase with dashes)
-      if (this.userEmail) {
-        headers['x-user-email'] = this.userEmail;
-      }
-    }
-
-    let response;
     try {
-      response = await this.makeRequest('/mcp/', {
+      // Ensure session is initialized
+      await this.initializeSession();
+
+      if (!this.sessionId) {
+        throw new Error('No active session');
+      }
+
+      // Add user email to args if available and not already present
+      if (this.userEmail && !args.user_google_email) {
+        args.user_google_email = this.userEmail;
+      }
+
+      // FastMCP expects parameters spread directly in the params object
+      // Use traditional MCP protocol format (not JSON-RPC)
+      const requestBody = {
+        jsonrpc: '2.0',
+        id: Math.random().toString(36).substring(2, 15),
+        method: 'tools/call',
+        params: {
+          name: toolName,
+          arguments: args,
+        },
+      };
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'Mcp-Session-Id': this.sessionId,
+      };
+
+      console.log('[GoogleWorkspaceMCP] Tool call request:', {
+        tool: toolName,
+        params: Object.keys(args),
+        sessionId: this.sessionId,
+      });
+
+      const response = await this.makeRequest('/mcp/', {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody),
       });
-    } catch (error) {
-      console.error('[GoogleWorkspaceMCP] Request failed:', error);
-      return {
-        success: false,
-        tool: toolName,
-        result: null,
-        error: `Request failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        timestamp: new Date().toISOString(),
-      };
-    }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(
-        `[GoogleWorkspaceMCP] ${response.status} ${response.statusText}:`,
-        errorText,
-      );
-      console.error('[GoogleWorkspaceMCP] Request headers:', headers);
-      console.error(
-        '[GoogleWorkspaceMCP] Request body:',
-        JSON.stringify(requestBody, null, 2),
-      );
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `[GoogleWorkspaceMCP] ${response.status} ${response.statusText}:`,
+          errorText,
+        );
 
-      return {
-        success: false,
-        tool: toolName,
-        result: null,
-        error: `HTTP ${response.status}: ${errorText}`,
-        timestamp: new Date().toISOString(),
-      };
-    }
+        return {
+          success: false,
+          tool: toolName,
+          result: undefined,
+          error: `Request failed: ${response.status} ${response.statusText}`,
+          timestamp: new Date().toISOString(),
+        };
+      }
 
-    // Handle streaming response
-    const responseText: string = await response.text();
+      // Parse FastMCP response (Server-Sent Events format)
+      const responseText = await response.text();
+      const lines = responseText.split('\n');
+      const dataLine = lines.find((line) => line.startsWith('data: '));
 
-    // Parse streaming response (FastMCP sends event-stream format)
-    let result: any;
-    try {
-      if (responseText.includes('event: message')) {
-        // Extract JSON from the streaming response
-        const lines = responseText.split('\n');
-        const dataLine = lines.find((line) => line.startsWith('data: '));
-        if (dataLine) {
-          result = JSON.parse(dataLine.substring(6)); // Remove 'data: ' prefix
+      if (dataLine) {
+        const responseData = JSON.parse(dataLine.substring(6));
+
+        // Check for errors in both error field and result field with isError flag
+        let errorMessage = '';
+        let isAuthError = false;
+
+        if (responseData.error) {
+          errorMessage = responseData.error.message || 'Tool execution failed';
+        } else if (
+          responseData.result?.isError &&
+          responseData.result?.content
+        ) {
+          // Extract error message from content array
+          errorMessage = responseData.result.content
+            .map((item: any) => item.text || '')
+            .join('\n');
+        }
+
+        if (errorMessage) {
+          // Check if this is an authentication error that requires OAuth
+          isAuthError =
+            errorMessage.includes('credentials do not contain') ||
+            errorMessage.includes('refresh the access token') ||
+            errorMessage.includes('necessary fields need to refresh');
+
+          if (isAuthError) {
+            // Trigger authentication flow
+            console.log(
+              '[GoogleWorkspaceMCP] Authentication required, starting OAuth flow...',
+            );
+            if (this.userEmail) {
+              const authResponse = await this.startAuthentication(
+                this.userEmail,
+                'gmail',
+              );
+              console.log('[GoogleWorkspaceMCP] Auth response:', authResponse);
+              if (authResponse.result) {
+                // Extract the OAuth URL from the result
+                let authContent = '';
+                if (
+                  authResponse.result.content &&
+                  Array.isArray(authResponse.result.content)
+                ) {
+                  authContent = authResponse.result.content
+                    .map((item: any) => item.text || '')
+                    .join('\n');
+                } else if (typeof authResponse.result === 'string') {
+                  authContent = authResponse.result;
+                }
+
+                // Return the authentication URL to the user
+                return {
+                  success: false,
+                  tool: toolName,
+                  result: authContent,
+                  error:
+                    'Authentication required. Please follow the provided link to authorize access.',
+                  timestamp: new Date().toISOString(),
+                };
+              }
+            }
+          }
+
+          return {
+            success: false,
+            tool: toolName,
+            result: undefined,
+            error: errorMessage,
+            timestamp: new Date().toISOString(),
+          };
         } else {
-          throw new Error('Invalid streaming response format');
+          return {
+            success: true,
+            tool: toolName,
+            result: responseData.result,
+            error: undefined,
+            timestamp: new Date().toISOString(),
+          };
         }
       } else {
-        result = JSON.parse(responseText);
+        throw new Error('Invalid response format');
       }
-    } catch (parseError) {
-      console.error(
-        '[GoogleWorkspaceMCP] Failed to parse response:',
-        responseText,
-      );
+    } catch (error) {
+      console.error('[GoogleWorkspaceMCP] Tool execution failed:', error);
       return {
         success: false,
         tool: toolName,
-        result: null,
-        error: `Response parsing failed: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
+        result: undefined,
+        error: `Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         timestamp: new Date().toISOString(),
       };
     }
-
-    return {
-      success: !result.error,
-      tool: toolName,
-      result: result.result || result,
-      error: result.error,
-      timestamp: new Date().toISOString(),
-    };
   }
 
   /**
-   * Override executeBatch for consistency with OAuth credential injection
+   * Start Google authentication flow
    */
-  async executeBatch(request: MCPBatchRequest): Promise<MCPBatchResponse> {
-    // Prepare headers for OAuth credential injection and streaming support
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Accept: 'application/json, text/event-stream', // Required for Google Workspace MCP server
-      'Mcp-Session-Id': Math.random().toString(36).substring(2, 15), // Generate session ID
-    };
+  async startAuthentication(
+    userEmail: string,
+    serviceName: string,
+  ): Promise<MCPToolResponse> {
+    this.userEmail = userEmail;
+    return this.executeTool('start_google_auth', {
+      user_google_email: userEmail,
+      service_name: serviceName,
+    });
+  }
 
-    // Add OAuth credentials if available (request-scoped authentication)
-    if (this.accessToken) {
-      headers.Authorization = `Bearer ${this.accessToken}`;
-
-      // Add user email header if available (note: header name is lowercase with dashes)
-      if (this.userEmail) {
-        headers['x-user-email'] = this.userEmail;
-      }
+  /**
+   * Execute Gmail-specific tool with OAuth flow handling
+   */
+  async executeGmailTool(
+    toolName: string,
+    args: Record<string, any>,
+  ): Promise<MCPToolResponse> {
+    if (!GMAIL_TOOLS.includes(toolName as any)) {
+      throw new Error(`Tool ${toolName} is not a valid Gmail tool`);
     }
 
-    const response = await this.makeRequest('/tools/batch', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(request),
-    });
+    try {
+      // First try to execute the tool
+      const result = await this.executeTool(toolName, args);
 
-    return response.json();
+      // Check if authentication is required - the executeTool method should handle this automatically
+      if (
+        !result.success &&
+        result.error?.includes('Authentication required')
+      ) {
+        // The OAuth URL should already be in the result from executeTool
+        return result;
+      }
+
+      return result;
+    } catch (error) {
+      console.error('[GoogleWorkspaceMCP] Gmail tool execution failed:', error);
+      return {
+        success: false,
+        tool: toolName,
+        result: undefined,
+        error: `**Google Workspace Authentication Required**
+
+To access Gmail, please complete the Google Workspace authentication process. Once that's done, I can search your Gmail for emails from chantel@echotango.co as requested.
+
+Let me know if you need guidance on how to authenticate or if you'd like to try another task!`,
+        timestamp: new Date().toISOString(),
+      };
+    }
   }
 
   /**
-   * Helper method to search Gmail with user email validation
+   * Execute Drive-specific tool
    */
-  async searchGmail(
-    query: string,
-    userEmail: string,
-    pageSize = 10,
+  async executeDriveTool(
+    toolName: string,
+    args: Record<string, any>,
   ): Promise<MCPToolResponse> {
-    return this.executeGmailTool('search_gmail_messages', {
-      user_google_email: userEmail,
-      query,
-      page_size: pageSize,
-    });
+    if (!DRIVE_TOOLS.includes(toolName as any)) {
+      throw new Error(`Tool ${toolName} is not a valid Drive tool`);
+    }
+    return this.executeTool(toolName, args);
   }
 
   /**
-   * Helper method to search Drive files with user email validation
+   * Execute Docs-specific tool
    */
-  async searchDriveFiles(
-    query: string,
-    userEmail: string,
-    pageSize = 10,
+  async executeDocsTool(
+    toolName: string,
+    args: Record<string, any>,
   ): Promise<MCPToolResponse> {
-    return this.executeDriveTool('search_drive_files', {
-      user_google_email: userEmail,
-      query,
-      page_size: pageSize,
-    });
+    if (!DOCS_TOOLS.includes(toolName as any)) {
+      throw new Error(`Tool ${toolName} is not a valid Docs tool`);
+    }
+    return this.executeTool(toolName, args);
   }
 
   /**
-   * Helper method to list calendars with user email validation
+   * Execute Sheets-specific tool
    */
-  async listCalendars(userEmail: string): Promise<MCPToolResponse> {
-    return this.executeCalendarTool('list_calendars', {
-      user_google_email: userEmail,
-    });
+  async executeSheetsTool(
+    toolName: string,
+    args: Record<string, any>,
+  ): Promise<MCPToolResponse> {
+    if (!SHEETS_TOOLS.includes(toolName as any)) {
+      throw new Error(`Tool ${toolName} is not a valid Sheets tool`);
+    }
+    return this.executeTool(toolName, args);
   }
 
   /**
-   * Create a client instance with OAuth credentials from NextAuth session
+   * Execute Forms-specific tool
    */
-  static async createWithSession(
-    session: any,
-    config: Omit<GoogleWorkspaceMCPConfig, 'accessToken' | 'userEmail'> = {},
-  ): Promise<GoogleWorkspaceMCPClient> {
-    // Extract access token from NextAuth session
-    const accessToken = session?.accessToken;
-    const userEmail = session?.user?.email;
+  async executeFormsTool(
+    toolName: string,
+    args: Record<string, any>,
+  ): Promise<MCPToolResponse> {
+    if (!FORMS_TOOLS.includes(toolName as any)) {
+      throw new Error(`Tool ${toolName} is not a valid Forms tool`);
+    }
+    return this.executeTool(toolName, args);
+  }
 
-    if (!accessToken) {
-      throw new Error(
-        'No access token found in session. User may need to re-authenticate.',
+  /**
+   * Execute Chat-specific tool
+   */
+  async executeChatTool(
+    toolName: string,
+    args: Record<string, any>,
+  ): Promise<MCPToolResponse> {
+    if (!CHAT_TOOLS.includes(toolName as any)) {
+      throw new Error(`Tool ${toolName} is not a valid Chat tool`);
+    }
+    return this.executeTool(toolName, args);
+  }
+
+  /**
+   * Execute Calendar-specific tool
+   */
+  async executeCalendarTool(
+    toolName: string,
+    args: Record<string, any>,
+  ): Promise<MCPToolResponse> {
+    if (!CALENDAR_TOOLS.includes(toolName as any)) {
+      throw new Error(`Tool ${toolName} is not a valid Calendar tool`);
+    }
+    return this.executeTool(toolName, args);
+  }
+
+  /**
+   * Health check for FastMCP server
+   */
+  async healthCheck(): Promise<HealthStatus> {
+    try {
+      const response = await this.makeRequest('/health', {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          service: this.serviceName,
+        };
+      } else {
+        return {
+          status: 'error',
+          timestamp: new Date().toISOString(),
+          service: this.serviceName,
+          error: `Health check failed: ${response.status} ${response.statusText}`,
+        };
+      }
+    } catch (error) {
+      return {
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        service: this.serviceName,
+        error: `Health check error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+  }
+
+  /**
+   * Reset session state
+   */
+  resetSession(): void {
+    this.isInitialized = false;
+    this.sessionId = undefined;
+    this.initializationAttempts = 0;
+    this.initializationInProgress = false;
+    console.log('[GoogleWorkspaceMCP] Session reset');
+  }
+
+  /**
+   * Service-specific validation implementation
+   */
+  protected async validateServiceSpecific(): Promise<{
+    errors: string[];
+    warnings?: string[];
+  }> {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    try {
+      const healthResponse = await this.healthCheck();
+      if (healthResponse.status !== 'healthy') {
+        errors.push('Google Workspace MCP server health check failed');
+      }
+    } catch (error) {
+      errors.push(
+        `Cannot connect to Google Workspace MCP server at ${this.config.serverUrl}. Ensure the server is running.`,
       );
     }
 
-    if (!userEmail) {
-      throw new Error('No user email found in session.');
-    }
-
-    return GoogleWorkspaceMCPClient.create({
-      ...config,
-      accessToken,
-      userEmail,
-    });
+    return { errors, warnings };
   }
 }

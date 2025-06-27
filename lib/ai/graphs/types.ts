@@ -191,3 +191,13 @@ export type InterruptionReason =
   | 'approval_needed'
   | 'error_recovery'
   | 'max_iterations_reached';
+
+/**
+ * Note: StandardResponse interfaces are implemented in StandardizedResponseFormatter.ts
+ * This file focuses on LangGraph-specific state types.
+ * 
+ * Week 3 Response Standardization: ✅ COMPLETED 
+ * - StandardizedResponseFormatter service already exists
+ * - Used by SimpleResponseStrategy and SynthesisResponseStrategy
+ * - Duplicate response issue fixed via dynamic response_mode selection
+ */

@@ -111,6 +111,92 @@ const AVAILABLE_TOOLS = [
     icon: '🔎',
   },
 
+  // Google Workspace Tools
+  {
+    name: 'search_gmail_messages',
+    category: 'Google Workspace',
+    description: 'Search Gmail messages using Gmail operators',
+    icon: '📧',
+  },
+  {
+    name: 'get_gmail_message_content',
+    category: 'Google Workspace',
+    description: 'Get full content of Gmail messages',
+    icon: '📄',
+  },
+  {
+    name: 'send_gmail_message',
+    category: 'Google Workspace',
+    description: 'Send emails through Gmail',
+    icon: '📤',
+  },
+  {
+    name: 'search_drive_files',
+    category: 'Google Workspace',
+    description: 'Search for files in Google Drive',
+    icon: '🔍',
+  },
+  {
+    name: 'get_drive_file_content',
+    category: 'Google Workspace',
+    description: 'Get content from Google Drive files',
+    icon: '📂',
+  },
+  {
+    name: 'list_calendars',
+    category: 'Google Workspace',
+    description: 'List available Google Calendars',
+    icon: '📅',
+  },
+  {
+    name: 'get_events',
+    category: 'Google Workspace',
+    description: 'Get events from Google Calendar',
+    icon: '🗓️',
+  },
+  {
+    name: 'create_event',
+    category: 'Google Workspace',
+    description: 'Create events in Google Calendar',
+    icon: '➕',
+  },
+  {
+    name: 'search_docs',
+    category: 'Google Workspace',
+    description: 'Search Google Docs documents',
+    icon: '📝',
+  },
+  {
+    name: 'create_docs',
+    category: 'Google Workspace',
+    description: 'Create new Google Docs documents',
+    icon: '📄',
+  },
+  {
+    name: 'list_sheets',
+    category: 'Google Workspace',
+    description: 'List Google Sheets spreadsheets',
+    icon: '📊',
+  },
+  {
+    name: 'read_sheets_values',
+    category: 'Google Workspace',
+    description: 'Read data from Google Sheets',
+    icon: '📈',
+  },
+  {
+    name: 'create_forms',
+    category: 'Google Workspace',
+    description: 'Create Google Forms surveys',
+    icon: '📋',
+  },
+  {
+    name: 'list_chat_spaces',
+    category: 'Google Workspace',
+    description: 'List Google Chat spaces',
+    icon: '💬',
+  },
+
   // Utilities
   {
     name: 'getWeather',
@@ -121,7 +207,8 @@ const AVAILABLE_TOOLS = [
   {
     name: 'googleCalendar',
     category: 'Utilities',
-    description: 'Access and manage Google Calendar events',
+    description:
+      'Legacy Google Calendar access (use Google Workspace tools instead)',
     icon: '📅',
   },
   {

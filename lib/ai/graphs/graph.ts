@@ -1,435 +1,570 @@
 /**
- * Graph Assembly and Compilation
- *
- * This module assembles the complete LangGraph with proper dependency injection,
- * corrected routing logic, and all node implementations.
+ * Simple Graph Implementation - Enhanced with Proper StateGraph and Real-Time Streaming
+ * Following Development Roadmap v6.0.0 with Single Trace Architecture
+ * 
+ * This restores the proper StateGraph pattern to fix trace fragmentation
+ * while maintaining the simplified architecture goals.
+ * 
+ * STREAMING FIX: Implements v5.5.0 real-time token streaming using streamEvents
  */
 
-import { StateGraph, START, END } from '@langchain/langgraph';
-import { GraphStateAnnotation } from './state';
-import { routeNextStep, validateRouterLogic } from './router';
-import { agentNode, type AgentNodeDependencies } from './nodes/agent';
-import { toolsNode, type ToolsNodeDependencies } from './nodes/tools';
-import {
-  generateResponseNode,
-  type GenerateResponseNodeDependencies,
-} from './nodes/generateResponse';
-import type { ChatOpenAI } from '@langchain/openai';
-import type { RequestLogger } from '../../services/observabilityService';
-import { DocumentAnalysisService } from './services/DocumentAnalysisService';
-import { ContextService } from './services/ContextService';
-import { QueryAnalysisService } from './services/QueryAnalysisService';
+import { StateGraph, START, END, MessagesAnnotation } from '@langchain/langgraph';
+import { ChatOpenAI } from '@langchain/openai';
+import type { DynamicStructuredTool } from '@langchain/core/tools';
+import type { BaseMessage } from '@langchain/core/messages';
+import { SystemMessage, HumanMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
+import { createSystemMessage } from './prompts/simple';
+import { buildReferencesContext } from './prompts/loader';
+import { getToolMessages } from './state';
 
-/**
- * Complete set of dependencies for the graph
- */
-export interface GraphDependencies {
-  llm: ChatOpenAI;
-  tools: any[];
-  logger: RequestLogger;
-  currentDateTime?: string;
-  clientConfig?: {
-    client_display_name?: string;
-    client_core_mission?: string;
-  };
+export interface SimpleGraphState {
+  messages: BaseMessage[];
+  input?: string;
+  response_mode?: string;
+  specialist_id?: string;
 }
 
 /**
- * Graph configuration options
+ * Enhanced SimpleGraph with proper StateGraph implementation and real-time streaming
+ * This ensures all tool calls happen within a single LangSmith trace
  */
-export interface GraphConfig {
-  enableValidation?: boolean;
-  enableTracing?: boolean;
-  toolTimeout?: number;
-}
+export class SimpleGraph {
+  private compiledGraph: any;
+  private llm: ChatOpenAI;
+  private tools: DynamicStructuredTool[];
 
-/**
- * Compiled graph with metadata
- */
-export interface CompiledGraph {
-  graph: any;
-  metadata: {
-    nodeCount: number;
-    edgeCount: number;
-    validationPassed: boolean;
-    compileTime: number;
-  };
-}
-
-/**
- * Create and compile the complete LangGraph with all nodes and routing
- */
-export function createGraph(
-  dependencies: GraphDependencies,
-  config: GraphConfig = {},
-): CompiledGraph {
-  const startTime = Date.now();
-  const {
-    enableValidation = true,
-    enableTracing = false,
-    toolTimeout = 30000,
-  } = config;
-
-  const { llm, tools, logger, currentDateTime, clientConfig } = dependencies;
-
-  logger.info('[Graph] Starting graph compilation', {
-    toolCount: tools.length,
-    enableValidation,
-    enableTracing,
-    toolTimeout,
-  });
-
-  // Validate router logic if enabled
-  let validationPassed = true;
-  if (enableValidation) {
-    const routerValidation = validateRouterLogic();
-    if (!routerValidation.isValid) {
-      logger.error('[Graph] Router validation failed', {
-        issues: routerValidation.issues,
-      });
-      validationPassed = false;
-    }
-  }
-
-  // Create services for business logic extraction
-  const documentService = new DocumentAnalysisService(logger);
-  const contextService = new ContextService(logger);
-  const queryService = new QueryAnalysisService(logger);
-
-  // Prepare node dependencies with services
-  const agentDeps: AgentNodeDependencies = {
-    llm,
-    tools,
-    logger,
-    currentDateTime,
-    clientConfig,
-    // NEW: Inject services for business logic
-    documentService,
-    contextService,
-    queryService,
-  };
-
-  const toolsDeps: ToolsNodeDependencies = {
-    tools,
-    logger,
-    timeout: toolTimeout,
-  };
-
-  const responseDeps: GenerateResponseNodeDependencies = {
-    llm,
-    logger,
-    currentDateTime,
-    clientConfig,
-  };
-
-  // Create the state graph
-  const graph = new StateGraph(GraphStateAnnotation)
-    // Add nodes with dependency injection
-    .addNode('agent', (state) => {
-      if (enableTracing) {
-        logger.info('[Graph] Executing agent node', {
-          iteration: state.iterationCount || 0,
-          messageCount: state.messages.length,
-        });
-      }
-      return agentNode(state, agentDeps);
-    })
-
-    .addNode('tools', (state) => {
-      if (enableTracing) {
-        logger.info('[Graph] Executing tools node', {
-          toolCallsCount:
-            (state.messages[state.messages.length - 1] as any)?.tool_calls
-              ?.length || 0,
-        });
-      }
-      return toolsNode(state, toolsDeps);
-    })
-
-    .addNode('generate_response', (state) => {
-      if (enableTracing) {
-        logger.info('[Graph] Executing response generation node', {
-          responseMode: state.response_mode || 'auto-detect',
-          toolResultsCount: state.messages.filter(
-            (m) => m._getType?.() === 'tool',
-          ).length,
-        });
-      }
-      return generateResponseNode(state, responseDeps);
-    })
-
-    // Set entry point
-    .addEdge(START, 'agent')
-
-    // Add conditional edges from agent node
-    .addConditionalEdges('agent', routeNextStep, {
-      agent: 'agent', // For self-loops (shouldn't happen with corrected logic)
-      tools: 'tools', // Agent wants to use tools
-      generate_response: 'generate_response', // Agent ready for final response
-      __end__: END, // Early termination
-    })
-
-    // CRITICAL: Tools ALWAYS return to agent (corrected ReAct pattern)
-    .addEdge('tools', 'agent')
-
-    // Response generation leads to end
-    .addEdge('generate_response', END);
-
-  // Compile the graph
-  const compiledGraph = graph.compile();
-
-  const compileTime = Date.now() - startTime;
-
-  const metadata = {
-    nodeCount: 3, // agent, tools, generate_response
-    edgeCount: 4, // START->agent, tools->agent, generate_response->END, conditional edges
-    validationPassed,
-    compileTime,
-  };
-
-  logger.info('[Graph] Graph compilation completed', metadata);
-
-  return {
-    graph: compiledGraph,
-    metadata,
-  };
-}
-
-/**
- * Create a simplified wrapper around the compiled graph
- */
-export class ModularLangGraphWrapper {
-  private compiledGraph: CompiledGraph;
-  private dependencies: GraphDependencies;
-  private config: GraphConfig;
-
-  constructor(dependencies: GraphDependencies, config: GraphConfig = {}) {
-    this.dependencies = dependencies;
-    this.config = config;
-    this.compiledGraph = createGraph(dependencies, config);
-
-    // Log initialization
-    dependencies.logger.info('[ModularWrapper] Initialized', {
-      nodeCount: this.compiledGraph.metadata.nodeCount,
-      validationPassed: this.compiledGraph.metadata.validationPassed,
-      compileTime: this.compiledGraph.metadata.compileTime,
-    });
+  constructor(llm: ChatOpenAI, tools: DynamicStructuredTool[]) {
+    this.llm = llm;
+    this.tools = tools;
+    this.compiledGraph = this.createCompiledGraph();
   }
 
   /**
-   * Invoke the graph with input messages
+   * Create the proper StateGraph for single trace execution
    */
-  async invoke(inputMessages: any[], config?: any): Promise<any> {
-    const startTime = Date.now();
+  private createCompiledGraph() {
+    const graph = new StateGraph(MessagesAnnotation)
+      // Agent node - makes decisions and calls tools
+      .addNode('agent', async (state) => {
+        console.log('[SimpleGraph] Agent node executing');
+        
+        // ENHANCED: LangGraph best practices for state management
+        // 1. Always preserve existing context and tool results
+        // 2. Never isolate context when tool results are present
+        // 3. Ensure proper message flow for tool result processing
+        
+        const currentQuery = this.extractCurrentQuery(state.messages);
+        
+        // Check if we have tool results that need processing
+        const hasUnprocessedToolResults = state.messages.some(msg => 
+          msg instanceof ToolMessage || 
+          (msg instanceof AIMessage && 
+           msg.additional_kwargs?.tool_calls && 
+           msg.additional_kwargs.tool_calls.length > 0 &&
+           // Check if the tool results haven't been properly processed yet
+           !state.messages.slice(state.messages.indexOf(msg) + 1).some(laterMsg => 
+             laterMsg instanceof AIMessage && 
+             laterMsg.content && 
+             (laterMsg.content.toString().includes('**EXTRACTED CONTENT:**') ||
+              laterMsg.content.toString().includes('**Search Results:**') ||
+              laterMsg.content.toString().includes('based on') ||
+              laterMsg.content.toString().includes('according to'))
+           ))
+        );
+        
+        // Enhanced topic change detection with tool result awareness
+        const shouldIsolateContext = !hasUnprocessedToolResults && this.detectTopicChange(state.messages, currentQuery);
+        
+        if (shouldIsolateContext) {
+          console.log('[SimpleGraph] Topic change detected, isolating context for new query');
+          state = this.isolateContextForNewTopic(state, currentQuery);
+        } else if (hasUnprocessedToolResults) {
+          console.log('[SimpleGraph] Unprocessed tool results detected - preserving full context');
+        }
 
-    this.dependencies.logger.info('[ModularWrapper] Invoking graph', {
-      inputMessageCount: inputMessages.length,
-      hasConfig: !!config,
-    });
+        // Ensure we have system message
+        let messages = [...state.messages];
+        if (messages.length === 0 || !(messages[0] instanceof SystemMessage)) {
+          const toolNames = this.tools.map(t => t.name);
+          const systemPrompt = await createSystemMessage(toolNames, new Date().toISOString());
+          messages = [new SystemMessage(systemPrompt), ...messages];
+          console.log('[SimpleGraph] Added system message with tools:', toolNames.join(', '));
+        }
 
-    try {
-      const result = await this.compiledGraph.graph.invoke(
-        {
-          messages: inputMessages,
-          input: inputMessages[0]?.content || '',
-          needsSynthesis: this.determineIfSynthesisNeeded(
-            inputMessages[0]?.content || '',
-          ),
-        },
-        config,
-      );
+        // Enhanced context building for tool results
+        const graphState = { 
+          messages, 
+          input: '', 
+          agent_outcome: undefined, 
+          ui: [], 
+          _lastToolExecutionResults: [], 
+          toolForcingCount: 0, 
+          iterationCount: 0, 
+          needsSynthesis: true, 
+          response_mode: 'synthesis' as const,
+          node_execution_trace: [], 
+          tool_workflow_state: { 
+            documentsListed: false, 
+            documentsRetrieved: [], 
+            webSearchCompleted: false, 
+            extractionCompleted: false, 
+            multiDocAnalysisCompleted: false 
+          }, 
+          metadata: {} 
+        };
+        
+        const toolMessages = getToolMessages(graphState);
+        const hasToolResults = toolMessages.length > 0;
+        
+        console.log('[SimpleGraph] Enhanced tool results analysis:', {
+          hasToolResults,
+          hasUnprocessedToolResults,
+          toolMessageCount: toolMessages.length,
+          toolNames: toolMessages.map(msg => msg.name),
+          messageFlow: messages.slice(-3).map(m => ({ type: m.constructor.name, hasContent: !!m.content }))
+        });
 
-      const duration = Date.now() - startTime;
+        // Enhanced references context building
+        if (hasToolResults) {
+          console.log('[SimpleGraph] Building enhanced references context for tool results');
+          
+          const referencesContext = buildReferencesContext(graphState);
+          
+          console.log('[SimpleGraph] Enhanced references context built:', {
+            contextLength: referencesContext.length,
+            hasReferences: referencesContext.length > 0,
+            preview: referencesContext.substring(0, 300) + '...'
+          });
 
-      this.dependencies.logger.info(
-        '[ModularWrapper] Graph invocation completed',
-        {
-          duration,
-          finalMessageCount: result.messages?.length || 0,
-          responseMode: result.response_mode,
-          executionTrace: result.node_execution_trace?.join(' → ') || 'none',
-        },
-      );
+          // Enhanced system message with tool result processing instructions
+          if (referencesContext.length > 0) {
+            const enhancedSystemPrompt = `${messages[0].content}
 
-      return result.messages[result.messages.length - 1];
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+${referencesContext}
 
-      this.dependencies.logger.error(
-        '[ModularWrapper] Graph invocation failed',
-        {
-          error: errorMessage,
-          duration,
-        },
-      );
+CRITICAL INSTRUCTIONS FOR TOOL RESULT PROCESSING:
+- You have successfully extracted content from web sources
+- Process and present this information to the user in a clear, organized manner
+- Include proper source attribution with URLs
+- For synthesis responses, use numbered citations [1], [2] with a References section
+- For conversational responses, use inline hyperlinks [Title](URL)
+- Never respond with generic greetings when tool results are available
+- Always acknowledge and process the extracted content`;
 
-      throw error;
-    }
-  }
-
-  /**
-   * Stream the graph execution
-   */
-  async *stream(
-    inputMessages: any[],
-    config?: any,
-  ): AsyncGenerator<Uint8Array> {
-    this.dependencies.logger.info('[ModularWrapper] Starting graph stream', {
-      inputMessageCount: inputMessages.length,
-    });
-
-    try {
-      const events = this.compiledGraph.graph.streamEvents(
-        {
-          messages: inputMessages,
-          input: inputMessages[0]?.content || '',
-          needsSynthesis: this.determineIfSynthesisNeeded(
-            inputMessages[0]?.content || '',
-          ),
-        },
-        config,
-      );
-
-      for await (const event of events) {
-        // Stream chat model responses
-        if (event.event === 'on_chat_model_stream') {
-          const chunk = event.data?.chunk;
-          if (chunk?.content) {
-            yield new TextEncoder().encode(chunk.content);
+            messages[0] = new SystemMessage(enhancedSystemPrompt);
+            console.log('[SimpleGraph] Enhanced system message with tool result processing instructions');
           }
         }
 
-        // Log important events
+        // Bind tools and invoke with enhanced configuration
+        const modelWithTools = this.tools.length > 0 
+          ? this.llm.bindTools(this.tools).withConfig({
+              tags: ['final_response', 'streaming_enabled', 'tool_result_processing'],
+              metadata: { 
+                streaming: true, 
+                streamMode: 'token',
+                enableTokenStreaming: true,
+                hasToolResults,
+                hasUnprocessedToolResults,
+                contextPreserved: !shouldIsolateContext
+              }
+            })
+          : this.llm.withConfig({
+              tags: ['final_response', 'streaming_enabled', 'tool_result_processing'],
+              metadata: { 
+                streaming: true, 
+                streamMode: 'token',
+                enableTokenStreaming: true,
+                hasToolResults,
+                hasUnprocessedToolResults,
+                contextPreserved: !shouldIsolateContext
+              }
+            });
+
+        const response = await modelWithTools.invoke(messages);
+        
+        console.log(`[SimpleGraph] Agent response: ${response.additional_kwargs?.tool_calls?.length || 0} tool calls, ${response.content?.toString().length || 0} chars`);
+
+        return { messages: [response] };
+      })
+
+      // Tools node - executes ALL tool calls in sequence within single trace
+      .addNode('tools', async (state) => {
+        console.log('[SimpleGraph] Tools node executing');
+
+        const lastMessage = state.messages[state.messages.length - 1] as AIMessage;
+        const toolCalls = lastMessage.additional_kwargs?.tool_calls || [];
+        
+        if (toolCalls.length === 0) {
+          console.log('[SimpleGraph] No tool calls found');
+          return { messages: [] };
+        }
+
+        console.log(`[SimpleGraph] Processing ${toolCalls.length} tool calls: ${toolCalls.map(tc => tc.function?.name).join(', ')}`);
+
+        const toolMessages: ToolMessage[] = [];
+        
+        // Execute ALL tools within this single node (maintaining single trace)
+        for (const toolCall of toolCalls) {
+          const startTime = Date.now();
+          
+          const tool = this.tools.find(t => t.name === toolCall.function?.name);
+          
+          if (tool && toolCall.function?.arguments) {
+            try {
+              const toolInput = JSON.parse(toolCall.function.arguments);
+              const result = await tool.invoke(toolInput);
+              const duration = Date.now() - startTime;
+
+              console.log(`[SimpleGraph] ${tool.name} completed (${duration}ms, ${typeof result === 'string' ? result.length : 'N/A'} chars)`);
+              
+              const toolMessage = new ToolMessage({
+                content: typeof result === 'string' ? result : JSON.stringify(result),
+                tool_call_id: toolCall.id,
+                name: tool.name,
+              });
+
+              toolMessages.push(toolMessage);
+              
+            } catch (error) {
+              const duration = Date.now() - startTime;
+              const errorMessage = `Error executing tool ${tool.name}: ${error instanceof Error ? error.message : String(error)}`;
+              
+              console.error(`[SimpleGraph] ${tool.name} failed (${duration}ms):`, error instanceof Error ? error.message : error);
+              
+              const errorToolMessage = new ToolMessage({
+                content: errorMessage,
+                tool_call_id: toolCall.id,
+                name: tool.name,
+              });
+
+              toolMessages.push(errorToolMessage);
+            }
+          } else {
+            console.error(`[SimpleGraph] Tool not found: ${toolCall.function?.name}`);
+          }
+        }
+
+        console.log(`[SimpleGraph] Tools completed: ${toolMessages.length} results, ${toolMessages.reduce((sum, tm) => sum + (typeof tm.content === 'string' ? tm.content.length : 0), 0)} total chars`);
+
+        return { messages: toolMessages };
+      })
+
+      // Add edges for proper flow
+      .addEdge(START, 'agent')
+      
+      // Conditional routing from agent
+      .addConditionalEdges('agent', (state) => {
+        const lastMessage = state.messages[state.messages.length - 1] as AIMessage;
+        const hasToolCalls = !!(lastMessage.additional_kwargs?.tool_calls?.length);
+        
+        console.log(`[SimpleGraph] Routing decision: ${hasToolCalls ? 'tools' : 'end'}`);
+        return hasToolCalls ? 'tools' : '__end__';
+      }, {
+        'tools': 'tools',
+        '__end__': END
+      })
+
+      // CRITICAL: Tools return to agent (proper ReAct pattern)
+      .addEdge('tools', 'agent');
+
+    return graph.compile();
+  }
+
+  /**
+   * Real-time token streaming implementation based on v5.5.0
+   * Uses streamEvents to capture tokens during LLM execution
+   * FIXED: Better separation of progress indicators from AI content
+   */
+  async *stream(state: SimpleGraphState): AsyncGenerator<string> {
+    console.log('[SimpleGraph] Starting real-time token streaming');
+    
+    // Prepare initial state for StateGraph
+    let messages = [...state.messages];
+    
+    // Add specialist context if provided
+    if (state.specialist_id && (messages.length === 0 || !(messages[0] instanceof SystemMessage))) {
+      const toolNames = this.tools.map(t => t.name);
+      const systemPrompt = await createSystemMessage(
+        toolNames, 
+        new Date().toISOString(),
+        state.specialist_id
+      );
+      
+      messages = [new SystemMessage(systemPrompt), ...messages];
+      console.log(`[SimpleGraph] Added specialist system message: ${state.specialist_id}`);
+    }
+
+    try {
+      // Use streamEvents for real-time token capture (v5.5.0 approach)
+      const eventStream = this.compiledGraph.streamEvents(
+        { messages },
+        {
+          version: 'v2',
+          includeNames: ['agent'], // Include agent node for token streaming
+          includeTags: ['final_response', 'streaming_enabled'],
+        }
+      );
+
+      let hasStreamedContent = false;
+      let tokenCount = 0;
+      let toolProgressShown = new Set<string>(); // Track shown progress indicators
+      const startTime = Date.now();
+
+      for await (const event of eventStream) {
+        // Capture tokens during LLM execution (real-time streaming)
         if (
-          event.event === 'on_chain_start' ||
-          event.event === 'on_chain_end'
+          event.event === 'on_chat_model_stream' &&
+          event.data?.chunk?.content
         ) {
-          this.dependencies.logger.info('[ModularWrapper] Graph event', {
-            event: event.event,
-            name: event.name,
-          });
+          const token = event.data.chunk.content;
+          tokenCount++;
+          hasStreamedContent = true;
+
+          // Log every 20th token to avoid spam but provide feedback
+          if (tokenCount % 100 === 0) {
+            const elapsed = Date.now() - startTime;
+            const rate = ((tokenCount / elapsed) * 1000).toFixed(1);
+            console.log(`[SimpleGraph] ${tokenCount} tokens (${rate}/s)`);
+          }
+
+          // Yield the token directly for real-time streaming
+          yield token;
+        }
+
+        // Handle tool progress updates - WITH DEDUPLICATION
+        if (event.event === 'on_tool_start') {
+          const toolName = event.name;
+          
+          // Only show progress indicator once per tool per request
+          if (!toolProgressShown.has(toolName)) {
+            toolProgressShown.add(toolName);
+            console.log(`[SimpleGraph] Tool starting: ${toolName} (showing progress indicator)`);
+            
+            // Yield progress indicator for tool execution
+            const progressMessages: Record<string, string> = {
+              listDocuments: '📚 Retrieving documents...\n',
+              getDocumentContents: '📄 Loading document content...\n',
+              tavilySearch: '🔍 Searching the web...\n',
+              searchInternalKnowledgeBase: '🔍 Searching knowledge base...\n',
+            };
+            
+            const progressMessage = progressMessages[toolName];
+            if (progressMessage) {
+              yield progressMessage;
+            }
+          } else {
+            console.log(`[SimpleGraph] Tool ${toolName} already shown progress, skipping duplicate`);
+          }
         }
       }
+
+      // Fallback: If no streaming occurred, execute and yield result
+      if (!hasStreamedContent) {
+        console.log('[SimpleGraph] No streaming events captured, executing for final result...');
+        
+        const result = await this.compiledGraph.invoke({ messages });
+        const finalMessage = result.messages[result.messages.length - 1];
+
+        if (finalMessage?.content) {
+          // Stream the content character by character for smooth UX
+          const content = finalMessage.content;
+          for (let i = 0; i < content.length; i += 3) {
+            const chunk = content.slice(i, i + 3);
+            yield chunk;
+            // Small delay for smooth streaming effect
+            await new Promise((resolve) => setTimeout(resolve, 5));
+          }
+        }
+      }
+
+      const totalTime = Date.now() - startTime;
+      console.log(`[SimpleGraph] Streaming completed: ${tokenCount} tokens in ${totalTime}ms`);
+
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      this.dependencies.logger.error(
-        '[ModularWrapper] Graph streaming failed',
-        {
-          error: errorMessage,
-        },
-      );
-      throw error;
+      console.error('[SimpleGraph] Streaming error:', error);
+      yield '⚠️ An error occurred during processing. Please try again.';
     }
   }
 
   /**
-   * Get graph metadata and statistics
+   * Extract the current user query from the message history
    */
-  getMetadata(): {
-    compilation: CompiledGraph['metadata'];
-    configuration: GraphConfig;
-    dependencies: {
-      toolCount: number;
-      hasLLM: boolean;
-      hasLogger: boolean;
-    };
-  } {
-    return {
-      compilation: this.compiledGraph.metadata,
-      configuration: this.config,
-      dependencies: {
-        toolCount: this.dependencies.tools.length,
-        hasLLM: !!this.dependencies.llm,
-        hasLogger: !!this.dependencies.logger,
-      },
-    };
+  private extractCurrentQuery(messages: BaseMessage[]): string {
+    // Find the last human message
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i] instanceof HumanMessage) {
+        return messages[i].content.toString();
+      }
+    }
+    return '';
   }
 
   /**
-   * Validate the current graph configuration
+   * Detect if the current query represents a topic change from previous conversation
+   * CRITICAL: Following LangGraph best practices for context preservation
    */
-  validate(): {
-    isValid: boolean;
-    issues: string[];
-  } {
-    const issues: string[] = [];
-
-    if (!this.dependencies.llm) {
-      issues.push('LLM is required');
+  private detectTopicChange(messages: BaseMessage[], currentQuery: string): boolean {
+    if (messages.length <= 2) return false; // Not enough history to detect change
+    
+    // CRITICAL FIX: NEVER isolate context if ANY tool activity is detected
+    // Following LangGraph best practices: preserve context when tools are involved
+    
+    // Check for any tool-related messages in the entire conversation
+    const hasAnyToolActivity = messages.some(msg => 
+      msg instanceof ToolMessage || 
+      (msg instanceof AIMessage && msg.additional_kwargs?.tool_calls && msg.additional_kwargs.tool_calls.length > 0)
+    );
+    
+    // Check for tool-related content patterns in AI messages
+    const hasToolRelatedContent = messages.some(msg => 
+      msg instanceof AIMessage && 
+      msg.content && 
+      (msg.content.toString().includes('**EXTRACTED CONTENT:**') ||
+       msg.content.toString().includes('**Search Results:**') ||
+       msg.content.toString().includes('**Content Extraction Results**') ||
+       msg.content.toString().includes('No URLs found with score') ||
+       msg.content.toString().includes('Tavily') ||
+       msg.content.toString().includes('extracted') ||
+       msg.content.toString().includes('search results') ||
+       msg.content.toString().includes('Source 1:') ||
+       msg.content.toString().includes('Content Length:'))
+    );
+    
+    // Check for follow-up patterns that should maintain context
+    const isFollowUpQuery = /^(yes|no|continue|more|details|summary|tell me more|what about|and|also)/i.test(currentQuery.trim());
+    
+    if (hasAnyToolActivity || hasToolRelatedContent || isFollowUpQuery) {
+      console.log('[SimpleGraph] Context preservation enforced - NO topic change detected', {
+        hasAnyToolActivity,
+        hasToolRelatedContent,
+        isFollowUpQuery,
+        currentQuery: currentQuery.substring(0, 100) + '...',
+        messageTypes: messages.slice(-5).map(m => m.constructor.name),
+        reason: hasAnyToolActivity ? 'tool_activity' : hasToolRelatedContent ? 'tool_content' : 'follow_up'
+      });
+      return false; // NEVER isolate context when tools are involved
     }
-
-    if (!this.dependencies.tools || this.dependencies.tools.length === 0) {
-      issues.push('At least one tool is required');
-    }
-
-    if (!this.dependencies.logger) {
-      issues.push('Logger is required');
-    }
-
-    if (!this.compiledGraph.metadata.validationPassed) {
-      issues.push('Graph validation failed during compilation');
-    }
-
-    return {
-      isValid: issues.length === 0,
-      issues,
-    };
-  }
-
-  /**
-   * Determine if synthesis is needed based on input
-   */
-  private determineIfSynthesisNeeded(input: string): boolean {
-    const synthesisKeywords = [
-      'analyze',
-      'research',
-      'compare',
-      'evaluate',
-      'report',
-      'summarize',
-      'investigation',
-      'assessment',
-      'review',
-      'comprehensive',
-      'detailed',
-      'thorough',
+    
+    // Only allow topic change for completely new, unrelated queries
+    // Get previous human messages to analyze topic continuity
+    const humanMessages = messages
+      .filter(msg => msg instanceof HumanMessage)
+      .map(msg => msg.content.toString());
+    
+    if (humanMessages.length <= 1) return false; // Only current message
+    
+    const previousQuery = humanMessages[humanMessages.length - 2] || '';
+    const current = currentQuery.toLowerCase();
+    const previous = previousQuery.toLowerCase();
+    
+    // Very strict topic change indicators - only for completely different domains
+    const strongTopicChangeIndicators = [
+      /^(completely different|new topic|change subject|forget about)/,
+      /^(let's talk about something else|different question)/,
     ];
+    
+    // Check for explicit strong topic change indicators
+    const hasStrongTopicChangeIndicator = strongTopicChangeIndicators.some(pattern => pattern.test(current));
+    
+    // Check for topic similarity using keyword overlap - much more conservative threshold
+    const currentKeywords = this.extractKeywords(current);
+    const previousKeywords = this.extractKeywords(previous);
+    const keywordOverlap = this.calculateKeywordOverlap(currentKeywords, previousKeywords);
+    
+    // Much more conservative topic change detection - only for very different topics
+    const isTopicChange = hasStrongTopicChangeIndicator || keywordOverlap < 0.1;
+    
+    console.log('[SimpleGraph] Conservative topic change analysis:', {
+      currentQuery: current.substring(0, 50) + '...',
+      previousQuery: previous.substring(0, 50) + '...',
+      hasStrongTopicChangeIndicator,
+      keywordOverlap: Math.round(keywordOverlap * 100) / 100,
+      isTopicChange,
+      decision: 'PRESERVE_CONTEXT' // Default to preserving context
+    });
+    
+    return isTopicChange;
+  }
 
-    const inputLower = input.toLowerCase();
-    return synthesisKeywords.some((keyword) => inputLower.includes(keyword));
+  /**
+   * Extract meaningful keywords from a query
+   */
+  private extractKeywords(query: string): Set<string> {
+    const stopWords = new Set([
+      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+      'can', 'you', 'please', 'tell', 'me', 'about', 'what', 'how', 'when', 'where', 'why',
+      'search', 'find', 'look', 'get', 'give', 'show', 'help', 'need', 'want', 'would', 'could'
+    ]);
+    
+    return new Set(
+      query
+        .toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length > 2 && !stopWords.has(word))
+    );
+  }
+
+  /**
+   * Calculate keyword overlap between two sets
+   */
+  private calculateKeywordOverlap(keywords1: Set<string>, keywords2: Set<string>): number {
+    if (keywords1.size === 0 && keywords2.size === 0) return 1;
+    if (keywords1.size === 0 || keywords2.size === 0) return 0;
+    
+    const intersection = new Set([...keywords1].filter(x => keywords2.has(x)));
+    const union = new Set([...keywords1, ...keywords2]);
+    
+    return intersection.size / union.size;
+  }
+
+  /**
+   * Isolate context for a new topic by keeping only essential system context
+   */
+  private isolateContextForNewTopic(state: SimpleGraphState, currentQuery: string): SimpleGraphState {
+    // Keep only the system message and the current human message
+    const systemMessage = state.messages.find(msg => msg instanceof SystemMessage);
+    const currentHumanMessage = [...state.messages]
+      .reverse()
+      .find(msg => msg instanceof HumanMessage);
+    
+    const isolatedMessages: BaseMessage[] = [];
+    
+    if (systemMessage) {
+      isolatedMessages.push(systemMessage);
+    }
+    
+    if (currentHumanMessage) {
+      isolatedMessages.push(currentHumanMessage);
+    }
+    
+    console.log('[SimpleGraph] Context isolated:', {
+      originalMessageCount: state.messages.length,
+      isolatedMessageCount: isolatedMessages.length,
+      currentQuery: currentQuery.substring(0, 100) + '...'
+    });
+    
+    return {
+      ...state,
+      messages: isolatedMessages
+    };
   }
 }
 
 /**
- * Factory function to create a configured wrapper
+ * Create a simple configured graph
  */
-export function createLangGraphWrapper(
-  dependencies: GraphDependencies,
-  config: GraphConfig = {},
-): ModularLangGraphWrapper {
-  return new ModularLangGraphWrapper(dependencies, config);
+export function createConfiguredGraph(llm: ChatOpenAI, tools: DynamicStructuredTool[]) {
+  const graph = new SimpleGraph(llm, tools);
+  
+  return {
+    graph,
+    config: {},
+  };
 }
 
-/**
- * Development helper to visualize the graph structure
- */
-export function visualizeGraph(): {
-  nodes: string[];
-  edges: Array<{ from: string; to: string; condition?: string }>;
-  flow: string;
-} {
-  return {
-    nodes: ['START', 'agent', 'tools', 'generate_response', 'END'],
-    edges: [
-      { from: 'START', to: 'agent' },
-      { from: 'agent', to: 'tools', condition: 'has_tool_calls' },
-      { from: 'agent', to: 'generate_response', condition: 'no_tool_calls' },
-      { from: 'tools', to: 'agent' }, // CRITICAL: Always return to agent
-      { from: 'generate_response', to: 'END' },
-    ],
-    flow: 'START → agent ⇄ tools → agent → generate_response → END',
-  };
+// Legacy compatibility function
+export function createGraph() {
+  throw new Error('createGraph() is deprecated. Use createConfiguredGraph() instead.');
 }

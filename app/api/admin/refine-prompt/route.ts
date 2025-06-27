@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
       .join(', ');
 
     const { text } = await generateText({
-      model: openai('gpt-4'),
+      model: openai('gpt-4.1'),
       prompt: `You are an AI assistant helping to refine a specialist persona prompt. 
 
 Current prompt: "${currentPrompt}"

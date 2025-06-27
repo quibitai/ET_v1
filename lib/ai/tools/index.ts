@@ -11,13 +11,17 @@ import { z } from 'zod';
 import { queryDocumentRowsTool } from './query-document-rows';
 import { searchAndRetrieveKnowledgeBase } from './search-internal-knowledge-base';
 import { requestSuggestionsTool } from './request-suggestions';
-import { tavilySearchTool } from './tavily-search';
-import { tavilyExtractTool } from './tavilyExtractTool';
 import { googleCalendarTool } from './googleCalendarTool';
 import { getMessagesFromOtherChatTool } from './getMessagesFromOtherChatTool';
 import { listDocumentsTool } from './list-documents';
 import { getDocumentContentsTool } from './get-document-contents';
 import { multiDocumentRetrievalTool } from './multi-document-retrieval';
+import { tavilySearchTool } from './tavily-search';
+import {
+  tavilyExtractTool,
+  tavilySearchThenExtractTool,
+} from './tavilyExtractTool';
+import { tavilyCrawlTool } from './tavilyCrawlTool';
 import {
   trackEvent,
   ANALYTICS_EVENTS,
@@ -29,13 +33,10 @@ import {
 import { McpIntegrationRepository } from '@/lib/db/repositories/mcpIntegrations';
 import { McpService } from '@/lib/services/mcpService';
 
-// Import the new ToolRegistry for manifest enrichment
-import { ToolRegistry } from './registry';
+// Import the new toolRegistry for manifest enrichment
+import { toolRegistry } from './registry';
 
 // Legacy Asana tools removed - only MCP integration supported
-
-// Create a singleton instance of ToolRegistry
-const toolRegistry = new ToolRegistry();
 
 /**
  * Loads MCP tools for a specific user
@@ -159,22 +160,9 @@ async function getUserMcpToolsV2(
   // Get tools using the existing function
   const tools = await getUserMcpTools(userId);
 
-  // Enhance with manifest metadata
-  const enrichedTools = await toolRegistry.enrichToolsWithManifests(tools);
-
-  // Return tools with enhanced descriptions
-  return enrichedTools.map(({ tool, enrichedDescription }) => {
-    if (enrichedDescription && enrichedDescription !== tool.description) {
-      // Create a new tool instance with enhanced description
-      return new DynamicStructuredTool({
-        name: tool.name,
-        description: enrichedDescription,
-        schema: tool.schema,
-        func: tool.func,
-      });
-    }
-    return tool;
-  });
+  // For now, return tools as-is
+  // TODO: Implement manifest enrichment via the new unified registry
+  return tools;
 }
 
 // Create budget creation helper tool
@@ -264,9 +252,11 @@ export async function getAvailableTools(session?: any) {
     // Utility Tools
     requestSuggestionsTool,
     createBudgetTool,
-    // Search & Retrieval Tools
+    // Search & Retrieval Tools - Tavily Web Search
     tavilySearchTool,
     tavilyExtractTool,
+    tavilySearchThenExtractTool,
+    tavilyCrawlTool,
     // Integration Tools
     googleCalendarTool,
     getMessagesFromOtherChatTool,
@@ -360,9 +350,11 @@ export async function getAvailableToolsV2(session?: any) {
     // Utility Tools
     requestSuggestionsTool,
     createBudgetTool,
-    // Search & Retrieval Tools
+    // Search & Retrieval Tools - Tavily Web Search
     tavilySearchTool,
     tavilyExtractTool,
+    tavilySearchThenExtractTool,
+    tavilyCrawlTool,
     // Integration Tools
     googleCalendarTool,
     getMessagesFromOtherChatTool,
@@ -384,21 +376,10 @@ export async function getAvailableToolsV2(session?: any) {
     }
   }
 
-  // Enhance static tools with manifests as well
+  // For now, return tools as-is
+  // TODO: Implement manifest enrichment via the new unified registry
   const allTools = [...staticTools, ...integrationTools];
-  const enrichedTools = await toolRegistry.enrichToolsWithManifests(allTools);
-
-  return enrichedTools.map(({ tool, enrichedDescription }) => {
-    if (enrichedDescription && enrichedDescription !== tool.description) {
-      return new DynamicStructuredTool({
-        name: tool.name,
-        description: enrichedDescription,
-        schema: tool.schema,
-        func: tool.func,
-      });
-    }
-    return tool;
-  });
+  return allTools;
 }
 
 // Synchronous version for backward compatibility (without session-aware MCP tools)
@@ -413,9 +394,11 @@ function getAvailableToolsSync() {
     // Utility Tools
     requestSuggestionsTool,
     createBudgetTool,
-    // Search & Retrieval Tools
+    // Search & Retrieval Tools - Tavily Web Search
     tavilySearchTool,
     tavilyExtractTool,
+    tavilySearchThenExtractTool,
+    tavilyCrawlTool,
     // Integration Tools
     googleCalendarTool,
     getMessagesFromOtherChatTool,
@@ -436,8 +419,16 @@ export {
   multiDocumentRetrievalTool,
   searchAndRetrieveKnowledgeBase,
   requestSuggestionsTool,
-  tavilySearchTool,
-  getMessagesFromOtherChatTool,
   googleCalendarTool,
+  getMessagesFromOtherChatTool,
+  // Tavily Web Search Tools
+  tavilySearchTool,
+  tavilyExtractTool,
+  tavilySearchThenExtractTool,
+  tavilyCrawlTool,
   // Legacy Asana tools removed - only MCP integration supported
 };
+
+// MCP Tools
+export * from './mcp/asana';
+export * from './mcp/google-workspace';

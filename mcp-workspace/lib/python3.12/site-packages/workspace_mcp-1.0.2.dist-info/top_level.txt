@@ -1,0 +1,11 @@
+auth
+core
+gcalendar
+gchat
+gdocs
+gdrive
+gforms
+gmail
+gsheets
+gslides
+main

@@ -10,7 +10,8 @@ import {
   GLOBAL_ORCHESTRATOR_CONTEXT_ID,
   CHAT_BIT_CONTEXT_ID,
 } from '@/lib/constants';
-import { getAvailableSpecialists } from '@/lib/ai/prompts/specialists';
+// Use direct database access since this is server-side
+import { SpecialistRepository } from '@/lib/db/repositories/specialistRepository';
 
 // Force Node.js runtime for this route to avoid Edge Runtime issues with auth
 export const runtime = 'nodejs';
@@ -49,8 +50,9 @@ export async function GET(request: NextRequest) {
     if (historyType === 'all-specialists') {
       console.log('[API History] Fetching chats for ALL specialists');
 
-      // Get all available specialists
-      const specialists = await getAvailableSpecialists();
+      // Get all available specialists using direct database access
+      const specialistRepo = new SpecialistRepository();
+      const specialists = await specialistRepo.getAvailableSpecialists();
       const specialistIds = specialists.map((s) => s.id);
 
       // Add CHAT_BIT_CONTEXT_ID to include general chats

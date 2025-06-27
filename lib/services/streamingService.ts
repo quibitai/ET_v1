@@ -55,10 +55,6 @@ function getLanguageModel(config: StreamingConfig): LanguageModel {
     return openai('gpt-4.1');
   }
 
-  if (modelName.includes('gpt-4')) {
-    return openai('gpt-4-turbo');
-  }
-
   // Default to gpt-4.1-mini for unknown models
   return openai('gpt-4.1-mini');
 }

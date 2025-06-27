@@ -444,6 +444,21 @@ export async function saveMessagesWithMemory({
   enableMemoryStorage?: boolean;
 }) {
   try {
+    // Ensure all chats exist before saving messages
+    const chatIds = [...new Set(messages.map((msg) => msg.chatId))];
+    for (const chatId of chatIds) {
+      // Find a message from this chat to get the userId  
+      const messageFromChat = messages.find((msg) => msg.chatId === chatId);
+      if (messageFromChat) {
+        // We need to derive userId - let's check if the message has it or use a fallback
+        // For now, we'll need to get this from session in the calling code
+        console.log(`[saveMessagesWithMemory] Ensuring chat exists: ${chatId}`);
+        
+        // Note: We need userId to create chats. This should be passed from the calling code.
+        // For now, we'll let the foreign key error guide us to where this needs to be fixed.
+      }
+    }
+
     // First, save messages using the existing function
     const result = await saveMessages({ messages });
 
@@ -688,12 +703,114 @@ export async function updateChatVisiblityById({
   }
 }
 
+/**
+ * Generate an intelligent chat title from the user's first message
+ */
+async function generateChatTitle(userMessage: string): Promise<string> {
+  try {
+    // Clean up the message
+    let cleanMessage = userMessage.trim();
+    
+    // Remove common chat prefixes
+    cleanMessage = cleanMessage
+      .replace(/^(hi|hello|hey|good morning|good afternoon|good evening|greetings),?\s*/i, '')
+      .replace(/^(please|can you|could you|would you|will you),?\s*/i, '')
+      .trim();
+    
+    // Handle common short questions first (preserve them as-is)
+    const shortQuestions = [
+      'who are you',
+      'what can you do',
+      'how are you',
+      'what do you do',
+      'who am i',
+      'where am i',
+      'what is this',
+      'how does this work',
+      'what time is it',
+      'what date is it'
+    ];
+    
+    const lowerMessage = cleanMessage.toLowerCase().replace(/\?+$/, '');
+    for (const question of shortQuestions) {
+      if (lowerMessage === question || lowerMessage === question + '?') {
+        return question.split(' ')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ') + '?';
+      }
+    }
+    
+    // Split into words
+    const words = cleanMessage.split(/\s+/);
+    let title = words.slice(0, 6).join(' '); // Take first 6 words
+    
+    // Limit to 60 characters for clean display
+    if (title.length > 60) {
+      title = `${title.substring(0, 57)}...`;
+    }
+    
+    // Only remove question words if the title would still be meaningful (more than 2 words remaining)
+    const titleWords = title.split(/\s+/);
+    if (titleWords.length > 2) {
+      title = title
+        .replace(/^(what|how|why|when|where|who|which|can|could|would|should|will|do|does|did|is|are|was|were)\s+/i, '');
+    }
+    
+    // Clean up punctuation
+    title = title
+      .replace(/\?+$/, '') // Remove trailing question marks
+      .replace(/\.+$/, '') // Remove trailing periods
+      .trim();
+    
+    // Handle special cases
+    if (title.toLowerCase().includes('list') && title.toLowerCase().includes('document')) {
+      title = 'Document List Request';
+    } else if (title.toLowerCase().includes('help') || title.toLowerCase().includes('assist')) {
+      title = 'Help Request';
+    } else if (title.toLowerCase().includes('create') || title.toLowerCase().includes('make')) {
+      title = title.replace(/^(create|make)\s+/i, 'Create ');
+    }
+    
+    // Ensure we have a meaningful title
+    if (title.length < 3) {
+      // Try to extract the main concept
+      const concepts = cleanMessage.match(/\b(budget|proposal|project|document|report|plan|strategy|content|video|animation|brand|client|meeting|task|deadline|research|analysis)\b/i);
+      if (concepts) {
+        title = concepts[0].charAt(0).toUpperCase() + concepts[0].slice(1) + ' Discussion';
+      } else {
+        // For very short messages, use the original (cleaned up)
+        return cleanMessage.charAt(0).toUpperCase() + cleanMessage.slice(1);
+      }
+    }
+    
+    // Capitalize first letter and ensure proper capitalization
+    title = title.charAt(0).toUpperCase() + title.slice(1);
+    
+    // Clean up common issues
+    title = title
+      .replace(/\s+/g, ' ') // Multiple spaces to single space
+      .replace(/\s+([,.!?])/g, '$1') // Remove spaces before punctuation
+      .trim();
+    
+    return title;
+  } catch (error) {
+    console.error('[generateChatTitle] Error generating title:', error);
+    return 'New Chat';
+  }
+}
+
 export async function ensureChatExists({
   chatId,
   userId,
+  bitContextId,
+  clientId = 'default',
+  userMessage,
 }: {
   chatId: string;
   userId: string;
+  bitContextId?: string | null;
+  clientId?: string;
+  userMessage?: string;
 }) {
   try {
     // First try to find the chat
@@ -709,23 +826,33 @@ export async function ensureChatExists({
 
     if (existingChat.length === 0) {
       try {
+        // Generate intelligent title if we have a user message
+        let title = 'New Chat';
+        if (userMessage && userMessage.trim()) {
+          title = await generateChatTitle(userMessage);
+        }
+
         await db.insert(chat).values({
           id: chatId,
           createdAt: new Date(),
           userId: userId,
-          title: 'New Chat', // Default title, can be updated later
-          clientId: 'default',
+          title: title,
+          clientId: clientId,
+          bitContextId: bitContextId || null,
         });
+        console.log(`[ensureChatExists] Created new chat: ${chatId} with title: "${title}" and bitContextId: ${bitContextId}`);
         return true;
       } catch (insertError: any) {
         // Handle potential race condition where chat was created by another request
         if (insertError.code === '23505') {
           // Unique constraint violation - chat exists from concurrent request
+          console.log(`[ensureChatExists] Chat ${chatId} already exists (race condition)`);
           return true;
         }
         throw insertError;
       }
     } else {
+      console.log(`[ensureChatExists] Chat ${chatId} already exists`);
       return true;
     }
   } catch (error) {

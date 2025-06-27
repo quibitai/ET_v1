@@ -34,7 +34,7 @@ export interface ValidationResult {
 }
 
 export interface HealthStatus {
-  status: 'ok' | 'error';
+  status: 'ok' | 'error' | 'healthy';
   service: string;
   timestamp: string;
   version?: string;

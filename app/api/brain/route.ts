@@ -29,16 +29,20 @@ export async function POST(req: NextRequest) {
   const logger = getRequestLogger(req);
 
   try {
-    logger.info('Brain API request received');
-    const json = await req.json();
+    console.log('[BRAIN API] Request received');
 
-    const validationResult = brainRequestSchema.safeParse(json);
+    // Validate request body
+    const body = await req.json();
+    console.log('[BRAIN API] Body parsed, validating...');
+
+    const validationResult = brainRequestSchema.safeParse(body);
     if (!validationResult.success) {
-      logger.warn('Invalid request body', {
-        error: validationResult.error.flatten(),
-      });
+      console.log('[BRAIN API] Validation failed:', validationResult.error);
       return new Response(
-        JSON.stringify({ errors: validationResult.error.flatten() }),
+        JSON.stringify({
+          error: 'Invalid request format',
+          details: validationResult.error.errors,
+        }),
         {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
@@ -46,117 +50,225 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    console.log('[BRAIN API] Validation passed, extracting request data...');
     const request = validationResult.data;
 
+    console.log('[BRAIN API] Getting session...');
     const session = await auth();
+    console.log('[BRAIN API] Session obtained:', {
+      hasSession: !!session,
+      hasUser: !!session?.user,
+      clientId: session?.user?.clientId || 'none',
+    });
+
+    console.log('[BRAIN API] Getting client config...');
     const clientConfig = await getClientConfig(
       session?.user?.clientId || 'default',
     );
+    console.log('[BRAIN API] Client config obtained:', {
+      hasConfig: !!clientConfig,
+    });
+
+    console.log('[BRAIN API] Creating orchestrator...');
     const orchestrator = new BrainOrchestrator(logger);
+    console.log('[BRAIN API] Creating message service...');
     const messageService = new MessageService(logger);
 
     // Get the raw stream from our refactored orchestrator
-    const rawStreamPromise = orchestrator.stream(request, clientConfig);
+    console.log('[BRAIN API] Starting orchestrator stream...');
+    const rawStreamPromise = orchestrator.stream(request, session);
 
-    // Create proper data stream format manually for Vercel AI SDK compatibility
-    // AND capture assistant response content for saving to database
+    // Create optimized streaming response for real-time character streaming
     const responseStream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
         const decoder = new TextDecoder();
-        let assistantContent = ''; // Capture the full assistant response
+        let assistantContent = ''; // Capture ONLY the actual AI response content
+        let chunkIndex = 0;
 
         try {
+          console.log('[BRAIN API] Awaiting orchestrator stream...');
           const rawStream = await rawStreamPromise;
+          console.log(
+            '[BRAIN API] Orchestrator stream obtained, starting iteration...',
+          );
+
           for await (const chunk of rawStream) {
-            // Convert Uint8Array chunks to text
-            const text =
-              chunk instanceof Uint8Array
-                ? decoder.decode(chunk)
-                : String(chunk);
+            chunkIndex++;
 
-            // Accumulate the assistant response content
-            assistantContent += text;
+            // Our orchestrator returns strings directly
+            const text = String(chunk);
 
-            // Send plain text directly for useChat compatibility
-            controller.enqueue(encoder.encode(text));
+            // FIXED: Separate progress indicators from actual content
+            const isProgressIndicator =
+              text.includes('📚') ||
+              text.includes('📄') ||
+              text.includes('🔍') ||
+              text.includes('Retrieving documents') ||
+              text.includes('Loading document content') ||
+              text.includes('Searching');
 
-            // CRITICAL: Add small delay to ensure visible streaming
-            // This prevents chunks from being batched together
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            // REDUCED LOGGING: Only log significant chunks or errors
+            if (chunkIndex % 50 === 0 || text.length > 200) {
+              console.log(
+                `[BRAIN API] Stream progress: chunk ${chunkIndex}, ${text.length} chars`,
+              );
+            }
+
+            // Only accumulate actual AI response content (NOT progress indicators)
+            if (!isProgressIndicator) {
+              assistantContent += text;
+            }
+
+            // Format as data stream part with proper JSON escaping
+            const dataStreamPart = `0:${JSON.stringify(text)}\n`;
+            controller.enqueue(encoder.encode(dataStreamPart));
+
+            // REAL-TIME STREAMING: No artificial delays - stream immediately
+            // This ensures character-by-character streaming without buffering
           }
 
-          // After streaming completes, save the assistant message to database
+          console.log(
+            `[BRAIN API] Stream completed: ${chunkIndex} chunks, ${assistantContent.length} chars`,
+          );
+
+          // PERFORMANCE FIX: Make database operations asynchronous to avoid blocking response
+          // This allows the frontend to become responsive immediately after streaming completes
           if (
             assistantContent.trim() &&
             request.chatId &&
             session?.user?.clientId
           ) {
-            try {
-              // MEMORY FIX: Use saveMessagesWithMemory for memory storage
-              const assistantMessage: DBMessage = {
-                id: randomUUID(),
-                chatId: request.chatId,
-                role: 'assistant',
-                parts: [{ type: 'text', text: assistantContent.trim() }],
-                attachments: [],
-                createdAt: new Date(),
-                clientId: session.user.clientId || 'default',
-              };
+            // Fire and forget - don't await these operations
+            setImmediate(async () => {
+              try {
+                console.log('[BRAIN API] Starting async message save...');
 
-              // Import saveMessagesWithMemory from queries
-              const { saveMessagesWithMemory } = await import(
-                '@/lib/db/queries'
-              );
+                // Type guard to ensure required values are available
+                const chatId = request.chatId;
+                const userId = session?.user?.id;
+                const clientId = session?.user?.clientId;
 
-              logger.info(
-                '🧠 MEMORY TEST: About to save message with memory storage',
-                {
-                  chatId: request.chatId,
-                  contentLength: assistantContent.length,
+                if (!chatId || !userId || !clientId) {
+                  console.log(
+                    '[BRAIN API] Skipping message save - missing required IDs',
+                  );
+                  return;
+                }
+
+                // Ensure the chat exists before saving messages
+                const { ensureChatExists, saveMessagesWithMemory } =
+                  await import('@/lib/db/queries');
+
+                // Extract user's first message for intelligent title generation
+                let firstUserMessage = '';
+                if (request.messages?.length) {
+                  const userMessage = request.messages.find(
+                    (msg) => msg.role === 'user',
+                  );
+                  if (userMessage?.content) {
+                    firstUserMessage = userMessage.content.trim();
+                  }
+                }
+
+                // Create chat if it doesn't exist with intelligent title
+                await ensureChatExists({
+                  chatId: chatId,
+                  userId: userId,
+                  bitContextId: request.activeBitContextId || null,
+                  clientId: clientId,
+                  userMessage: firstUserMessage,
+                });
+
+                // Save all user messages first
+                const userMessages: DBMessage[] = [];
+                if (request.messages?.length) {
+                  for (const msg of request.messages) {
+                    if (msg.role === 'user') {
+                      userMessages.push({
+                        id: randomUUID(),
+                        chatId: chatId,
+                        role: 'user',
+                        parts: [{ type: 'text', text: msg.content }],
+                        attachments: [],
+                        createdAt: new Date(),
+                        clientId: clientId,
+                      });
+                    }
+                  }
+                }
+
+                // Save user messages with memory storage
+                if (userMessages.length > 0) {
+                  await saveMessagesWithMemory({
+                    messages: userMessages,
+                    enableMemoryStorage: true,
+                  });
+
+                  console.log(
+                    `[BRAIN API] Saved ${userMessages.length} user messages`,
+                  );
+                }
+
+                // MEMORY FIX: Use saveMessagesWithMemory for memory storage
+                const assistantMessage: DBMessage = {
+                  id: randomUUID(),
+                  chatId: chatId,
+                  role: 'assistant',
+                  parts: [{ type: 'text', text: assistantContent.trim() }],
+                  attachments: [],
+                  createdAt: new Date(),
+                  clientId: clientId,
+                };
+
+                await saveMessagesWithMemory({
+                  messages: [assistantMessage],
                   enableMemoryStorage: true,
-                },
-              );
+                });
 
-              await saveMessagesWithMemory({
-                messages: [assistantMessage],
-                enableMemoryStorage: true,
-              });
-
-              logger.info(
-                '✅ MEMORY TEST: Assistant message saved successfully with memory storage',
-                {
-                  chatId: request.chatId,
-                  contentLength: assistantContent.length,
-                  messageId: assistantMessage.id,
-                },
-              );
-            } catch (error) {
-              logger.error('Failed to save assistant message with memory', {
-                chatId: request.chatId,
-                error: error instanceof Error ? error.message : 'Unknown error',
-              });
-              // Don't throw - we don't want to break the response after successful streaming
-            }
+                console.log(
+                  `[BRAIN API] Assistant message saved (${assistantContent.length} chars)`,
+                );
+              } catch (error) {
+                console.error(
+                  '[BRAIN API] Failed to save message:',
+                  error instanceof Error ? error.message : 'Unknown error',
+                );
+                // Don't throw - this is fire-and-forget
+              }
+            });
+          } else {
+            console.log(
+              '[BRAIN API] Skipping message save - missing required data',
+            );
           }
         } catch (error) {
-          logger.error('Error during stream piping', { error });
+          console.error('[BRAIN API] Agent error:', error);
           controller.error(error);
         } finally {
+          console.log('[BRAIN API] Stream closed');
           controller.close();
         }
       },
     });
 
+    // OPTIMIZED HEADERS: Prevent all forms of buffering for real-time streaming
     return new Response(responseStream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
-        'X-Content-Type-Options': 'nosniff',
-        'Transfer-Encoding': 'chunked',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Cache-Control': 'no-cache, no-store, must-revalidate, private',
         Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-        'X-Proxy-Buffering': 'no',
+        'Transfer-Encoding': 'chunked',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Accel-Buffering': 'no', // Disable Nginx buffering
+        Pragma: 'no-cache',
+        Expires: '0',
+        // Additional headers for aggressive anti-buffering
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'X-Robots-Tag': 'noindex, nofollow',
+        Vary: 'Accept-Encoding',
       },
     });
   } catch (error) {

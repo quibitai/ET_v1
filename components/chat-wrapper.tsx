@@ -219,17 +219,27 @@ export function ChatWrapper({
       });
 
       if (isNewChat) {
-        // Trigger cache refresh after streaming completes to show the real chat
-        try {
-          // Add a small delay to ensure database operations are complete
-          await new Promise((resolve) => setTimeout(resolve, 100));
+        // PERFORMANCE FIX: Make cache refresh non-blocking to avoid delaying input field re-enable
+        // This allows the UI to become responsive immediately after streaming completes
+        setTimeout(async () => {
+          try {
+            console.log('[ChatWrapper] Starting async cache refresh...');
 
-          // Call SWR's mutate function directly to refresh the cache
-          await mutateChatHistory();
-        } catch (error) {
-          console.error('[ChatWrapper] Failed to refresh chat history:', error);
-          // Don't break the UI if cache invalidation fails
-        }
+            // Add a small delay to ensure database operations are complete
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
+            // Call SWR's mutate function directly to refresh the cache
+            await mutateChatHistory();
+
+            console.log('[ChatWrapper] Cache refresh completed');
+          } catch (error) {
+            console.error(
+              '[ChatWrapper] Failed to refresh chat history:',
+              error,
+            );
+            // Don't break the UI if cache invalidation fails
+          }
+        }, 0);
       }
 
       // Clear file context after the request completes

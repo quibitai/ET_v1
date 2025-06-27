@@ -1,100 +1,28 @@
-import type { SpecialistConfig } from './template';
+/**
+ * Specialists Registry - Client Safe
+ * 
+ * This module provides functions to access specialist configurations.
+ * Uses API calls for client-side access only. Server-side code should use
+ * SpecialistRepository directly.
+ */
 
-// Fallback specialists that are always available
+// Fallback specialists when API is unavailable  
 const FALLBACK_SPECIALISTS = [
-  {
-    id: 'echo-tango-specialist',
-    name: 'Echo Tango',
-    description:
-      'Creative agency specialist for video production and brand storytelling',
-  },
   {
     id: 'chat-model',
     name: 'General Chat',
     description: 'General conversational assistant',
   },
+  {
+    id: 'echo-tango-specialist',
+    name: 'Echo Tango',
+    description: 'Specialist for Echo Tango client',
+  },
 ];
 
-// Server-only imports with runtime protection
-let db: any = null;
-let specialists: any = null;
-let eq: any = null;
-
-// Only import database dependencies on server-side
-if (typeof window === 'undefined') {
-  try {
-    const { db: dbInstance } = require('@/lib/db');
-    const { specialists: specialistsSchema } = require('@/lib/db/schema');
-    const { eq: eqOperator } = require('drizzle-orm');
-    db = dbInstance;
-    specialists = specialistsSchema;
-    eq = eqOperator;
-  } catch (error) {
-    console.warn(
-      'Database imports failed in specialists/index.ts, using fallbacks',
-      error,
-    );
-  }
-}
-
 /**
- * @deprecated This file is deprecated. Specialist configurations are now stored in the database.
- * Use the database-backed functions below for backward compatibility, but consider migrating
- * to direct database queries where possible.
- */
-
-/**
- * @deprecated Registry is now stored in the database. Use getAvailableSpecialists() instead.
- */
-export const specialistRegistry: Record<string, SpecialistConfig> = {};
-
-/**
- * Retrieves the persona prompt string for a given specialist ID from the database.
- * @deprecated This function is deprecated. Use the database directly via loadPrompt() instead.
- * @param specialistId - The unique ID of the specialist.
- * @returns Promise resolving to the specialist's persona prompt string or an empty string.
- */
-export async function getSpecialistPromptById(
-  specialistId: string,
-): Promise<string> {
-  console.warn(
-    `[SpecialistRegistry] getSpecialistPromptById is deprecated. Use loadPrompt() instead.`,
-  );
-
-  // Check if we're on server-side and have database access
-  if (!db || !specialists || !eq) {
-    console.warn(
-      `[SpecialistRegistry] Database not available (client-side or import failed). Cannot load specialist '${specialistId}'.`,
-    );
-    return '';
-  }
-
-  try {
-    const result = await db
-      .select()
-      .from(specialists)
-      .where(eq(specialists.id, specialistId))
-      .limit(1);
-
-    if (result.length === 0) {
-      console.warn(
-        `[SpecialistRegistry] Prompt not found for specialistId: ${specialistId}`,
-      );
-      return '';
-    }
-
-    return result[0].personaPrompt;
-  } catch (error) {
-    console.error(
-      `[SpecialistRegistry] Database error for specialistId: ${specialistId}`,
-      error,
-    );
-    return '';
-  }
-}
-
-/**
- * Retrieves a list of available specialists from the database with robust fallback.
+ * Retrieves a list of available specialists using API endpoint.
+ * This function is client-safe and should be used by frontend components.
  * @returns Promise resolving to an array of specialist info objects.
  */
 export async function getAvailableSpecialists(): Promise<
@@ -104,39 +32,19 @@ export async function getAvailableSpecialists(): Promise<
     description: string;
   }>
 > {
-  // Always try database first if available
-  if (db && specialists) {
     try {
-      const result = await db
-        .select({
-          id: specialists.id,
-          name: specialists.name,
-          description: specialists.description,
-        })
-        .from(specialists);
+    const response = await fetch('/api/specialists');
+    const data = await response.json();
 
-      if (result && result.length > 0) {
-        console.log(
-          '[SpecialistRegistry] Successfully loaded specialists from database:',
-          result.length,
-        );
-        return result.map((config: any) => ({
-          id: config.id,
-          name: config.name,
-          description: config.description || '',
-        }));
+    if (data.success && data.specialists) {
+      console.log('[SpecialistRegistry] Loaded specialists from API:', data.specialists.length);
+      return data.specialists;
+    } else {
+      console.warn('[SpecialistRegistry] API returned error, using fallbacks:', data.error);
+      return FALLBACK_SPECIALISTS;
       }
     } catch (error) {
-      console.error(
-        '[SpecialistRegistry] Database error retrieving specialists, using fallbacks',
-        error,
-      );
-    }
-  }
-
-  // Fallback to hardcoded specialists
-  console.warn(
-    '[SpecialistRegistry] Database not available or empty, using fallback specialists',
-  );
+    console.error('[SpecialistRegistry] API error, using fallbacks:', error);
   return FALLBACK_SPECIALISTS;
+  }
 }

@@ -49,13 +49,27 @@ const components: Partial<Components> = {
         href.startsWith('//'))
     );
 
-    // Debug logging for link detection (remove in production)
+    // Special handling for OAuth URLs - always treat as external
+    const isOAuthUrl = !!(
+      href &&
+      (href.includes('oauth2/auth') ||
+        href.includes('accounts.google.com') ||
+        href.includes('oauth'))
+    );
+
+    // Debug logging for link detection (enhanced for OAuth debugging)
     if (href && process.env.NODE_ENV === 'development') {
-      console.log('[Markdown Link]', { href, isExternal, children });
+      console.log('[Markdown Link]', {
+        href: href?.substring(0, 100) + (href?.length > 100 ? '...' : ''),
+        isExternal,
+        isOAuthUrl,
+        children:
+          typeof children === 'string' ? children.substring(0, 50) : children,
+      });
     }
 
-    // For external links, always use native <a> tag
-    if (isExternal) {
+    // For external links or OAuth URLs, always use native <a> tag
+    if (isExternal || isOAuthUrl) {
       return (
         <a
           href={href}
@@ -141,6 +155,11 @@ function linkifyUrls(text: string): string {
     // Check if this URL is already in an HTML link
     if (beforeUrl.includes('<a ') && !beforeUrl.includes('</a>')) {
       return url; // Already in HTML link, don't modify
+    }
+
+    // Special handling for OAuth URLs - use descriptive text
+    if (url.includes('oauth2/auth') || url.includes('accounts.google.com')) {
+      return `[🔐 Click here to authorize Google Workspace access](${url})`;
     }
 
     // Enhanced pattern for references - try to extract domain name for cleaner links

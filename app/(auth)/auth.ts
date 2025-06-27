@@ -65,13 +65,14 @@ if (googleClientId && googleClientSecret) {
           prompt: 'consent',
           access_type: 'offline',
           response_type: 'code',
+          hd: 'echotango.co', // PRODUCTION SECURITY: Domain hint for echotango.co
           scope:
             'https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/chat.messages.readonly https://www.googleapis.com/auth/chat.spaces.readonly https://www.googleapis.com/auth/chat.memberships.readonly https://www.googleapis.com/auth/chat.messages https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/forms.body https://www.googleapis.com/auth/forms.body.readonly https://www.googleapis.com/auth/forms.responses.readonly https://www.googleapis.com/auth/presentations.readonly https://www.googleapis.com/auth/presentations',
         },
       },
     }),
   );
-  logger.debug('Auth', 'Google OAuth provider configured.');
+  logger.debug('Auth', 'Google OAuth provider configured with echotango.co domain restriction.');
 } else {
   logger.warn(
     'Auth',
@@ -126,6 +127,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user, account, profile }) {
       if (account?.provider === 'google') {
         if (!user.email) return false; // Must have an email
+
+        // PRODUCTION SECURITY: Restrict to echotango.co domain only
+        if (!user.email.endsWith('@echotango.co')) {
+          logger.warn(
+            'Auth:signIn',
+            `Rejected sign-in attempt from non-echotango.co domain: ${user.email}`,
+          );
+          return false; // Block non-echotango.co users
+        }
 
         // Check if user already exists
         const existingUsers = await getUser(user.email);

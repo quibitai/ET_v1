@@ -26,5 +26,5 @@ export const modelMapping: Record<string, string> = {
   'text-model': 'gpt-4.1', // Text operations Bit
   'summary-model': 'gpt-4.1', // Summary Bit uses gpt-4.1 for summarization
   'echo-tango-specialist': 'gpt-4.1-mini', // Echo Tango specialist Bit
-  default: 'gpt-4.1', // All other Bits use gpt-4.1 by default
+  default: 'gpt-4.1-mini', // All other Bits use gpt-4.1-mini by default for efficiency
 };

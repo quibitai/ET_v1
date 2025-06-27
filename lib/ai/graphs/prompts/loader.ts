@@ -68,9 +68,18 @@ export async function loadGraphPrompt({
   const toolMessages = state ? getToolMessages(state) : [];
   const hasToolResults = toolMessages.length > 0;
   const referencesContext = state ? buildReferencesContext(state) : '';
+
+  // CRITICAL FIX: Check array length, not truthiness of joined string
   const availableToolsString =
-    availableTools.join(', ') ||
-    'listDocuments, getDocumentContents, tavilySearch, multiDocumentRetrieval';
+    availableTools.length > 0
+      ? availableTools.join(', ')
+      : 'listDocuments, getDocumentContents, tavilySearch, multiDocumentRetrieval';
+
+  console.log(`[GraphPromptLoader] Available tools for ${nodeType}:`, {
+    toolsArray: availableTools,
+    toolsCount: availableTools.length,
+    toolsString: availableToolsString,
+  });
 
   try {
     switch (nodeType) {
@@ -152,45 +161,186 @@ ${content}`;
 /**
  * Build references and citations context from tool results
  */
-function buildReferencesContext(state: GraphState): string {
+export function buildReferencesContext(state: GraphState): string {
   const toolMessages = getToolMessages(state);
 
   if (toolMessages.length === 0) {
     return '';
   }
 
-  const references: string[] = [];
+  const knowledgeBaseSources: string[] = [];
+  const webSources: string[] = [];
+  const otherSources: string[] = [];
 
-  toolMessages.forEach((msg) => {
+  toolMessages.forEach((msg, index) => {
     try {
-      const content =
-        typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
-
-      // Extract document references
-      if (content.document_id || content.title) {
-        references.push(`Document: ${content.title || content.document_id}`);
+      let content: any;
+      if (typeof msg.content === 'string') {
+        // Try to parse as JSON, but handle non-JSON strings gracefully
+        try {
+          content = JSON.parse(msg.content);
+        } catch (jsonError) {
+          // If it's not valid JSON, treat it as a plain string
+          console.log(
+            `[buildReferencesContext] Message ${index + 1} content is not JSON, treating as string:`,
+            {
+              contentPreview: msg.content.substring(0, 100),
+              error:
+                jsonError instanceof Error
+                  ? jsonError.message
+                  : 'Unknown JSON error',
+            },
+          );
+          content = { text: msg.content };
+        }
+      } else {
+        content = msg.content;
       }
 
-      // Extract web references
-      if (content.url) {
-        references.push(`Source: ${content.url}`);
-      }
+      // Determine tool type for proper categorization
+      const toolName = msg.name || '';
 
-      // Extract search query references
-      if (content.query) {
-        references.push(`Search: "${content.query}"`);
+      // Knowledge Base Sources
+      if (
+        toolName.includes('getDocumentContents') ||
+        toolName.includes('searchInternalKnowledgeBase') ||
+        toolName.includes('listDocuments')
+      ) {
+        if (content.document_id || content.title) {
+          const title = content.title || content.document_id;
+          const url = content.url || `internal://doc/${content.document_id}`;
+          const sourceEntry = `[${index + 1}] ${title} - Internal Knowledge Base (${url})`;
+          knowledgeBaseSources.push(sourceEntry);
+        }
+        // Handle document listings
+        else if (
+          content.available_documents &&
+          Array.isArray(content.available_documents)
+        ) {
+          content.available_documents.forEach((doc: any, docIndex: number) => {
+            if (doc.title && doc.id) {
+              const url = `/api/documents/${doc.id}`;
+              const sourceEntry = `[${index + 1}.${docIndex + 1}] [${doc.title}](${url}) - Internal Knowledge Base`;
+              knowledgeBaseSources.push(sourceEntry);
+            }
+          });
+        }
+      }
+      // Web Sources
+      else if (
+        toolName.includes('tavilySearch') ||
+        toolName.includes('webSearch')
+      ) {
+        // Handle single result with URL and title
+        if (content.url && content.title) {
+          const domain = extractDomain(content.url);
+          const sourceEntry = `[${index + 1}] [${content.title}](${content.url}) - ${domain}`;
+          webSources.push(sourceEntry);
+        }
+        // Handle array of search results
+        else if (content.results && Array.isArray(content.results)) {
+          content.results.forEach((result: any, resultIndex: number) => {
+            if (result.url && result.title) {
+              const domain = extractDomain(result.url);
+              const sourceEntry = `[${index + 1}.${resultIndex + 1}] [${result.title}](${result.url}) - ${domain}`;
+              webSources.push(sourceEntry);
+            }
+          });
+        }
+        // Handle string content that might contain multiple results
+        else if (typeof content === 'string' && content.includes('URL:')) {
+          const urlMatches = content.match(
+            /\*\*(.*?)\*\*\nURL: (https?:\/\/[^\s]+)/g,
+          );
+          if (urlMatches) {
+            urlMatches.forEach((match, matchIndex) => {
+              const titleMatch = match.match(/\*\*(.*?)\*\*/);
+              const urlMatch = match.match(/URL: (https?:\/\/[^\s]+)/);
+              if (titleMatch && urlMatch) {
+                const title = titleMatch[1];
+                const url = urlMatch[1];
+                const domain = extractDomain(url);
+                const sourceEntry = `[${index + 1}.${matchIndex + 1}] [${title}](${url}) - ${domain}`;
+                webSources.push(sourceEntry);
+              }
+            });
+          }
+        } else {
+          console.log(
+            '[buildReferencesContext] Web search content format not recognized:',
+            {
+              hasUrl: !!content.url,
+              hasTitle: !!content.title,
+              hasResults: !!content.results,
+              contentKeys: Object.keys(content),
+            },
+          );
+        }
+      }
+      // Other tool sources
+      else {
+        if (content.url && content.title) {
+          const sourceEntry = `[${index + 1}] [${content.title}](${content.url})`;
+          otherSources.push(sourceEntry);
+        } else if (content.query) {
+          const sourceEntry = `[${index + 1}] Search Query: "${content.query}"`;
+          otherSources.push(sourceEntry);
+        }
       }
     } catch (e) {
-      // Ignore parsing errors for non-JSON tool results
+      console.log(
+        `[buildReferencesContext] Error parsing tool message ${index + 1}:`,
+        e,
+      );
     }
   });
 
-  if (references.length === 0) {
-    return '';
+  // Build structured references context
+  let referencesContext = '';
+
+  if (
+    knowledgeBaseSources.length > 0 ||
+    webSources.length > 0 ||
+    otherSources.length > 0
+  ) {
+    referencesContext += '\n## AVAILABLE SOURCES FOR CITATION:\n\n';
+
+    if (knowledgeBaseSources.length > 0) {
+      referencesContext += '**Knowledge Base Documents:**\n';
+      referencesContext += knowledgeBaseSources.join('\n') + '\n\n';
+    }
+
+    if (webSources.length > 0) {
+      referencesContext += '**Web Sources:**\n';
+      referencesContext += webSources.join('\n') + '\n\n';
+    }
+
+    if (otherSources.length > 0) {
+      referencesContext += '**Other Sources:**\n';
+      referencesContext += otherSources.join('\n') + '\n\n';
+    }
+
+    referencesContext += `**CITATION INSTRUCTIONS:**
+- For synthesis/structured reports: Use numbered citations [1], [2] in text with References section at end
+- For conversational responses: Use inline links [Title](URL) naturally in the text
+- Never duplicate the same hyperlink - reuse citation numbers for repeated references
+- ALWAYS include source attribution - do not write content without citing sources
+`;
   }
 
-  return `## Available References
-${references.join('\n')}`;
+  return referencesContext;
+}
+
+/**
+ * Extract domain name from URL for cleaner source attribution
+ */
+export function extractDomain(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.hostname.replace('www.', '');
+  } catch {
+    return url;
+  }
 }
 
 /**

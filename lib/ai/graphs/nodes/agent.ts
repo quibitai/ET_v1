@@ -13,12 +13,9 @@
  * - Implements Plan-and-Execute pattern for improved efficiency
  */
 
-import type { ChatOpenAI } from '@langchain/openai';
-import {
-  AIMessage,
-  HumanMessage,
-  SystemMessage,
-} from '@langchain/core/messages';
+import { type BaseMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
+import { type ChatOpenAI } from '@langchain/openai';
+import { type DynamicStructuredTool } from '@langchain/core/tools';
 import type { RequestLogger } from '../../../services/observabilityService';
 import type { GraphState } from '../state';
 import { getLastHumanMessage, getToolMessages, hasToolCalls } from '../state';
@@ -34,7 +31,7 @@ import type { ExecutionPlan } from '../services/PlannerService';
  */
 export interface AgentNodeDependencies {
   llm: ChatOpenAI;
-  tools: any[];
+  tools: DynamicStructuredTool[];
   logger: RequestLogger;
   currentDateTime?: string;
   clientConfig?: {
@@ -475,5 +472,24 @@ export function analyzeAgentDecision(
     toolsRequested: [],
     reasoning:
       'Agent provided final response without requesting additional tools',
+  };
+}
+
+export interface AgentDependencies {
+  llm: ChatOpenAI;
+  tools: DynamicStructuredTool[];
+}
+
+export async function callModel(
+  state: { messages: BaseMessage[] },
+  dependencies: AgentDependencies,
+) {
+  const { messages } = state;
+  const { llm, tools } = dependencies;
+
+  const response = await llm.bindTools(tools).invoke(messages);
+
+  return {
+    messages: [response],
   };
 }

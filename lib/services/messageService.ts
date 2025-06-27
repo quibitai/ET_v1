@@ -3,7 +3,6 @@
  *
  * Handles message formatting, conversion, and processing for the brain API.
  * Extracted from brain route and orchestrator to create clean separation of concerns.
- * Target: ~150 lines as per roadmap specifications.
  */
 
 import type {
@@ -91,30 +90,22 @@ export class MessageService {
    */
   public convertToLangChainFormat(
     messages: UIMessage[] | MessageData[],
-  ): LangChainMessage[] {
+  ): BaseMessage[] {
     this.logger.info('Converting messages to LangChain format', {
       messageCount: messages.length,
     });
 
-    // Exclude the last message (current user input) from history
-    const historyMessages = messages.slice(0, -1);
+    // Process ALL messages, not just history (this was causing empty arrays)
+    const filteredMessages = this.filterContextBleedingPatterns(messages);
 
-    // Filter out problematic conversation patterns that cause context bleeding
-    const filteredHistory = this.filterContextBleedingPatterns(historyMessages);
-
-    return filteredHistory.map((message) => {
+    return filteredMessages.map((message) => {
+      const content = this.sanitizeContent(message.content);
       if (message.role === 'user') {
-        return {
-          type: 'human',
-          content: this.sanitizeContent(message.content),
-        };
+        return new HumanMessage({ content });
       } else if (message.role === 'assistant') {
-        return { type: 'ai', content: this.sanitizeContent(message.content) };
+        return new AIMessage({ content });
       } else {
-        return {
-          type: 'system',
-          content: this.sanitizeContent(message.content),
-        };
+        return new SystemMessage({ content });
       }
     });
   }
@@ -176,20 +167,6 @@ export class MessageService {
       "i don't have access",
       "i'm unable to",
       "couldn't find",
-      "can't access",
-      'not found',
-      'unable to locate',
-      "can't retrieve",
-      'no document',
-      'please confirm',
-      'please provide',
-      'file again',
-      'upload the file',
-      "can't see",
-      "don't have",
-      'issue accessing',
-      'technical difficulties',
-      'experiencing difficulties',
     ];
 
     return unsuccessfulPatterns.some((pattern) =>
@@ -420,9 +397,8 @@ export function createMessageService(
 export function convertMessagesToLangChain(
   messages: UIMessage[],
   logger: RequestLogger,
-): LangChainMessage[] {
-  const service = createMessageService(logger);
-  return service.convertToLangChainFormat(messages);
+): BaseMessage[] {
+  return new MessageService(logger).convertToLangChainFormat(messages);
 }
 
 /**

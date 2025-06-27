@@ -5,13 +5,17 @@
  *
  * This script migrates existing specialist configurations from TypeScript files
  * into the new specialists database table for centralized management.
+ * 
+ * NOTE: This script is now obsolete as we use database-driven specialists.
+ * Kept for reference but should not be run.
  */
 
 import { config } from 'dotenv';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { specialists } from '@/lib/db/schema';
-import { specialistRegistry } from '@/lib/ai/prompts/specialists';
+// OBSOLETE: Database-driven approach no longer uses static registry
+// import { specialistRegistry } from '@/lib/ai/prompts/specialists';
 
 // Load environment variables
 config({
@@ -19,6 +23,12 @@ config({
 });
 
 async function migrateSpecialists() {
+  console.log('⚠️  This migration script is obsolete');
+  console.log('🚀 Specialists are now managed directly in the database');
+  console.log('📋 Use the admin interface to manage specialists');
+  
+  // Commented out obsolete migration logic
+  /*
   console.log('🚀 Starting specialist configuration migration...');
 
   if (!process.env.POSTGRES_URL) {
@@ -93,6 +103,7 @@ async function migrateSpecialists() {
     await connection.end();
     process.exit(1);
   }
+  */
 }
 
 // Run the migration

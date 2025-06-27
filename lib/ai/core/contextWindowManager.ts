@@ -15,18 +15,36 @@ import type { RequestLogger } from '@/lib/services/observabilityService';
 export const MODEL_CONTEXT_LIMITS = {
   'gpt-4.1-mini': 16385,
   'gpt-4.1': 128000,
+  // Legacy support for any old references
+  'gpt-4o-mini': 16385,
+  'gpt-4o': 128000,
 } as const;
 
 /**
- * Context management configuration
+ * Performance-optimized model selection rules
  */
-export interface ContextConfig {
-  maxTokens?: number;
-  reserveTokensForResponse?: number;
-  reserveTokensForTools?: number;
-  enableAutoUpgrade?: boolean;
-  preferredModel?: string;
-}
+export const MODEL_SELECTION_RULES = {
+  // Use mini for simple conversations (< 3 tools, < 8k tokens)
+  SIMPLE_CONVERSATION_THRESHOLD: {
+    maxTools: 2,
+    maxTokens: 8000,
+    recommendedModel: 'gpt-4.1-mini',
+  },
+
+  // Use mini for research tasks with good prompt engineering
+  RESEARCH_TASK_THRESHOLD: {
+    maxTools: 4,
+    maxTokens: 12000,
+    recommendedModel: 'gpt-4.1-mini',
+  },
+
+  // Upgrade to full model for complex multi-step operations
+  COMPLEX_TASK_THRESHOLD: {
+    minTools: 5,
+    minTokens: 12000,
+    recommendedModel: 'gpt-4.1',
+  },
+} as const;
 
 /**
  * Context analysis result
@@ -37,78 +55,57 @@ export interface ContextAnalysis {
   recommendedModel: string;
   shouldTruncate: boolean;
   shouldSummarizeTools: boolean;
+  reasoning: string;
 }
 
 /**
  * Context Window Manager
  */
-export class ContextWindowManager {
-  private logger: RequestLogger;
-  private config: ContextConfig;
+export interface ContextWindowConfig {
+  maxTokens?: number;
+  reserveTokensForResponse?: number;
+  reserveTokensForTools?: number;
+  enableAutoUpgrade?: boolean;
+  aggressiveOptimization?: boolean;
+}
 
-  constructor(logger: RequestLogger, config: ContextConfig = {}) {
-    this.logger = logger;
+/**
+ * Enhanced Context Window Manager with performance optimization
+ */
+export class ContextWindowManager {
+  private config: ContextWindowConfig;
+  private logger: RequestLogger;
+
+  constructor(config: ContextWindowConfig = {}, logger: RequestLogger) {
     this.config = {
-      maxTokens: 14000, // Leave buffer for response
-      reserveTokensForResponse: 2000,
-      reserveTokensForTools: 1500,
-      enableAutoUpgrade: true,
+      maxTokens: config.maxTokens || 12000, // Conservative default for mini
+      reserveTokensForResponse: config.reserveTokensForResponse || 2000,
+      reserveTokensForTools: config.reserveTokensForTools || 1000, // Reduced from 1500
+      enableAutoUpgrade: config.enableAutoUpgrade ?? true,
+      aggressiveOptimization: config.aggressiveOptimization ?? true,
       ...config,
     };
+    this.logger = logger;
   }
 
   /**
-   * Estimate token count for messages
+   * Estimate token count for messages (rough approximation)
    */
   estimateTokenCount(messages: BaseMessage[]): number {
-    let totalTokens = 0;
+    const totalChars = messages.reduce((acc, msg) => {
+      const content =
+        typeof msg.content === 'string'
+          ? msg.content
+          : JSON.stringify(msg.content);
+      return acc + content.length;
+    }, 0);
 
-    for (const message of messages) {
-      // Base message overhead (role, metadata, etc.)
-      totalTokens += 10;
-
-      // Content tokens
-      if (typeof message.content === 'string') {
-        totalTokens += this.estimateStringTokens(message.content);
-      } else if (Array.isArray(message.content)) {
-        for (const part of message.content) {
-          if (typeof part === 'string') {
-            totalTokens += this.estimateStringTokens(part);
-          } else if (part && typeof part === 'object') {
-            totalTokens += this.estimateStringTokens(JSON.stringify(part));
-          }
-        }
-      }
-
-      // Tool calls and results add significant overhead
-      if (message._getType() === 'ai' && (message as any).tool_calls) {
-        const toolCalls = (message as any).tool_calls;
-        totalTokens += toolCalls.length * 50; // Base overhead per tool call
-        for (const toolCall of toolCalls) {
-          totalTokens += this.estimateStringTokens(JSON.stringify(toolCall));
-        }
-      }
-
-      if (message._getType() === 'tool') {
-        totalTokens += 50; // Tool message overhead
-        totalTokens += this.estimateStringTokens(message.content as string);
-      }
-    }
-
-    return totalTokens;
+    // More accurate estimation: ~3.5 chars per token for English
+    return Math.ceil(totalChars / 3.5);
   }
 
   /**
-   * Estimate tokens for a string (rough approximation)
-   */
-  private estimateStringTokens(text: string): number {
-    // Rough approximation: 1 token ≈ 4 characters for English
-    // Add some buffer for special tokens and encoding
-    return Math.ceil(text.length / 3.5);
-  }
-
-  /**
-   * Analyze context and provide recommendations
+   * Enhanced context analysis with performance optimization
    */
   analyzeContext(
     messages: BaseMessage[],
@@ -121,7 +118,7 @@ export class ContextWindowManager {
       16385;
 
     // Account for tool definitions and response space
-    const toolTokens = toolCount * (this.config.reserveTokensForTools ?? 1500);
+    const toolTokens = toolCount * (this.config.reserveTokensForTools ?? 1000);
     const totalNeeded =
       estimatedTokens +
       toolTokens +
@@ -131,11 +128,42 @@ export class ContextWindowManager {
     const shouldTruncate =
       totalNeeded > (this.config.maxTokens || modelLimit * 0.8);
 
-    // Recommend model upgrade for complex operations
+    // ENHANCED: Performance-first model selection
     let recommendedModel = currentModel;
-    if (this.config.enableAutoUpgrade && (exceedsLimit || toolCount > 3)) {
-      if (currentModel === 'gpt-4.1-mini') {
-        recommendedModel = 'gpt-4.1';
+    let reasoning = 'Current model maintained';
+
+    if (this.config.aggressiveOptimization) {
+      // Try to keep using mini model whenever possible
+      if (currentModel === 'gpt-4.1' || currentModel === 'gpt-4o') {
+        const { maxTools, maxTokens } =
+          MODEL_SELECTION_RULES.RESEARCH_TASK_THRESHOLD;
+        if (toolCount <= maxTools && estimatedTokens <= maxTokens) {
+          recommendedModel = 'gpt-4.1-mini';
+          reasoning =
+            'Downgraded to mini for efficiency (task within mini capabilities)';
+        }
+      }
+
+      // Only upgrade if absolutely necessary
+      if (currentModel === 'gpt-4.1-mini' || currentModel === 'gpt-4o-mini') {
+        const { minTools, minTokens } =
+          MODEL_SELECTION_RULES.COMPLEX_TASK_THRESHOLD;
+        if (
+          exceedsLimit ||
+          (toolCount >= minTools && estimatedTokens >= minTokens)
+        ) {
+          recommendedModel = 'gpt-4.1'; // Always upgrade to gpt-4.1
+          reasoning =
+            'Upgraded to full model for complex task or context limit';
+        }
+      }
+    } else {
+      // Original logic for backward compatibility
+      if (this.config.enableAutoUpgrade && (exceedsLimit || toolCount > 3)) {
+        if (currentModel === 'gpt-4.1-mini' || currentModel === 'gpt-4o-mini') {
+          recommendedModel = 'gpt-4.1'; // Always upgrade to gpt-4.1
+          reasoning = 'Upgraded due to context or tool complexity';
+        }
       }
     }
 
@@ -149,7 +177,7 @@ export class ContextWindowManager {
           (m.content as string).length > 5000,
       );
 
-    this.logger.info('[ContextWindowManager] Context analysis', {
+    this.logger.info('[ContextWindowManager] Enhanced context analysis', {
       estimatedTokens,
       modelLimit,
       toolTokens,
@@ -159,7 +187,10 @@ export class ContextWindowManager {
       shouldSummarizeTools,
       currentModel,
       recommendedModel,
+      reasoning,
       messageCount: messages.length,
+      toolCount,
+      aggressiveOptimization: this.config.aggressiveOptimization,
     });
 
     return {
@@ -168,7 +199,56 @@ export class ContextWindowManager {
       recommendedModel,
       shouldTruncate,
       shouldSummarizeTools,
+      reasoning,
     };
+  }
+
+  /**
+   * Get optimal model for a given context
+   */
+  getOptimalModel(
+    messages: BaseMessage[],
+    toolCount: number,
+    preferredModel?: string,
+  ): string {
+    const analysis = this.analyzeContext(
+      messages,
+      preferredModel || 'gpt-4.1-mini',
+      toolCount,
+    );
+    return analysis.recommendedModel;
+  }
+
+  /**
+   * Create optimized ChatOpenAI instance
+   */
+  createOptimizedLLM(
+    messages: BaseMessage[],
+    toolCount: number,
+    preferredModel?: string,
+    additionalConfig?: Partial<ConstructorParameters<typeof ChatOpenAI>[0]>,
+  ): ChatOpenAI {
+    const optimalModel = this.getOptimalModel(
+      messages,
+      toolCount,
+      preferredModel,
+    );
+
+    const config = {
+      modelName: optimalModel,
+      temperature: 0.1, // Slightly lower for more consistent performance
+      streaming: true,
+      ...additionalConfig,
+    };
+
+    this.logger.info('[ContextWindowManager] Created optimized LLM', {
+      model: optimalModel,
+      toolCount,
+      messageCount: messages.length,
+      config,
+    });
+
+    return new ChatOpenAI(config);
   }
 
   /**
@@ -183,7 +263,7 @@ export class ContextWindowManager {
 
     // Reserve space for tools and response
     const reservedTokens =
-      toolCount * (this.config.reserveTokensForTools ?? 1500) +
+      toolCount * (this.config.reserveTokensForTools ?? 1000) +
       (this.config.reserveTokensForResponse ?? 2000);
     const availableTokens = Math.max(1000, maxTokens - reservedTokens);
 

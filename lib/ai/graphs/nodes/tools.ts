@@ -8,6 +8,8 @@
  * - Updating workflow state based on tool execution
  */
 
+import { ToolExecutor } from '@langchain/langgraph/prebuilt';
+import { type DynamicStructuredTool } from '@langchain/core/tools';
 import { ToolMessage } from '@langchain/core/messages';
 import type { RequestLogger } from '../../../services/observabilityService';
 import type { GraphState } from '../state';
@@ -335,4 +337,14 @@ export function getToolExecutionStats(results: ToolExecutionResult[]): {
     averageDuration: results.length > 0 ? totalDuration / results.length : 0,
     toolsByName,
   };
+}
+
+export function createToolsExecutor(tools: DynamicStructuredTool[]) {
+  return new ToolExecutor({ tools });
+}
+
+export async function executeTools(state: any, executor: ToolExecutor) {
+  const { messages } = state;
+  const toolInvocation = messages[messages.length - 1];
+  return executor.invoke(toolInvocation);
 }

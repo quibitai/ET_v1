@@ -96,8 +96,33 @@ export async function storeConversationalMemory(
       return false;
     }
 
+    // TRUNCATE CONTENT: Prevent token limit errors
+    // Rough estimate: 1 token ≈ 4 characters, target max 6000 tokens ≈ 24000 characters
+    const MAX_CONTENT_LENGTH = 24000;
+    
+    let truncatedUserMessage = userMessage;
+    let truncatedAiResponse = aiResponse;
+    
+    // Truncate user message if too long
+    if (userMessage.length > MAX_CONTENT_LENGTH / 2) {
+      truncatedUserMessage = userMessage.substring(0, MAX_CONTENT_LENGTH / 2) + "... [truncated]";
+      console.warn(`[ConversationalMemory] User message truncated from ${userMessage.length} to ${truncatedUserMessage.length} characters`);
+    }
+    
+    // Truncate AI response if too long  
+    if (aiResponse.length > MAX_CONTENT_LENGTH / 2) {
+      truncatedAiResponse = aiResponse.substring(0, MAX_CONTENT_LENGTH / 2) + "... [truncated]";
+      console.warn(`[ConversationalMemory] AI response truncated from ${aiResponse.length} to ${truncatedAiResponse.length} characters`);
+    }
+
     // Format the content as a turn
-    const content = `User: ${userMessage}\nAI: ${aiResponse}`;
+    const content = `User: ${truncatedUserMessage}\nAI: ${truncatedAiResponse}`;
+    
+    // Additional safety check on final content length
+    if (content.length > MAX_CONTENT_LENGTH) {
+      console.warn(`[ConversationalMemory] Final content still too long (${content.length} chars), skipping storage for chatId=${chatId}`);
+      return false;
+    }
 
     // Generate embedding for the content
     const contentEmbedding = await embeddings.embedQuery(content);

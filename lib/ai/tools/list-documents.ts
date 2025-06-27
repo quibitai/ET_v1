@@ -29,6 +29,13 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export const listDocumentsTool = new DynamicStructuredTool({
   name: 'listDocuments',
   description: `Lists all available documents in the knowledge base. Use this to discover what documents exist before requesting specific content. 
+    
+    IMPORTANT USAGE GUIDELINES:
+    - Use WITHOUT filters in most cases to see all available documents
+    - Only use filters when users explicitly specify metadata/schema requirements
+    - For content-based searches (e.g., "find client research"), use searchInternalKnowledgeBase instead
+    - This tool discovers documents; searchInternalKnowledgeBase finds content within them
+    
     Returns document metadata including:
     - id: The unique identifier needed for getDocumentContents
     - title: Human-readable document title
@@ -40,7 +47,7 @@ export const listDocumentsTool = new DynamicStructuredTool({
       .record(z.string())
       .nullish()
       .describe(
-        'Optional JSONB filter for metadata (e.g., {"schema": "markdown"})',
+        'Optional metadata filter - ONLY use when user explicitly specifies schema/metadata requirements. For content searches, use searchInternalKnowledgeBase instead. Example: {"schema": "markdown"} only if user specifically asks for markdown documents.',
       ),
   }),
   func: async ({ filter }): Promise<string> => {
@@ -85,6 +92,8 @@ export const listDocumentsTool = new DynamicStructuredTool({
     }
 
     try {
+      const hasFilter = normalizedFilter && Object.keys(normalizedFilter).length > 0;
+      
       // Build query with optional filter
       let query = supabase
         .from('document_metadata')
@@ -92,7 +101,7 @@ export const listDocumentsTool = new DynamicStructuredTool({
         .order('title');
 
       // Apply any provided filters
-      if (normalizedFilter && Object.keys(normalizedFilter).length > 0) {
+      if (hasFilter) {
         Object.entries(normalizedFilter).forEach(([key, value]) => {
           query = query.eq(key, value);
         });
@@ -129,6 +138,57 @@ export const listDocumentsTool = new DynamicStructuredTool({
 
       const duration = performance.now() - startTime;
 
+      // INTELLIGENT FALLBACK: If filter returns no results, try without filter
+      if (hasFilter && (!data || data.length === 0)) {
+        console.log('[listDocuments] Filter returned no results, trying without filter as fallback');
+        
+        const fallbackQuery = supabase
+          .from('document_metadata')
+          .select('id, title, url, created_at, schema')
+          .order('title');
+          
+        const { data: fallbackData, error: fallbackError } = await fallbackQuery;
+        
+        if (!fallbackError && fallbackData && fallbackData.length > 0) {
+          // Format fallback results
+          const documentList = fallbackData.map((doc) => ({
+            id: doc.id,
+            title: doc.title,
+            url: doc.url,
+            created_at: doc.created_at,
+            schema: doc.schema,
+            clickable_link: `[${doc.title}](/api/documents/${doc.id})`,
+          }));
+
+          const formattedList = documentList
+            .map((doc) => `- [${doc.title}](/api/documents/${doc.id})`)
+            .join('\n');
+
+          await trackEvent({
+            eventName: ANALYTICS_EVENTS.TOOL_USED,
+            properties: {
+              toolName: 'listDocuments',
+              success: true,
+              duration: Math.round(duration),
+              documentCount: documentList.length,
+              usedFallback: true,
+              originalFilter: normalizedFilter,
+              timestamp: new Date().toISOString(),
+            },
+          });
+
+          return JSON.stringify({
+            success: true,
+            available_documents: documentList,
+            total_count: documentList.length,
+            formatted_list: formattedList,
+            filter_note: `Filter ${JSON.stringify(normalizedFilter)} returned no results. Showing all documents instead. For content-based searches, use searchInternalKnowledgeBase.`,
+            usage_instructions:
+              "To retrieve a document's full content, use the getDocumentContents tool with the document's id. When displaying the list to users, use the formatted_list with clickable links that allow users to view documents directly.",
+          });
+        }
+      }
+
       if (!data || data.length === 0) {
         // Track empty results
         await trackEvent({
@@ -144,7 +204,9 @@ export const listDocumentsTool = new DynamicStructuredTool({
 
         return JSON.stringify({
           success: true,
-          message: 'No documents found in the knowledge base.',
+          message: hasFilter 
+            ? `No documents found matching filter ${JSON.stringify(normalizedFilter)}. Try without filters or use searchInternalKnowledgeBase for content searches.`
+            : 'No documents found in the knowledge base.',
           available_documents: [],
           total_count: 0,
         });

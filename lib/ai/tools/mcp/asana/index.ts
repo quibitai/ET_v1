@@ -23,28 +23,16 @@ export async function createAsanaTools(
   try {
     const client = await AsanaMCPClient.create();
 
-    const isAvailable = await client.isAvailable();
-    if (!isAvailable) {
-      const validation = await client.validateConfiguration();
-      const warningMessage =
-        'Asana MCP health check failed, but attempting to create tools anyway. This may indicate a configuration issue with the MCP server.';
-      logger?.warn(warningMessage, {
-        serverUrl: validation.serverUrl,
-        serverStatus: validation.serverStatus,
-        errors: validation.errors,
-      });
-      console.warn(`[AsanaMCP] ${warningMessage}`);
-    } else {
-      logger?.info('Asana MCP server validated successfully.', {
-        serverUrl: client.configuration.serverUrl,
-      });
-    }
+    // PERFORMANCE FIX: Skip health check to avoid delays from failing Asana MCP server
+    // The tools will still work if the server is available, but we won't wait for health checks
+    logger?.info('Asana MCP tools created (health check skipped for performance)', {
+      serverUrl: client.configuration.serverUrl,
+    });
 
     const tools: DynamicStructuredTool[] = [
       // Workspace Tools
       new DynamicStructuredTool({
         name: 'asana_list_workspaces',
-        responseType: 'list',
         // IMPROVEMENT: More directive description.
         description:
           'List all available workspaces the user has access to. This is the first and most essential tool to use if you do not know the workspace GID, as most other tools require it.',
@@ -63,7 +51,6 @@ export async function createAsanaTools(
       // Project Tools
       new DynamicStructuredTool({
         name: 'asana_search_projects',
-        responseType: 'search',
         description:
           'Search for projects in Asana by their name. Use this tool specifically when the user asks to "find", "search for", or "look up" a project.',
         schema: z.object({
@@ -98,7 +85,6 @@ export async function createAsanaTools(
 
       new DynamicStructuredTool({
         name: 'asana_list_projects',
-        responseType: 'list',
         description:
           'List all projects in a workspace without filtering. Use this when the user wants to see all available projects, browse projects, or asks "what projects do I have" or "list my projects". For finding specific projects by name, use asana_search_projects instead.',
         schema: z.object({
@@ -144,7 +130,6 @@ export async function createAsanaTools(
 
       new DynamicStructuredTool({
         name: 'asana_get_project',
-        responseType: 'detail',
         description:
           'Get detailed information about a single, specific project. Use this tool when you already have the project GID or when the user asks for more details, notes, or information about a project that has just been found or mentioned.',
         schema: z.object({
@@ -167,7 +152,6 @@ export async function createAsanaTools(
 
       new DynamicStructuredTool({
         name: 'asana_create_project',
-        responseType: 'action',
         // IMPROVEMENT: Instruct the AI on prerequisites.
         description:
           'Create a new project in a workspace. Before calling this, you must know the `workspace_id`. If the user has not provided it, use `asana_list_workspaces` first. For organization workspaces, a `team_id` is also often required.',
@@ -199,7 +183,6 @@ export async function createAsanaTools(
 
       new DynamicStructuredTool({
         name: 'asana_update_project',
-        responseType: 'action',
         // IMPROVEMENT: Guide the AI on how to get the required ID.
         description:
           'Update an existing project. Requires the `project_id`. If you do not have the GID for the project the user is referring to, use `asana_search_projects` to find it first.',
@@ -220,7 +203,6 @@ export async function createAsanaTools(
 
       new DynamicStructuredTool({
         name: 'asana_delete_project',
-        responseType: 'action',
         // IMPROVEMENT: Add a warning.
         description:
           'Deletes a project permanently. This is a destructive action. Requires the `project_id`. Use `asana_search_projects` to find the GID if you do not have it.',
@@ -239,7 +221,6 @@ export async function createAsanaTools(
       // Task Tools
       new DynamicStructuredTool({
         name: 'asana_search_tasks',
-        responseType: 'search',
         description:
           'Search for specific work items or tasks within a workspace. Use this only when the user is asking about tasks, not projects.',
         schema: z.object({
@@ -286,7 +267,6 @@ export async function createAsanaTools(
 
       new DynamicStructuredTool({
         name: 'asana_get_task',
-        responseType: 'detail',
         description:
           'Get detailed information about a specific task. Requires the `task_id`. If you need details for a task and do not have the GID, use `asana_search_tasks` first.',
         schema: z.object({
@@ -304,7 +284,6 @@ export async function createAsanaTools(
 
       new DynamicStructuredTool({
         name: 'asana_create_task',
-        responseType: 'action',
         // IMPROVEMENT: Critical instruction for the AI to prevent common failures.
         description:
           'Create a new task in a project. CRITICAL: You must know the `project_id` before calling this tool. If the user asks to create a task without specifying a project, you MUST ask for the project name and use `asana_search_projects` to get the GID first.',

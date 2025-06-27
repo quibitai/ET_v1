@@ -18,6 +18,7 @@ import type { GraphState } from '../state';
 import { getLastHumanMessage, getToolMessages } from '../state';
 import { loadGraphPrompt } from '../prompts/loader';
 import { determineResponseMode as unifiedDetermineResponseMode } from '../../utils/responseMode';
+import { buildReferencesContext } from '../prompts/loader';
 
 /**
  * Dependencies for the response generation node
@@ -127,6 +128,31 @@ async function generateResponseByMode(
   const { llm, logger, currentDateTime, clientConfig } = dependencies;
   const startTime = Date.now();
 
+  // Extract tool results for context
+  const { toolResults, referencesContext } = extractToolResultsContext(state);
+  
+  // For simple document listing, use the formatted results directly
+  if (mode === 'simple' && toolResults.includes('formatted_list')) {
+    try {
+      const toolMessages = getToolMessages(state);
+      if (toolMessages.length > 0) {
+        const parsed = JSON.parse(toolMessages[0].content as string);
+        if (parsed.formatted_list) {
+          const simpleResponse = `Here are the files available in the knowledge base:
+
+${parsed.formatted_list}
+
+If you want me to retrieve or summarize any specific file, just let me know!`;
+          
+          const response = new AIMessage(simpleResponse);
+          return { response, mode, duration: Date.now() - startTime };
+        }
+      }
+    } catch (e) {
+      // Fall through to normal processing
+    }
+  }
+
   // Load the appropriate prompt template
   const promptTemplate = await loadGraphPrompt({
     nodeType: mode,
@@ -139,10 +165,34 @@ async function generateResponseByMode(
   logger.info('[GenerateResponse] Loaded prompt template', {
     mode,
     promptLength: promptTemplate.length,
+    hasToolResults: toolResults !== 'No tool results available.',
+  });
+
+  // Create context-aware prompt with tool results
+  const contextualPrompt = `${promptTemplate}
+
+## Current Context
+User Query: ${getLastHumanMessage(state)}
+
+## Tool Results
+${toolResults}
+
+${referencesContext}
+
+Please provide a direct, helpful response based on the tool results above. Do not use generic templates or placeholders.`;
+
+  logger.info('[GenerateResponse] Final prompt structure', {
+    mode,
+    promptTemplateLength: promptTemplate.length,
+    toolResultsLength: toolResults.length,
+    referencesContextLength: referencesContext.length,
+    hasReferences: referencesContext.length > 0,
+    referencesPreview: referencesContext.substring(0, 200) + '...',
+    totalPromptLength: contextualPrompt.length
   });
 
   // Generate the response
-  const response = await llm.invoke([new SystemMessage(promptTemplate)]);
+  const response = await llm.invoke([new SystemMessage(contextualPrompt)]);
 
   const duration = Date.now() - startTime;
 
@@ -184,50 +234,47 @@ function extractToolResultsContext(state: GraphState): {
     };
   }
 
-  // Format tool results
+  // Format tool results - handle both raw content and structured JSON responses
   const toolResults = toolMessages
     .map((msg, index) => {
-      const content =
-        typeof msg.content === 'string'
-          ? msg.content
-          : JSON.stringify(msg.content);
+      let content: string;
+      
+      if (typeof msg.content === 'string') {
+        try {
+          // Try to parse as JSON to extract formatted content
+          const parsed = JSON.parse(msg.content);
+          
+          // If it's a structured tool response, use formatted_list or appropriate display field
+          if (parsed.formatted_list) {
+            content = parsed.formatted_list;
+          } else if (parsed.success && parsed.available_documents) {
+            // Handle document listing responses
+            content = `Found ${parsed.total_count || parsed.available_documents.length} documents:\n${parsed.formatted_list || 'Document list available'}`;
+          } else if (parsed.content) {
+            // Handle document content responses
+            content = parsed.content;
+          } else if (parsed.result) {
+            // Handle general tool results
+            content = typeof parsed.result === 'string' ? parsed.result : JSON.stringify(parsed.result, null, 2);
+          } else {
+            // Fallback to the full response, but format it nicely
+            content = JSON.stringify(parsed, null, 2);
+          }
+        } catch (e) {
+          // If not JSON, use as-is
+          content = msg.content;
+        }
+      } else {
+        content = JSON.stringify(msg.content, null, 2);
+      }
 
       return `## Tool Result ${index + 1}
 ${content}`;
     })
     .join('\n\n---\n\n');
 
-  // Extract references
-  const references: string[] = [];
-
-  toolMessages.forEach((msg) => {
-    try {
-      const content =
-        typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
-
-      // Extract document references
-      if (content.document_id || content.title) {
-        references.push(`Document: ${content.title || content.document_id}`);
-      }
-
-      // Extract web references
-      if (content.url) {
-        references.push(`Source: ${content.url}`);
-      }
-
-      // Extract search references
-      if (content.query) {
-        references.push(`Search: "${content.query}"`);
-      }
-    } catch (e) {
-      // Ignore parsing errors
-    }
-  });
-
-  const referencesContext =
-    references.length > 0
-      ? `## Available References\n${references.join('\n')}`
-      : '';
+  // Use our enhanced reference building system from loader.ts
+  const referencesContext = buildReferencesContext(state);
 
   return {
     toolResults,

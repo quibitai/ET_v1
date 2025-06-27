@@ -174,6 +174,123 @@ class McpSchemaService {
   }
 
   /**
+   * Specialized patching for OpenAI function schemas to fix optional field compatibility.
+   * OpenAI requires optional fields to also be nullable for structured outputs.
+   */
+  private performOpenAISchemaPatching(schema: any): {
+    patchedSchema: any;
+    patchCount: number;
+    issues: string[];
+  } {
+    console.log(
+      `[McpSchemaService] Starting OpenAI-specific schema patching for schema:`,
+      JSON.stringify(schema, null, 2),
+    );
+
+    if (typeof schema !== 'object' || schema === null) {
+      return { patchedSchema: schema, patchCount: 0, issues: [] };
+    }
+
+    const newSchema = JSON.parse(JSON.stringify(schema));
+    let patchCount = 0;
+    const issues: string[] = [];
+
+    const traverseAndPatchForOpenAI = (node: any, path: string, requiredFields: Set<string> = new Set()) => {
+      if (typeof node !== 'object' || node === null) return;
+
+      // Track required fields at this level
+      if (node.required && Array.isArray(node.required)) {
+        node.required.forEach((field: string) => requiredFields.add(field));
+      }
+
+      // Process properties
+      if (node.properties) {
+        for (const [key, prop] of Object.entries(node.properties)) {
+          const propPath = path ? `${path}.${key}` : key;
+          const isRequired = requiredFields.has(key);
+          
+          // Fix #4: OpenAI compatibility - optional fields must be nullable
+          if (!isRequired && typeof prop === 'object' && prop !== null) {
+            // Check if this property needs to be made nullable
+            const needsNullable = this.shouldMakeFieldNullable(prop as any, propPath);
+            
+            if (needsNullable) {
+              // Add null to the type definition for OpenAI compatibility
+              if ((prop as any).type && (prop as any).type !== 'null') {
+                if (Array.isArray((prop as any).type)) {
+                  if (!(prop as any).type.includes('null')) {
+                    (prop as any).type.push('null');
+                    patchCount++;
+                    issues.push(`Added 'null' type to optional field '${propPath}' for OpenAI compatibility`);
+                  }
+                } else {
+                  (prop as any).type = [(prop as any).type, 'null'];
+                  patchCount++;
+                  issues.push(`Converted type to array with null for optional field '${propPath}' for OpenAI compatibility`);
+                }
+              } else if (!(prop as any).type) {
+                // If no type is specified, make it nullable any
+                (prop as any).type = ['null'];
+                patchCount++;
+                issues.push(`Added null type to untyped optional field '${propPath}' for OpenAI compatibility`);
+              }
+            }
+          }
+
+          // Recurse into nested objects
+          if (typeof prop === 'object' && prop !== null) {
+            const nestedRequiredFields = new Set<string>();
+            if ((prop as any).required && Array.isArray((prop as any).required)) {
+              (prop as any).required.forEach((field: string) => nestedRequiredFields.add(field));
+            }
+            traverseAndPatchForOpenAI(prop, propPath, nestedRequiredFields);
+          }
+        }
+      }
+
+      // Recurse into array items
+      if (node.items) {
+        traverseAndPatchForOpenAI(node.items, `${path}.items`, new Set());
+      }
+    };
+
+    traverseAndPatchForOpenAI(newSchema, 'root');
+    return { patchedSchema: newSchema, patchCount, issues };
+  }
+
+  /**
+   * Determines if a field should be made nullable for OpenAI compatibility
+   */
+  private shouldMakeFieldNullable(prop: any, path: string): boolean {
+    // Skip if already has null type
+    if (prop.type === 'null' || (Array.isArray(prop.type) && prop.type.includes('null'))) {
+      return false;
+    }
+
+    // Skip if it's an object with properties (complex types)
+    if (prop.type === 'object' && prop.properties) {
+      return false;
+    }
+
+    // Skip if it's an array (arrays handle nullability differently)
+    if (prop.type === 'array') {
+      return false;
+    }
+
+    // Make primitive optional fields nullable
+    if (prop.type === 'string' || prop.type === 'number' || prop.type === 'boolean') {
+      return true;
+    }
+
+    // Make untyped optional fields nullable
+    if (!prop.type) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Simplified JSON Schema to Zod conversion.
    */
   private jsonSchemaToZod(schema: any): z.ZodSchema {
@@ -245,17 +362,28 @@ class McpSchemaService {
     return tools.map((tool) => {
       if (tool.function?.parameters) {
         const originalSchema = tool.function.parameters;
-        const { patchedSchema, patchCount, issues } =
+        
+        // Apply general schema patches first
+        const { patchedSchema: generalPatchedSchema, patchCount: generalPatchCount, issues: generalIssues } =
           this.patchSchema(originalSchema);
+        
+        // Apply OpenAI-specific patches for optional field compatibility
+        const { patchedSchema: openAIPatchedSchema, patchCount: openAIPatchCount, issues: openAIIssues } =
+          this.performOpenAISchemaPatching(generalPatchedSchema);
 
-        if (patchCount > 0) {
+        const totalPatchCount = generalPatchCount + openAIPatchCount;
+        const allIssues = [...generalIssues, ...openAIIssues];
+
+        if (totalPatchCount > 0) {
           console.warn(
             `[McpSchemaService] 🔧 Patched OpenAI function schema for '${tool.function.name}'`,
             {
-              patches: patchCount,
-              issues,
+              generalPatches: generalPatchCount,
+              openAIPatches: openAIPatchCount,
+              totalPatches: totalPatchCount,
+              issues: allIssues,
               before: JSON.stringify(originalSchema, null, 2),
-              after: JSON.stringify(patchedSchema, null, 2),
+              after: JSON.stringify(openAIPatchedSchema, null, 2),
             },
           );
 
@@ -263,7 +391,7 @@ class McpSchemaService {
             ...tool,
             function: {
               ...tool.function,
-              parameters: patchedSchema,
+              parameters: openAIPatchedSchema,
             },
           };
         }

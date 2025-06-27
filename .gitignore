@@ -68,3 +68,9 @@ pids
 /playwright-report/
 /blob-report/
 /playwright/*
+
+# Google OAuth Credentials
+client_secret.json
+.credentials/
+*.json.credentials
+mcp-server-google-workspace/.credentials/
