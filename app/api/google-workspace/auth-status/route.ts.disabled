@@ -59,8 +59,8 @@ export async function GET(request: NextRequest) {
       bridgeSuccess: !!tokens,
       bridgeTokens: tokens
         ? {
-            hasAccessToken: !!tokens.accessToken,
-            hasRefreshToken: !!tokens.refreshToken,
+            hasAccessToken: !!tokens.access_token,
+            hasRefreshToken: !!tokens.refresh_token,
             userEmail: tokens.userEmail,
             expiresAt: tokens.expiresAt
               ? new Date(tokens.expiresAt).toISOString()

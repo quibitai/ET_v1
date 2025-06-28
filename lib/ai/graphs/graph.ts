@@ -61,8 +61,8 @@ const SimpleGraphStateAnnotation = Annotation.Root({
     default: () => 'synthesis',
   }),
   specialist_id: Annotation<string>({
-    reducer: (x?: string, y?: string) => y ?? x,
-    default: () => undefined,
+    reducer: (x?: string, y?: string) => y ?? x ?? '',
+    default: () => '',
   }),
   metadata: Annotation<{
     fileContext?: {

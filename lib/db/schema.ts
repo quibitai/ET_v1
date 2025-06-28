@@ -383,4 +383,5 @@ export const userMcpIntegrations = pgTable(
 export type UserMcpIntegration = InferSelectModel<typeof userMcpIntegrations>;
 
 // Export all relations
-export * from './relations';
+// TODO: Re-enable when relations.ts is uncommented
+// export * from './relations';

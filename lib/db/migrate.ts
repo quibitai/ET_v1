@@ -23,6 +23,8 @@ const runMigrate = async () => {
   await migrate(db, { migrationsFolder: './lib/db/migrations' });
 
   // Run custom migration to drop deprecated tables
+  // DISABLED: File removed during cleanup - deprecated tables already dropped
+  /*
   try {
     console.log('⏳ Running custom migration to drop deprecated tables...');
     const dropTablesSQL = fs.readFileSync(
@@ -36,6 +38,7 @@ const runMigrate = async () => {
     console.error('⚠️ Error running custom migration:', err);
     // Continue execution even if this fails
   }
+  */
 
   // Run custom migration to enforce client_id NOT NULL constraints
   try {
