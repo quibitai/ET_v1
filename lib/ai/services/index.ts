@@ -9,8 +9,7 @@
 export { ToolCache } from './ToolCache';
 export type { ToolCall, CacheStats } from './ToolCache';
 
-export { ToolRegistry } from './ToolRegistry';
-export type { ToolDefinition, ToolRegistrationResult } from './ToolRegistry';
+// ToolRegistry removed - now using UnifiedToolRegistry from tools/registry
 
 export { ToolExecutionService } from './ToolExecutionService';
 export type {

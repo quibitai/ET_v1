@@ -657,22 +657,15 @@ export class MultiMCPClient {
       }
 
       try {
-        // Get tool manifest
-        const manifest = await this.toolRegistry.getToolManifest(
-          request.toolName,
-          route.service,
-        );
-
-        // Check if tool supports streaming
-        if (!manifest?.streamingSupported) {
+        // TODO: Implement manifest lookup with UnifiedToolRegistry
+        // For now, check if tool exists in registry
+        const tool = toolRegistry.getTool(request.toolName);
+        if (!tool) {
           continue; // Try next service
         }
 
-        // Create wrapper with manifest
-        const streamingWrapper = new StreamingMCPWrapper(
-          route.client,
-          manifest,
-        );
+        // Create wrapper without manifest for now
+        const streamingWrapper = new StreamingMCPWrapper(route.client);
 
         return await streamingWrapper.executeStreaming(request);
       } catch (error) {
@@ -701,12 +694,14 @@ export class MultiMCPClient {
     }> = [];
 
     try {
-      const allStreamingTools = await this.toolRegistry.getStreamingTools();
+      // TODO: Implement streaming tools discovery with UnifiedToolRegistry
+      // For now, get all tools and filter by available services
+      const allTools = toolRegistry.getTools();
 
-      for (const manifest of allStreamingTools) {
-        // Check if service is available and not in circuit breaker
-        const service = this.services.get(manifest.service);
-        const status = this.serviceStatus.get(manifest.service);
+      for (const tool of allTools) {
+        // Check if tool's source service is available and not in circuit breaker
+        const service = this.services.get(tool.source);
+        const status = this.serviceStatus.get(tool.source);
 
         if (
           service?.enabled &&
@@ -714,9 +709,9 @@ export class MultiMCPClient {
           !this.isServiceInCircuitBreaker(status)
         ) {
           streamingTools.push({
-            toolName: manifest.id,
-            service: manifest.service,
-            manifest,
+            toolName: tool.name,
+            service: tool.source,
+            manifest: { id: tool.name, streamingSupported: true }, // Placeholder
           });
         }
       }
@@ -735,11 +730,10 @@ export class MultiMCPClient {
     serviceName?: string,
   ): Promise<boolean> {
     try {
-      const manifest = await this.toolRegistry.getToolManifest(
-        toolName,
-        serviceName,
-      );
-      return manifest?.streamingSupported || false;
+      // TODO: Implement streaming support check with UnifiedToolRegistry
+      // For now, check if tool exists and assume streaming support
+      const tool = toolRegistry.getTool(toolName);
+      return tool !== undefined;
     } catch {
       return false;
     }
