@@ -80,6 +80,11 @@ const RouterStateAnnotation = Annotation.Root({
     reducer: (x, y) => ({ ...x, ...y }),
     default: () => ({}),
   }),
+  // Phase 2.1: Add correlation ID for request tracing
+  correlationId: Annotation<string>({
+    reducer: (x?: string, y?: string) => y ?? x ?? '',
+    default: () => '',
+  }),
 });
 
 // Extract type from annotation
@@ -690,7 +695,11 @@ export class ToolRouterGraph {
     const messages = state.messages || [];
     const userQuery = this.extractUserQuery(messages);
 
-    console.log('[ToolRouterGraph] Router analyzing query:', userQuery);
+    const correlationId = state.correlationId || 'unknown';
+    console.log(
+      `[${correlationId}] [ToolRouterGraph] Router analyzing query:`,
+      userQuery,
+    );
 
     // 🚀 CRITICAL FIX: Check for file context first
     const fileContext = state.metadata?.fileContext;
@@ -699,11 +708,14 @@ export class ToolRouterGraph {
     );
 
     if (hasFileContent) {
-      console.log('[ToolRouterGraph] File context detected:', {
-        filename: fileContext.filename,
-        contentLength: fileContext.extractedText.length,
-        contentType: fileContext.contentType,
-      });
+      console.log(
+        `[${correlationId}] [ToolRouterGraph] File context detected:`,
+        {
+          filename: fileContext.filename,
+          contentLength: fileContext.extractedText.length,
+          contentType: fileContext.contentType,
+        },
+      );
 
       // Check if query is about the uploaded file
       const isFileQuery = this.isQueryAboutFile(userQuery, fileContext);
@@ -728,7 +740,7 @@ export class ToolRouterGraph {
     // If no file context or query not about file, use standard routing
     const intent = this.analyzeQueryIntent(userQuery);
 
-    console.log('[ToolRouterGraph] Routing decision:', {
+    console.log(`[${correlationId}] [ToolRouterGraph] Routing decision:`, {
       route: intent.type,
       confidence: intent.confidence,
       reasoning: intent.reasoning,

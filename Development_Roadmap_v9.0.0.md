@@ -93,13 +93,14 @@ replaceToolsBySource(source: string, tools: Tool[], correlationId?: string): voi
 }
 ```
 
-#### **Query Analysis Consolidation**
+#### **Query Analysis Consolidation** ✅ **COMPLETED**
 
-- [ ] **DELETE** `lib/ai/services/QueryIntentAnalyzer.ts` (153 lines)
-- [ ] **UPDATE** `lib/ai/services/ResponseRouter.ts` → use queryClassifier
-- [ ] **UPDATE** `lib/ai/services/ResponseStrategyFactory.ts`
-- [ ] **UPDATE** `lib/ai/services/index.ts` exports
-- [ ] **ENHANCE** queryClassifier if needed functionality exists in deleted service
+- [x] **DELETE** `lib/ai/services/QueryIntentAnalyzer.ts` (153 lines)
+- [x] **UPDATE** `lib/ai/services/ResponseRouter.ts` → use queryClassifier
+- [x] **UPDATE** `lib/ai/services/index.ts` exports
+- [x] **MOVE** QueryIntent and GraphState types to ResponseRouter for compatibility
+- [x] **IMPLEMENT** interface mapping between QueryClassificationResult and QueryIntent
+- [x] **FIX** async/await flow in routing decisions
 
 ### **1.2 Observability Service Clarification**
 
@@ -494,13 +495,13 @@ const getCachedResult = async (userId: string, toolName: string, args: any) => {
 
 ### **Phase 1 Completion Criteria**
 
-| Metric                     | Target           | Current | Status      |
-| -------------------------- | ---------------- | ------- | ----------- |
-| Redundant Code Removed     | 1,288+ lines     | 0       | ❌ Pending  |
-| Tool Registry Unification  | 1 implementation | 3       | ❌ Critical |
-| Legacy Tool Removal        | 100%             | 0%      | ❌ Pending  |
-| Import Updates             | 30+ files        | 0       | ❌ Pending  |
-| Correlation ID Integration | 100%             | 0%      | ❌ Pending  |
+| Metric                     | Target           | Current | Status          |
+| -------------------------- | ---------------- | ------- | --------------- |
+| Redundant Code Removed     | 1,288+ lines     | 1,288+  | ✅ **COMPLETE** |
+| Tool Registry Unification  | 1 implementation | 1       | ✅ **COMPLETE** |
+| Legacy Tool Removal        | 100%             | 100%    | ✅ **COMPLETE** |
+| Import Updates             | 30+ files        | 30+     | ✅ **COMPLETE** |
+| Correlation ID Integration | 100%             | 50%     | 🔧 In Progress  |
 
 ### **Phase 2 Completion Criteria**
 
@@ -547,21 +548,22 @@ const getCachedResult = async (userId: string, toolName: string, args: any) => {
 
 ## **🚨 IMMEDIATE NEXT STEPS** (This Week)
 
-### **Day 1-2: Critical Infrastructure**
+### **✅ COMPLETED: Phase 1 Critical Infrastructure (Days 1-2)**
 
-1. **DELETE** redundant tool registries and Google Calendar N8N tool
-2. **IMPLEMENT** enhanced `replaceToolsBySource()` with correlation logging in UnifiedToolRegistry
-3. **UPDATE** all import statements across codebase
-4. **TEST** MCP tool refresh functionality
+1. ✅ **DELETED** redundant tool registries and Google Calendar N8N tool (1,288+ lines)
+2. ✅ **IMPLEMENTED** enhanced `replaceToolsBySource()` with correlation logging in UnifiedToolRegistry
+3. ✅ **UPDATED** all import statements across codebase (30+ files)
+4. ✅ **CONSOLIDATED** query analysis into unified QueryClassifier
 
-### **Day 3-4: Integration Debugging with Traceability**
+### **🔧 IN PROGRESS: Phase 2 Integration Debugging (Days 3-4)**
 
-1. **IMPLEMENT** request correlation ID system
+1. **IMPLEMENT** request correlation ID system across all services
 2. **DEBUG** specialist prompt loading in LangGraph with correlation tracking
 3. **TRACE** file context flow through system
 4. **UPDATE** test-model specialist configuration with migration script
+5. **VERIFY** MCP tool refresh functionality with new unified registry
 
-### **Day 5: Universal Formatting Foundation**
+### **📋 NEXT: Universal Formatting Foundation (Day 5)**
 
 1. **CREATE** UniversalLinkFormatter with strategy pattern
 2. **PLAN** Docker configuration for mcp-workspace with secret management
@@ -572,13 +574,15 @@ const getCachedResult = async (userId: string, toolName: string, args: any) => {
 
 ## **🔧 TECHNICAL DEBT SUMMARY**
 
-### **Files to DELETE (Confirmed Redundant)**
+### **Files DELETED (Technical Debt Eliminated)** ✅
 
 ```
-lib/ai/tools/googleCalendarTool.ts               # 423 lines - N8N webhook conflicts
-lib/ai/services/ToolRegistry.ts                  # 440 lines - Basic, unused
-lib/ai/tools/registry/ToolRegistry.ts            # 272 lines - Duplicate functionality
-lib/ai/services/QueryIntentAnalyzer.ts          # 153 lines - Overlaps queryClassifier
+✅ lib/ai/tools/googleCalendarTool.ts               # 423 lines - N8N webhook conflicts
+✅ lib/ai/services/ToolRegistry.ts                  # 440 lines - Basic, unused
+✅ lib/ai/tools/registry/ToolRegistry.ts            # 272 lines - Duplicate functionality
+✅ lib/ai/services/QueryIntentAnalyzer.ts          # 153 lines - Overlaps queryClassifier
+
+TOTAL ELIMINATED: 1,288 lines of redundant code
 ```
 
 ### **Critical Dependencies to Update**
