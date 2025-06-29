@@ -55,7 +55,6 @@ export class ToolRegistry {
       'extractWebContent',
       // Utility and integration tools
       'requestSuggestions',
-      'googleCalendar',
       'createBudget',
       'getMessagesFromOtherChat',
       // All Asana tools (now properly defined with correct schemas)
@@ -410,11 +409,7 @@ export class ToolRegistry {
         } else {
           toolsByCategory.document++;
         }
-      } else if (
-        ['requestSuggestions', 'googleCalendar', 'createBudget'].includes(
-          toolName,
-        )
-      ) {
+      } else if (['requestSuggestions', 'createBudget'].includes(toolName)) {
         toolsByCategory.utility++;
       } else {
         toolsByCategory.unknown++;

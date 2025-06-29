@@ -35,11 +35,22 @@ export interface EnhancedAgentExecutorConfig {
  * Default configuration for enforced tools
  */
 const DEFAULT_ENFORCED_TOOLS: Record<string, string[]> = {
-  [ForceToolCallQueryType.Calendar]: ['googleCalendar'],
-  [ForceToolCallQueryType.Tasks]: ['googleCalendar'],
-  [ForceToolCallQueryType.Events]: ['googleCalendar'],
+  [ForceToolCallQueryType.Calendar]: [
+    'get_events',
+    'list_calendars',
+    'create_event',
+  ],
+  [ForceToolCallQueryType.Tasks]: ['asana'],
+  [ForceToolCallQueryType.Events]: [
+    'get_events',
+    'create_event',
+    'modify_calendar_event',
+  ],
   [ForceToolCallQueryType.Asana]: ['asana'],
-  [ForceToolCallQueryType.Email]: ['googleCalendar'],
+  [ForceToolCallQueryType.Email]: [
+    'search_gmail_messages',
+    'list_gmail_messages',
+  ],
 };
 
 /**

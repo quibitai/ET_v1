@@ -30,10 +30,12 @@
 
 **Priority**: CRITICAL - Conflicts with Google Workspace MCP calendar tools
 
-- [ ] **DELETE** `lib/ai/tools/googleCalendarTool.ts` (423 lines)
-- [ ] **UPDATE** `lib/ai/tools/index.ts` (remove googleCalendarTool imports)
-- [ ] **UPDATE** `lib/ai/tools/registry/ToolLoader.ts` (remove googleCalendarTool references)
-- [ ] **CREATE** database migration script for specialist default_tools updates (remove `googleCalendar`)
+- [x] **DELETE** `lib/ai/tools/googleCalendarTool.ts` (423 lines)
+- [x] **UPDATE** `lib/ai/tools/index.ts` (remove googleCalendarTool imports)
+- [x] **UPDATE** `lib/ai/tools/registry/ToolLoader.ts` (remove googleCalendarTool references)
+- [x] **CREATE** database migration script for specialist default_tools updates (remove `googleCalendar`)
+- [x] **UPDATE** `lib/ai/executors/EnhancedAgentExecutor.ts` (replace googleCalendar with MCP tools)
+- [x] **UPDATE** `lib/ai/services/ToolRegistry.ts` (remove googleCalendar from fixed tools list)
 - [ ] **VERIFY** Google Workspace MCP calendar tools are functional replacement
 - [ ] **TEST** calendar functionality with MCP tools (`get_events`, `create_event`, etc.)
 
