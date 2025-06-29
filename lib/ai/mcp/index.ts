@@ -29,9 +29,6 @@ export {
 export {
   GoogleWorkspaceMCPClient,
   type GoogleWorkspaceMCPConfig,
-  type GoogleWorkspaceEmailRequest,
-  type GoogleWorkspaceDriveRequest,
-  type GoogleWorkspaceCalendarRequest,
   GMAIL_TOOLS,
   DRIVE_TOOLS,
   CALENDAR_TOOLS,

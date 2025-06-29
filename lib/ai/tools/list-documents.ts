@@ -28,7 +28,10 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const listDocumentsTool = new DynamicStructuredTool({
   name: 'listDocuments',
-  description: `Lists all available documents in the knowledge base. Use this to discover what documents exist before requesting specific content. 
+  description: `🗂️ KNOWLEDGE_BASE: Lists all available documents in the INTERNAL knowledge base. Use this to discover what documents exist before requesting specific content.
+    
+    CRITICAL: Use this for internal company documents, policies, templates, and knowledge stored in the RAG system.
+    DO NOT use for Google Drive files - use Google Drive tools for external cloud storage.
     
     IMPORTANT USAGE GUIDELINES:
     - Use WITHOUT filters in most cases to see all available documents
@@ -52,48 +55,24 @@ export const listDocumentsTool = new DynamicStructuredTool({
   }),
   func: async ({ filter }): Promise<string> => {
     const startTime = performance.now();
-    const normalizedFilter = filter || {};
-    console.log('[listDocuments] Fetching document list', {
-      filter: normalizedFilter,
-    });
 
-    // Track tool usage
-    await trackEvent({
-      eventName: ANALYTICS_EVENTS.TOOL_USED,
-      properties: {
-        toolName: 'listDocuments',
-        hasFilter: normalizedFilter
-          ? Object.keys(normalizedFilter).length > 0
-          : false,
-        timestamp: new Date().toISOString(),
-      },
-    });
+    console.log('[listDocuments] Tool invoked with filter:', filter);
+
+    // Normalize filter to remove null/undefined values
+    const normalizedFilter = filter
+      ? Object.fromEntries(
+          Object.entries(filter).filter(([_, value]) => value != null),
+        )
+      : null;
 
     if (!supabaseUrl || !supabaseKey) {
-      const duration = performance.now() - startTime;
-
-      // Track error
-      await trackEvent({
-        eventName: ANALYTICS_EVENTS.TOOL_USED,
-        properties: {
-          toolName: 'listDocuments',
-          success: false,
-          error: 'Missing Supabase credentials',
-          duration: Math.round(duration),
-          timestamp: new Date().toISOString(),
-        },
-      });
-
-      return JSON.stringify({
-        success: false,
-        error: 'Supabase credentials are not configured.',
-        metadata: { reason: 'configuration_error' },
-      });
+      return 'Error: Supabase credentials are not configured for document access.';
     }
 
     try {
-      const hasFilter = normalizedFilter && Object.keys(normalizedFilter).length > 0;
-      
+      const hasFilter =
+        normalizedFilter && Object.keys(normalizedFilter).length > 0;
+
       // Build query with optional filter
       let query = supabase
         .from('document_metadata')
@@ -125,30 +104,25 @@ export const listDocumentsTool = new DynamicStructuredTool({
           },
         });
 
-        return JSON.stringify({
-          success: false,
-          error: `Failed to fetch documents: ${error.message}`,
-          metadata: {
-            errorType: 'database_error',
-            code: error.code,
-            details: error.details,
-          },
-        });
+        return `Error: Failed to fetch documents: ${error.message}`;
       }
 
       const duration = performance.now() - startTime;
 
       // INTELLIGENT FALLBACK: If filter returns no results, try without filter
       if (hasFilter && (!data || data.length === 0)) {
-        console.log('[listDocuments] Filter returned no results, trying without filter as fallback');
-        
+        console.log(
+          '[listDocuments] Filter returned no results, trying without filter as fallback',
+        );
+
         const fallbackQuery = supabase
           .from('document_metadata')
           .select('id, title, url, created_at, schema')
           .order('title');
-          
-        const { data: fallbackData, error: fallbackError } = await fallbackQuery;
-        
+
+        const { data: fallbackData, error: fallbackError } =
+          await fallbackQuery;
+
         if (!fallbackError && fallbackData && fallbackData.length > 0) {
           // Format fallback results
           const documentList = fallbackData.map((doc) => ({
@@ -177,15 +151,14 @@ export const listDocumentsTool = new DynamicStructuredTool({
             },
           });
 
-          return JSON.stringify({
-            success: true,
-            available_documents: documentList,
-            total_count: documentList.length,
-            formatted_list: formattedList,
-            filter_note: `Filter ${JSON.stringify(normalizedFilter)} returned no results. Showing all documents instead. For content-based searches, use searchInternalKnowledgeBase.`,
-            usage_instructions:
-              "To retrieve a document's full content, use the getDocumentContents tool with the document's id. When displaying the list to users, use the formatted_list with clickable links that allow users to view documents directly.",
-          });
+          return `📚 **Available Documents** (${documentList.length} total)
+
+**Note**: Filter ${JSON.stringify(normalizedFilter)} returned no results. Showing all documents instead.
+
+${formattedList}
+
+**Usage**: To retrieve a document's full content, use the getDocumentContents tool with the document's ID.
+For content-based searches, use searchInternalKnowledgeBase.`;
         }
       }
 
@@ -202,14 +175,13 @@ export const listDocumentsTool = new DynamicStructuredTool({
           },
         });
 
-        return JSON.stringify({
-          success: true,
-          message: hasFilter 
-            ? `No documents found matching filter ${JSON.stringify(normalizedFilter)}. Try without filters or use searchInternalKnowledgeBase for content searches.`
-            : 'No documents found in the knowledge base.',
-          available_documents: [],
-          total_count: 0,
-        });
+        const message = hasFilter
+          ? `No documents found matching filter ${JSON.stringify(normalizedFilter)}. Try without filters or use searchInternalKnowledgeBase for content searches.`
+          : 'No documents found in the knowledge base.';
+
+        return `📚 **Document Search Results**
+
+${message}`;
       }
 
       // Format document list with functional clickable links
@@ -240,14 +212,11 @@ export const listDocumentsTool = new DynamicStructuredTool({
         },
       });
 
-      return JSON.stringify({
-        success: true,
-        available_documents: documentList,
-        total_count: documentList.length,
-        formatted_list: formattedList,
-        usage_instructions:
-          "To retrieve a document's full content, use the getDocumentContents tool with the document's id. When displaying the list to users, use the formatted_list with clickable links that allow users to view documents directly.",
-      });
+      return `📚 **Available Documents** (${documentList.length} total)
+
+${formattedList}
+
+**Usage**: To retrieve a document's full content, use the getDocumentContents tool with the document's ID.`;
     } catch (err: any) {
       const duration = performance.now() - startTime;
       console.error('[listDocuments] Unexpected error:', err);
@@ -264,13 +233,7 @@ export const listDocumentsTool = new DynamicStructuredTool({
         },
       });
 
-      return JSON.stringify({
-        success: false,
-        error: `Unexpected error: ${err.message}`,
-        metadata: {
-          errorType: err.name || 'Unknown',
-        },
-      });
+      return `Error: Unexpected error during document listing: ${err.message}`;
     }
   },
 });

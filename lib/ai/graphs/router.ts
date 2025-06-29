@@ -8,7 +8,6 @@
 
 import type { GraphState } from './state';
 import { hasToolCalls, isReadyForResponse } from './state';
-import { determineResponseMode as unifiedDetermineResponseMode } from '../utils/responseMode';
 
 /**
  * Primary router function with corrected ReAct pattern logic
@@ -82,26 +81,7 @@ export function routeNextStepEnhanced(
   return '__end__';
 }
 
-/**
- * Utility function to determine response mode based on conversation state
- * @deprecated Use determineResponseMode from utils/responseMode.ts instead
- */
-export function determineResponseMode(
-  state: GraphState,
-): 'synthesis' | 'simple' | 'conversational' {
-  console.warn(
-    '[Router] Using deprecated determineResponseMode - switch to utils/responseMode.ts',
-  );
-
-  const result = unifiedDetermineResponseMode(state);
-
-  console.log(
-    `[Router] Response mode: ${result.mode} (${result.confidence} confidence)`,
-  );
-  console.log(`[Router] Reason: ${result.reason}`);
-
-  return result.mode;
-}
+// DEPRECATED FUNCTION REMOVED - Use determineResponseMode from utils/responseMode.ts instead
 
 /**
  * Router configuration and edge definitions for graph assembly
@@ -129,7 +109,7 @@ export function validateRouterLogic(): {
   const issues: string[] = [];
 
   // Critical validation: Ensure tools never route directly to generate_response
-  const testState = {
+  const testState: GraphState = {
     messages: [{ _getType: () => 'tool', content: 'test tool result' } as any],
     input: 'test input',
     agent_outcome: undefined,

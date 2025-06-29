@@ -73,4 +73,4 @@ pids
 client_secret.json
 .credentials/
 *.json.credentials
-mcp-server-google-workspace/.credentials/
+# mcp-server-google-workspace/.credentials/ - REMOVED: old implementation

@@ -1,4 +1,4 @@
-#!/Users/adamhayden/Documents/Apps/Quibit_RAG/ET_v001/mcp-server-google-workspace/bin/python3.12
+#!/Users/adamhayden/Documents/Apps/Quibit_RAG/ET_v001/mcp-workspace/bin/python3.12
 # -*- coding: utf-8 -*-
 import re
 import sys

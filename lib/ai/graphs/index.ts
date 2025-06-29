@@ -3,7 +3,7 @@
  *
  * Central export point for all LangGraph implementations and factory functions.
  * Provides a simple interface for creating graphs based on query patterns.
- * 
+ *
  * UPDATED: Following Development Roadmap v6.0.0 - Simple implementations only
  */
 
@@ -41,13 +41,15 @@ export function createSimpleLangGraphWrapper(config: {
 }) {
   const { llm, tools } = config;
   const { graph, config: graphConfig } = createConfiguredGraph(llm, tools);
-  
+
   return {
     async stream(input: any): Promise<AsyncIterable<string>> {
       const graphInput = {
         messages: input.messages || [],
         input: input.input || '',
         response_mode: config.responseMode || 'synthesis',
+        specialist_id: input.specialist_id || '',
+        metadata: input.metadata || {},
       };
 
       async function* streamResults() {
@@ -60,13 +62,14 @@ export function createSimpleLangGraphWrapper(config: {
             }
           }
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
           yield `Error in graph execution: ${errorMessage}`;
         }
       }
 
       return streamResults();
-    }
+    },
   };
 }
 

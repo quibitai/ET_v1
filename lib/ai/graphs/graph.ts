@@ -8,17 +8,11 @@
  * STREAMING FIX: Implements v5.5.0 real-time token streaming using streamEvents
  */
 
-import {
-  StateGraph,
-  START,
-  END,
-  MessagesAnnotation,
-  Annotation,
-} from '@langchain/langgraph';
-import { ChatOpenAI } from '@langchain/openai';
+import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
+import type { ChatOpenAI } from '@langchain/openai';
 import type { DynamicStructuredTool } from '@langchain/core/tools';
-import type { BaseMessage } from '@langchain/core/messages';
 import {
+  type BaseMessage,
   SystemMessage,
   HumanMessage,
   AIMessage,
@@ -28,25 +22,13 @@ import { createSystemMessage } from './prompts/simple';
 import { buildReferencesContext } from './prompts/loader';
 import { getToolMessages } from './state';
 import { StandardizedResponseFormatter } from '../services/StandardizedResponseFormatter';
+import { ToolNode } from '@langchain/langgraph/prebuilt';
+import type { RequestLogger } from '@/lib/services/observabilityService';
+import { MemoryVectorStore } from 'langchain/vectorstores/memory';
+import { OpenAIEmbeddings } from '@langchain/openai';
+import { Document } from '@langchain/core/documents';
 
-export interface SimpleGraphState {
-  messages: BaseMessage[];
-  input?: string;
-  response_mode?: string;
-  specialist_id?: string;
-  metadata?: {
-    fileContext?: {
-      filename: string;
-      contentType: string;
-      url: string;
-      extractedText?: string;
-    };
-    brainRequest?: any;
-    processedContext?: any;
-  };
-}
-
-// Create a custom state annotation that includes metadata
+// Modern LangGraph best practice: Use Annotation.Root() for consistent type handling
 const SimpleGraphStateAnnotation = Annotation.Root({
   messages: Annotation<BaseMessage[]>({
     reducer: (x: BaseMessage[] = [], y: BaseMessage[] = []) => x.concat(y),
@@ -79,6 +61,9 @@ const SimpleGraphStateAnnotation = Annotation.Root({
   }),
 });
 
+// Extract type from annotation for consistent typing
+export type SimpleGraphState = typeof SimpleGraphStateAnnotation.State;
+
 /**
  * Enhanced SimpleGraph with proper StateGraph implementation and real-time streaming
  * This ensures all tool calls happen within a single LangSmith trace
@@ -87,6 +72,7 @@ export class SimpleGraph {
   private compiledGraph: any;
   private llm: ChatOpenAI;
   private tools: DynamicStructuredTool[];
+  private toolVectorStore?: MemoryVectorStore;
 
   constructor(llm: ChatOpenAI, tools: DynamicStructuredTool[]) {
     this.llm = llm;
@@ -140,11 +126,24 @@ export class SimpleGraph {
           !hasUnprocessedToolResults &&
           this.detectTopicChange(state.messages, currentQuery);
 
+        // Normalize state to ensure required properties are present
+        const normalizedState = {
+          ...state,
+          input: state.input ?? currentQuery,
+          response_mode: state.response_mode ?? 'synthesis',
+          specialist_id: state.specialist_id ?? '',
+          metadata: state.metadata ?? {},
+        };
+
+        let workingState = normalizedState;
         if (shouldIsolateContext) {
           console.log(
             '[SimpleGraph] Topic change detected, isolating context for new query',
           );
-          state = this.isolateContextForNewTopic(state, currentQuery);
+          workingState = this.isolateContextForNewTopic(
+            normalizedState,
+            currentQuery,
+          );
         } else if (hasUnprocessedToolResults) {
           console.log(
             '[SimpleGraph] Unprocessed tool results detected - preserving full context',
@@ -152,7 +151,7 @@ export class SimpleGraph {
         }
 
         // Ensure we have system message
-        let messages = [...state.messages];
+        let messages = [...workingState.messages];
         if (messages.length === 0 || !(messages[0] instanceof SystemMessage)) {
           const toolNames = this.tools.map((t) => t.name);
           const systemPrompt = await createSystemMessage(
@@ -168,37 +167,39 @@ export class SimpleGraph {
 
         // DEBUG: Log the metadata to see what's being passed
         console.log('[SimpleGraph] DEBUG: Checking metadata for fileContext', {
-          hasMetadata: !!state.metadata,
-          metadataKeys: state.metadata ? Object.keys(state.metadata) : [],
-          hasFileContext: !!state.metadata?.fileContext,
-          fileContextKeys: state.metadata?.fileContext
-            ? Object.keys(state.metadata.fileContext)
+          hasMetadata: !!workingState.metadata,
+          metadataKeys: workingState.metadata
+            ? Object.keys(workingState.metadata)
             : [],
-          hasExtractedText: !!state.metadata?.fileContext?.extractedText,
+          hasFileContext: !!workingState.metadata?.fileContext,
+          fileContextKeys: workingState.metadata?.fileContext
+            ? Object.keys(workingState.metadata.fileContext)
+            : [],
+          hasExtractedText: !!workingState.metadata?.fileContext?.extractedText,
           extractedTextLength:
-            state.metadata?.fileContext?.extractedText?.length || 0,
+            workingState.metadata?.fileContext?.extractedText?.length || 0,
         });
 
         // CRITICAL FIX: Process fileContext from uploaded documents
-        if (state.metadata?.fileContext?.extractedText) {
+        if (workingState.metadata?.fileContext?.extractedText) {
           console.log('[SimpleGraph] Processing uploaded document content', {
-            filename: state.metadata.fileContext.filename,
-            contentType: state.metadata.fileContext.contentType,
+            filename: workingState.metadata.fileContext.filename,
+            contentType: workingState.metadata.fileContext.contentType,
             extractedTextLength:
-              state.metadata.fileContext.extractedText.length,
+              workingState.metadata.fileContext.extractedText.length,
           });
 
           // Add file content directly to the system message
           const fileContextSection = `
 
 === UPLOADED DOCUMENT CONTENT ===
-Filename: ${state.metadata.fileContext.filename}
-Content Type: ${state.metadata.fileContext.contentType}
+Filename: ${workingState.metadata.fileContext.filename}
+Content Type: ${workingState.metadata.fileContext.contentType}
 
 IMPORTANT: The user has uploaded a document. When they ask to "summarize this document" or make similar requests, you should process the content below directly without using external tools like listDocuments.
 
 DOCUMENT CONTENT:
-${state.metadata.fileContext.extractedText}
+${workingState.metadata.fileContext.extractedText}
 === END DOCUMENT CONTENT ===`;
 
           // Update the system message to include the file content
@@ -257,7 +258,7 @@ ${state.metadata.fileContext.extractedText}
           console.log('[SimpleGraph] Enhanced references context built:', {
             contextLength: referencesContext.length,
             hasReferences: referencesContext.length > 0,
-            preview: referencesContext.substring(0, 300) + '...',
+            preview: `${referencesContext.substring(0, 300)}...`,
           });
 
           // Enhanced system message with tool result processing instructions
@@ -500,7 +501,7 @@ CRITICAL INSTRUCTIONS FOR TOOL RESULT PROCESSING:
 
       let hasStreamedContent = false;
       let tokenCount = 0;
-      let toolProgressShown = new Set<string>(); // Track shown progress indicators
+      const toolProgressShown = new Set<string>(); // Track shown progress indicators
       const startTime = Date.now();
 
       for await (const event of eventStream) {
@@ -650,7 +651,7 @@ CRITICAL INSTRUCTIONS FOR TOOL RESULT PROCESSING:
           hasAnyToolActivity,
           hasToolRelatedContent,
           isFollowUpQuery,
-          currentQuery: currentQuery.substring(0, 100) + '...',
+          currentQuery: `${currentQuery.substring(0, 100)}...`,
           messageTypes: messages.slice(-5).map((m) => m.constructor.name),
           reason: hasAnyToolActivity
             ? 'tool_activity'
@@ -697,8 +698,8 @@ CRITICAL INSTRUCTIONS FOR TOOL RESULT PROCESSING:
     const isTopicChange = hasStrongTopicChangeIndicator || keywordOverlap < 0.1;
 
     console.log('[SimpleGraph] Conservative topic change analysis:', {
-      currentQuery: current.substring(0, 50) + '...',
-      previousQuery: previous.substring(0, 50) + '...',
+      currentQuery: `${current.substring(0, 50)}...`,
+      previousQuery: `${previous.substring(0, 50)}...`,
       hasStrongTopicChangeIndicator,
       keywordOverlap: Math.round(keywordOverlap * 100) / 100,
       isTopicChange,
@@ -806,12 +807,14 @@ CRITICAL INSTRUCTIONS FOR TOOL RESULT PROCESSING:
     console.log('[SimpleGraph] Context isolated:', {
       originalMessageCount: state.messages.length,
       isolatedMessageCount: isolatedMessages.length,
-      currentQuery: currentQuery.substring(0, 100) + '...',
+      currentQuery: `${currentQuery.substring(0, 100)}...`,
     });
 
     return {
       ...state,
       messages: isolatedMessages,
+      // Ensure input is always a string (fixes TypeScript error)
+      input: state.input ?? currentQuery,
     };
   }
 
@@ -828,7 +831,7 @@ CRITICAL INSTRUCTIONS FOR TOOL RESULT PROCESSING:
 
     console.log(
       '[SimpleGraph] Applying hyperlink formatting to response:',
-      response.content.substring(0, 100) + '...',
+      `${response.content.substring(0, 100)}...`,
     );
 
     // Use the universal hyperlink converter from StandardizedResponseFormatter
@@ -838,7 +841,7 @@ CRITICAL INSTRUCTIONS FOR TOOL RESULT PROCESSING:
 
     console.log(
       '[SimpleGraph] Hyperlink formatting result:',
-      processedContent.substring(0, 100) + '...',
+      `${processedContent.substring(0, 100)}...`,
     );
     console.log(
       '[SimpleGraph] Contains hyperlinks:',
@@ -873,4 +876,328 @@ export function createGraph() {
   throw new Error(
     'createGraph() is deprecated. Use createConfiguredGraph() instead.',
   );
+}
+
+/**
+ * CRITICAL: LangGraph with Proper Tool Selection Node
+ *
+ * This implements the official LangChain best practice for handling large numbers of tools:
+ * 1. START → select_tools → agent → tools → agent → END
+ * 2. Uses semantic search over tool descriptions to select relevant tools
+ * 3. Prevents LLM confusion by limiting tools to relevant subset
+ *
+ * Research Source: https://langchain-ai.github.io/langgraph/how-tos/many-tools/
+ */
+export class ToolSelectionGraph {
+  private llm: ChatOpenAI;
+  private allTools: any[];
+  private toolVectorStore?: MemoryVectorStore;
+  private logger: RequestLogger;
+  private toolRegistry: Map<string, any>;
+
+  constructor(llm: ChatOpenAI, tools: any[], logger: RequestLogger) {
+    this.llm = llm;
+    this.allTools = tools;
+    this.logger = logger;
+    this.toolRegistry = new Map();
+
+    // Initialize tool vector store for semantic search
+    this.initializeToolVectorStore();
+  }
+
+  private async initializeToolVectorStore() {
+    try {
+      const toolDocuments = this.allTools.map((tool, index) => {
+        const toolId = `tool_${index}`;
+        this.toolRegistry.set(toolId, tool);
+
+        return new Document({
+          pageContent: tool.description || tool.name,
+          metadata: {
+            toolId,
+            toolName: tool.name,
+            category: this.getToolCategory(tool.name),
+          },
+        });
+      });
+
+      this.toolVectorStore = new MemoryVectorStore(new OpenAIEmbeddings());
+      await this.toolVectorStore.addDocuments(toolDocuments);
+
+      this.logger.info(
+        `🔍 Tool vector store initialized with ${toolDocuments.length} tools`,
+      );
+    } catch (error) {
+      this.logger.error('Failed to initialize tool vector store:', error);
+      throw error;
+    }
+  }
+
+  private getToolCategory(toolName: string): string {
+    if (
+      [
+        'listDocuments',
+        'getDocumentContents',
+        'searchInternalKnowledgeBase',
+      ].includes(toolName)
+    ) {
+      return 'KNOWLEDGE_BASE';
+    }
+    if (toolName.startsWith('get_gmail') || toolName.startsWith('list_gmail')) {
+      return 'GMAIL';
+    }
+    if (toolName.startsWith('get_drive') || toolName.startsWith('list_drive')) {
+      return 'GOOGLE_DRIVE';
+    }
+    if (toolName.startsWith('get_docs') || toolName.startsWith('search_docs')) {
+      return 'GOOGLE_DOCS';
+    }
+    if (
+      toolName.startsWith('get_sheets') ||
+      toolName.startsWith('list_sheets')
+    ) {
+      return 'GOOGLE_SHEETS';
+    }
+    if (toolName.startsWith('asana_')) {
+      return 'ASANA';
+    }
+    if (toolName === 'tavilySearch') {
+      return 'RESEARCH';
+    }
+    return 'OTHER';
+  }
+
+  /**
+   * CRITICAL: Tool Selection Node
+   *
+   * This node runs BEFORE the agent and selects relevant tools based on:
+   * 1. Semantic similarity to user query
+   * 2. Query intent analysis (internal vs external)
+   * 3. Tool category filtering
+   */
+  private async selectTools(state: typeof SimpleGraphStateAnnotation.State) {
+    try {
+      const messages = state.messages;
+      const lastMessage = messages[messages.length - 1];
+
+      const query = (() => {
+        if (lastMessage.getType() === 'human') {
+          return (lastMessage as HumanMessage).content as string;
+        } else if (lastMessage.getType() === 'tool') {
+          // For tool messages, generate a query for additional tools
+          return `Additional tools needed for: ${(lastMessage as ToolMessage).content}`;
+        }
+        return '';
+      })();
+
+      this.logger.info(`🎯 TOOL SELECTION: Analyzing query: "${query}"`);
+
+      // Analyze query intent
+      const queryIntent = this.analyzeQueryIntent(query);
+      this.logger.info(`🧠 Query intent detected: ${queryIntent}`);
+
+      // Semantic search for relevant tools
+      const similarDocs = await this.toolVectorStore?.similaritySearch(
+        query,
+        8,
+      );
+
+      // Apply contextual filtering based on intent
+      const selectedToolIds = this.applyContextualFiltering(
+        similarDocs || [],
+        queryIntent,
+      );
+
+      // Map tool IDs back to actual tools
+      const selectedTools = selectedToolIds
+        .map((id) => this.toolRegistry.get(id))
+        .filter(Boolean);
+
+      this.logger.info(
+        `🔧 TOOL SELECTION RESULT: Selected ${selectedTools.length} tools:`,
+        {
+          totalAvailable: this.allTools.length,
+          selectedTools: selectedTools.map((t) => t.name),
+          queryIntent,
+          filtering: 'SEMANTIC_SEARCH + CONTEXTUAL_FILTERING',
+        },
+      );
+
+      return {
+        selectedTools: selectedToolIds,
+        messages: state.messages,
+      };
+    } catch (error) {
+      this.logger.error('Tool selection failed:', error);
+      // Fallback: select knowledge base tools
+      const fallbackTools = this.allTools
+        .filter((tool) =>
+          [
+            'listDocuments',
+            'getDocumentContents',
+            'searchInternalKnowledgeBase',
+          ].includes(tool.name),
+        )
+        .slice(0, 5);
+
+      const fallbackIds = Array.from(this.toolRegistry.entries())
+        .filter(([_, tool]) => fallbackTools.includes(tool))
+        .map(([id, _]) => id);
+
+      return {
+        selectedTools: fallbackIds,
+        messages: state.messages,
+      };
+    }
+  }
+
+  private analyzeQueryIntent(
+    query: string,
+  ): 'INTERNAL_KNOWLEDGE_BASE' | 'EXTERNAL_RESEARCH' | 'MIXED' {
+    const queryLower = query.toLowerCase();
+
+    const internalIndicators = [
+      'echo tango',
+      'core values',
+      'company',
+      'our',
+      'internal',
+      'knowledge base',
+      'document contents',
+      'complete contents',
+      'policy',
+      'guideline',
+    ];
+
+    const externalIndicators = [
+      'research',
+      'current',
+      'latest',
+      'news',
+      'market',
+      'trends',
+      'external',
+      'google',
+      'search',
+      'web',
+      'internet',
+    ];
+
+    const hasInternal = internalIndicators.some((indicator) =>
+      queryLower.includes(indicator),
+    );
+    const hasExternal = externalIndicators.some((indicator) =>
+      queryLower.includes(indicator),
+    );
+
+    if (hasInternal && !hasExternal) return 'INTERNAL_KNOWLEDGE_BASE';
+    if (hasExternal && !hasInternal) return 'EXTERNAL_RESEARCH';
+    return 'MIXED';
+  }
+
+  private applyContextualFiltering(
+    similarDocs: Document[],
+    queryIntent: string,
+  ): string[] {
+    const toolIds = similarDocs.map((doc) => doc.metadata.toolId);
+
+    if (queryIntent === 'INTERNAL_KNOWLEDGE_BASE') {
+      // For internal queries, filter out conflicting external tools
+      const conflictingCategories = [
+        'GMAIL',
+        'GOOGLE_DRIVE',
+        'GOOGLE_DOCS',
+        'GOOGLE_SHEETS',
+      ];
+
+      const filtered = toolIds.filter((toolId) => {
+        const doc = similarDocs.find((d) => d.metadata.toolId === toolId);
+        return doc && !conflictingCategories.includes(doc.metadata.category);
+      });
+
+      this.logger.info(
+        `🚫 CONTEXTUAL FILTERING: Removed ${toolIds.length - filtered.length} conflicting external tools for internal query`,
+      );
+      return filtered;
+    }
+
+    // For external or mixed queries, keep all semantically relevant tools
+    return toolIds;
+  }
+
+  /**
+   * Agent Node: Now receives only selected tools
+   */
+  private async agent(state: typeof SimpleGraphStateAnnotation.State) {
+    try {
+      const selectedTools = state.selectedTools
+        .map((id) => this.toolRegistry.get(id))
+        .filter(Boolean);
+
+      this.logger.info(
+        `🤖 AGENT: Received ${selectedTools.length} selected tools:`,
+        {
+          tools: selectedTools.map((t) => t.name),
+        },
+      );
+
+      const llmWithTools = this.llm.bindTools(selectedTools);
+      const response = await llmWithTools.invoke(state.messages);
+
+      return {
+        messages: [...state.messages, response],
+        selectedTools: state.selectedTools,
+      };
+    } catch (error) {
+      this.logger.error('Agent execution failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Routing function: Decides next step after agent
+   */
+  private shouldContinue(
+    state: typeof SimpleGraphStateAnnotation.State,
+  ): string {
+    const lastMessage = state.messages[state.messages.length - 1];
+
+    if (
+      lastMessage.getType() === 'ai' &&
+      (lastMessage as AIMessage).tool_calls?.length
+    ) {
+      return 'tools';
+    }
+    return END;
+  }
+
+  /**
+   * Create the complete graph with tool selection
+   */
+  createGraph() {
+    // Enhanced state to include selected tools
+    const StateAnnotation = Annotation.Root({
+      messages: Annotation<BaseMessage[]>({
+        reducer: (x, y) => x.concat(y),
+      }),
+      selectedTools: Annotation<string[]>({
+        reducer: (x, y) => y ?? x ?? [],
+      }),
+    });
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode('select_tools', this.selectTools.bind(this))
+      .addNode('agent', this.agent.bind(this))
+      .addNode('tools', new ToolNode(this.allTools))
+      .addEdge(START, 'select_tools')
+      .addEdge('select_tools', 'agent')
+      .addConditionalEdges('agent', this.shouldContinue.bind(this))
+      .addEdge('tools', 'select_tools') // Re-select tools after tool execution
+      .compile();
+
+    this.logger.info(
+      `✅ TOOL SELECTION GRAPH: Created with proper tool selection architecture`,
+    );
+    return graph;
+  }
 }

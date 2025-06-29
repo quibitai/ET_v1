@@ -27,7 +27,7 @@ DEFAULT_CREDENTIALS_DIR = ".credentials"
 # This should be more robust in a production system once OAuth2.1 is implemented in client.
 _SESSION_CREDENTIALS_CACHE: Dict[str, Credentials] = {}
 # Centralized Client Secrets Path Logic
-_client_secrets_env = os.getenv("GOOGLE_CLIENT_SECRETS")
+_client_secrets_env = os.getenv("GOOGLE_CLIENT_SECRET_PATH") or os.getenv("GOOGLE_CLIENT_SECRETS")
 if _client_secrets_env:
     CONFIG_CLIENT_SECRETS_PATH = _client_secrets_env
 else:
@@ -151,22 +151,128 @@ def load_credentials_from_session(session_id: str) -> Optional[Credentials]:
         logger.debug(f"No credentials found in session cache for session_id: {session_id}")
     return credentials
 
+def load_client_secrets_from_env() -> Optional[Dict[str, Any]]:
+    """
+    Loads the client secrets from environment variables.
+
+    Environment variables used:
+        - GOOGLE_OAUTH_CLIENT_ID: OAuth 2.0 client ID
+        - GOOGLE_OAUTH_CLIENT_SECRET: OAuth 2.0 client secret
+        - GOOGLE_OAUTH_REDIRECT_URI: (optional) OAuth redirect URI
+
+    Returns:
+        Client secrets configuration dict compatible with Google OAuth library,
+        or None if required environment variables are not set.
+    """
+    client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+    redirect_uri = os.getenv("GOOGLE_OAUTH_REDIRECT_URI")
+
+    if client_id and client_secret:
+        # Create config structure that matches Google client secrets format
+        web_config = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+        }
+
+        # Add redirect_uri if provided via environment variable
+        if redirect_uri:
+            web_config["redirect_uris"] = [redirect_uri]
+
+        # Return the full config structure expected by Google OAuth library
+        config = {"web": web_config}
+
+        logger.info("Loaded OAuth client credentials from environment variables")
+        return config
+
+    logger.debug("OAuth client credentials not found in environment variables")
+    return None
+
 def load_client_secrets(client_secrets_path: str) -> Dict[str, Any]:
-    """Loads the client secrets file."""
+    """
+    Loads the client secrets from environment variables (preferred) or from the client secrets file.
+
+    Priority order:
+    1. Environment variables (GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET)
+    2. File-based credentials at the specified path
+
+    Args:
+        client_secrets_path: Path to the client secrets JSON file (used as fallback)
+
+    Returns:
+        Client secrets configuration dict
+
+    Raises:
+        ValueError: If client secrets file has invalid format
+        IOError: If file cannot be read and no environment variables are set
+    """
+    # First, try to load from environment variables
+    env_config = load_client_secrets_from_env()
+    if env_config:
+        # Extract the "web" config from the environment structure
+        return env_config["web"]
+
+    # Fall back to loading from file
     try:
         with open(client_secrets_path, 'r') as f:
             client_config = json.load(f)
             # The file usually contains a top-level key like "web" or "installed"
             if "web" in client_config:
+                logger.info(f"Loaded OAuth client credentials from file: {client_secrets_path}")
                 return client_config["web"]
             elif "installed" in client_config:
-                 return client_config["installed"]
+                logger.info(f"Loaded OAuth client credentials from file: {client_secrets_path}")
+                return client_config["installed"]
             else:
                  logger.error(f"Client secrets file {client_secrets_path} has unexpected format.")
                  raise ValueError("Invalid client secrets file format")
     except (IOError, json.JSONDecodeError) as e:
         logger.error(f"Error loading client secrets file {client_secrets_path}: {e}")
         raise
+def check_client_secrets() -> Optional[str]:
+    """
+    Checks for the presence of OAuth client secrets, either as environment
+    variables or as a file.
+
+    Returns:
+        An error message string if secrets are not found, otherwise None.
+    """
+    env_config = load_client_secrets_from_env()
+    if not env_config and not os.path.exists(CONFIG_CLIENT_SECRETS_PATH):
+        logger.error(f"OAuth client credentials not found. No environment variables set and no file at {CONFIG_CLIENT_SECRETS_PATH}")
+        return f"OAuth client credentials not found. Please set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET environment variables or provide a client secrets file at {CONFIG_CLIENT_SECRETS_PATH}."
+    return None
+
+def create_oauth_flow(scopes: List[str], redirect_uri: str, state: Optional[str] = None) -> Flow:
+    """Creates an OAuth flow using environment variables or client secrets file."""
+    # Try environment variables first
+    env_config = load_client_secrets_from_env()
+    if env_config:
+        # Use client config directly
+        flow = Flow.from_client_config(
+            env_config,
+            scopes=scopes,
+            redirect_uri=redirect_uri,
+            state=state
+        )
+        logger.debug("Created OAuth flow from environment variables")
+        return flow
+
+    # Fall back to file-based config
+    if not os.path.exists(CONFIG_CLIENT_SECRETS_PATH):
+        raise FileNotFoundError(f"OAuth client secrets file not found at {CONFIG_CLIENT_SECRETS_PATH} and no environment variables set")
+
+    flow = Flow.from_client_secrets_file(
+        CONFIG_CLIENT_SECRETS_PATH,
+        scopes=scopes,
+        redirect_uri=redirect_uri,
+        state=state
+    )
+    logger.debug(f"Created OAuth flow from client secrets file: {CONFIG_CLIENT_SECRETS_PATH}")
+    return flow
 
 # --- Core OAuth Logic ---
 
@@ -206,8 +312,7 @@ async def start_auth_flow(
             OAUTH_STATE_TO_SESSION_ID_MAP[oauth_state] = mcp_session_id
             logger.info(f"[start_auth_flow] Stored mcp_session_id '{mcp_session_id}' for oauth_state '{oauth_state}'.")
 
-        flow = Flow.from_client_secrets_file(
-            CONFIG_CLIENT_SECRETS_PATH, # Use module constant
+        flow = create_oauth_flow(
             scopes=SCOPES, # Use global SCOPES
             redirect_uri=redirect_uri, # Use passed redirect_uri
             state=oauth_state
@@ -240,7 +345,7 @@ async def start_auth_flow(
         return "\n".join(message_lines)
 
     except FileNotFoundError as e:
-        error_text = f"OAuth client secrets file not found: {e}. Please ensure '{CONFIG_CLIENT_SECRETS_PATH}' is correctly configured."
+        error_text = f"OAuth client credentials not found: {e}. Please either:\n1. Set environment variables: GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET\n2. Ensure '{CONFIG_CLIENT_SECRETS_PATH}' file exists"
         logger.error(error_text, exc_info=True)
         raise Exception(error_text)
     except Exception as e:
@@ -249,12 +354,12 @@ async def start_auth_flow(
         raise Exception(error_text)
 
 def handle_auth_callback(
-    client_secrets_path: str,
     scopes: List[str],
     authorization_response: str,
-    redirect_uri: str, # Made redirect_uri a required parameter
+    redirect_uri: str,
     credentials_base_dir: str = DEFAULT_CREDENTIALS_DIR,
-    session_id: Optional[str] = None
+    session_id: Optional[str] = None,
+    client_secrets_path: Optional[str] = None  # Deprecated: kept for backward compatibility
 ) -> Tuple[str, Credentials]:
     """
     Handles the callback from Google, exchanges the code for credentials,
@@ -262,12 +367,12 @@ def handle_auth_callback(
     and returns them.
 
     Args:
-        client_secrets_path: Path to the Google client secrets JSON file.
         scopes: List of OAuth scopes requested.
         authorization_response: The full callback URL from Google.
         redirect_uri: The redirect URI.
         credentials_base_dir: Base directory for credential files.
         session_id: Optional MCP session ID to associate with the credentials.
+        client_secrets_path: (Deprecated) Path to client secrets file. Ignored if environment variables are set.
 
     Returns:
         A tuple containing the user_google_email and the obtained Credentials object.
@@ -278,13 +383,16 @@ def handle_auth_callback(
         HttpError: If fetching user info fails.
     """
     try:
+        # Log deprecation warning if old parameter is used
+        if client_secrets_path:
+            logger.warning("The 'client_secrets_path' parameter is deprecated. Use GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET environment variables instead.")
+
         # Allow HTTP for localhost in development
         if 'OAUTHLIB_INSECURE_TRANSPORT' not in os.environ:
             logger.warning("OAUTHLIB_INSECURE_TRANSPORT not set. Setting it for localhost development.")
             os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
-        flow = Flow.from_client_secrets_file(
-            client_secrets_path,
+        flow = create_oauth_flow(
             scopes=scopes,
             redirect_uri=redirect_uri
         )

@@ -6,12 +6,12 @@
  */
 
 import {
-  Tool,
+  type Tool,
   ToolCategory,
-  ToolFilter,
-  ToolContext,
-  ToolResult,
-  ToolRegistryConfig,
+  type ToolFilter,
+  type ToolContext,
+  type ToolResult,
+  type ToolRegistryConfig,
 } from './types';
 
 export class UnifiedToolRegistry {
@@ -63,6 +63,39 @@ export class UnifiedToolRegistry {
   registerTools(tools: Tool[]): void {
     console.log(`[ToolRegistry] Registering ${tools.length} tools`);
     tools.forEach((tool) => this.registerTool(tool));
+  }
+
+  /**
+   * Replace all tools from a specific source with new tools
+   * Critical for MCP tool refresh functionality
+   */
+  replaceToolsBySource(source: string, tools: Tool[]): void {
+    console.log(`[ToolRegistry] Replacing tools from source: ${source}`);
+
+    // Remove existing tools from this source
+    const existingTools = Array.from(this.tools.values()).filter(
+      (t) => t.source === source,
+    );
+    existingTools.forEach((tool) => {
+      this.tools.delete(tool.name);
+
+      // Remove from category mappings
+      const categoryTools = this.toolsByCategory.get(tool.category) || [];
+      this.toolsByCategory.set(
+        tool.category,
+        categoryTools.filter((t) => t.name !== tool.name),
+      );
+    });
+
+    // Add new tools
+    tools.forEach((tool) => this.registerTool(tool));
+
+    // Clear cache
+    this.cache.clear();
+
+    console.log(
+      `[ToolRegistry] Replaced ${existingTools.length} tools from ${source} with ${tools.length} new tools`,
+    );
   }
 
   /**

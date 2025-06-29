@@ -28,7 +28,16 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const getDocumentContentsTool = new DynamicStructuredTool({
   name: 'getDocumentContents',
-  description: `Retrieves the full text content of a document from the knowledge base using its ID.
+  description: `🗂️ KNOWLEDGE_BASE: Retrieves the full text content of a document from the INTERNAL knowledge base using its ID.
+    
+    **ALWAYS USE THIS TOOL WHEN:**
+    - User asks for "company" documents, policies, values, or internal content
+    - Document ID comes from listDocuments results (starts with /api/documents/)
+    - Query mentions "Echo Tango's", "our company's", or internal business content
+    
+    **NEVER USE GOOGLE DRIVE TOOLS** for knowledge base document IDs - even if the ID looks like a Google Drive ID!
+    Google Drive tools are ONLY for user's personal/work Google Drive files.
+    
     First tries exact ID match, then falls back to fuzzy title matching if ID not found.
     Use listDocuments first to get valid document IDs.`,
   schema: z.object({
@@ -206,14 +215,7 @@ export const getDocumentContentsTool = new DynamicStructuredTool({
             },
           });
 
-          return JSON.stringify({
-            success: false,
-            error: `Error looking up document by title: ${titleError.message}`,
-            metadata: {
-              errorType: 'title_lookup_error',
-              details: titleError.details,
-            },
-          });
+          return `Error: Unable to lookup document by title: ${titleError.message}`;
         }
 
         if (!metaList || metaList.length === 0) {
@@ -230,11 +232,7 @@ export const getDocumentContentsTool = new DynamicStructuredTool({
             },
           });
 
-          return JSON.stringify({
-            success: false,
-            error: `No document found matching "${document_id}".`,
-            metadata: { reason: 'not_found' },
-          });
+          return `Error: No document found matching "${document_id}". Use listDocuments to see available documents.`;
         }
 
         metaData = metaList[0];
@@ -272,15 +270,7 @@ export const getDocumentContentsTool = new DynamicStructuredTool({
           },
         });
 
-        return JSON.stringify({
-          success: false,
-          error: `Error retrieving document content: ${contentError.message}`,
-          metadata: {
-            errorType: 'content_retrieval_error',
-            code: contentError.code,
-            details: contentError.details,
-          },
-        });
+        return `Error: Unable to retrieve document content: ${contentError.message}`;
       }
 
       const duration = performance.now() - startTime;
@@ -297,11 +287,7 @@ export const getDocumentContentsTool = new DynamicStructuredTool({
           },
         });
 
-        return JSON.stringify({
-          success: false,
-          error: 'No content found for that document.',
-          metadata: { reason: 'empty_content' },
-        });
+        return `Error: No content found for document "${metaData.title}". The document may be empty.`;
       }
 
       // 4) Combine all chunks into full document content
@@ -322,11 +308,7 @@ export const getDocumentContentsTool = new DynamicStructuredTool({
           },
         });
 
-        return JSON.stringify({
-          success: false,
-          error: 'Document exists but contains no readable content.',
-          metadata: { reason: 'empty_content' },
-        });
+        return `Error: Document "${metaData.title}" exists but contains no readable content.`;
       }
 
       // Track successful completion
@@ -342,22 +324,19 @@ export const getDocumentContentsTool = new DynamicStructuredTool({
         },
       });
 
-      return JSON.stringify({
-        success: true,
-        document: {
-          id: metaData.id,
-          title: metaData.title,
-          url: metaData.url,
-          created_at: metaData.created_at,
-          schema: metaData.schema,
-        },
-        content: fullContent,
-        metadata: {
-          content_length: fullContent.length,
-          chunk_count: docs.length,
-          document_id: metaData.id,
-        },
-      });
+      // Return the actual document content with proper formatting
+      return `📄 **${metaData.title}**
+
+**Document ID:** ${metaData.id}
+**URL:** ${metaData.url || 'N/A'}
+**Created:** ${metaData.created_at}
+**Content Length:** ${fullContent.length} characters (${docs.length} chunks)
+
+---
+
+**FULL CONTENT:**
+
+${fullContent}`;
     } catch (err: any) {
       const duration = performance.now() - startTime;
       console.error('[getDocumentContents] Unexpected error:', err);
@@ -373,13 +352,7 @@ export const getDocumentContentsTool = new DynamicStructuredTool({
         },
       });
 
-      return JSON.stringify({
-        success: false,
-        error: `Unexpected error: ${err.message}`,
-        metadata: {
-          errorType: err.name || 'Unknown',
-        },
-      });
+      return `Error: Unexpected error retrieving document: ${err.message}`;
     }
   },
 });

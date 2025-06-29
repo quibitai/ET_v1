@@ -105,8 +105,45 @@ export interface ToolFilter {
 }
 
 export interface ToolRegistryConfig {
-  enableMcp: boolean;
-  mcpServers: string[];
-  defaultTimeout: number;
-  enableCaching: boolean;
+  enableMcp?: boolean;
+  mcpServers?: string[];
+  defaultTimeout?: number;
+  enableCaching?: boolean;
+  cacheTTL?: number;
+  watchForChanges?: boolean;
+  validateOnLoad?: boolean;
+  manifestPath?: string;
+}
+
+// === MANIFEST TYPES ===
+
+export interface ToolManifest {
+  id: string;
+  service: string;
+  streamingSupported: boolean;
+  category:
+    | 'project_management'
+    | 'task_management'
+    | 'team_operations'
+    | 'analytics'
+    | 'communication'
+    | 'general';
+  priority: 'high' | 'medium' | 'low';
+  description: string;
+  estimatedDuration?: number;
+  batchCompatible?: boolean;
+  tags?: string[];
+  requiredScopes?: string[];
+  manifestVersion?: string;
+}
+
+export interface ManifestCollection {
+  [service: string]: {
+    [toolId: string]: ToolManifest;
+  };
+}
+
+export interface ManifestValidationResult {
+  isValid: boolean;
+  errors?: string[];
 }

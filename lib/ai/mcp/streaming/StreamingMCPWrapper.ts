@@ -7,7 +7,6 @@
  */
 
 import type { BaseMCPClient } from '../BaseMCPClient';
-import type { ToolManifest } from '../../tools/registry/types';
 import type {
   StreamingEventType,
   StreamingToolRequest,
@@ -22,6 +21,17 @@ import type {
   StreamingErrorEvent,
 } from './types';
 import { randomUUID } from 'node:crypto';
+
+// Simple interface for tool manifest until proper types are defined
+interface ToolManifest {
+  streamingSupported?: boolean;
+  streamingConfig?: {
+    type: 'progress' | 'incremental' | 'status';
+    progressSteps?: string[];
+    supportsPartialResults?: boolean;
+  };
+  estimatedDuration?: number;
+}
 
 export class StreamingMCPWrapper implements StreamingTool {
   private client: BaseMCPClient;

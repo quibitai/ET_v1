@@ -346,20 +346,27 @@ export const tavilySearchTool = new DynamicStructuredTool({
   }) => {
     const startTime = performance.now();
 
+    // Handle null values by applying defaults
+    const safeSearchDepth = searchDepth ?? 'advanced';
+    const safeScoreThreshold = scoreThreshold ?? 0.3;
+    const safeExtractKeyInfo = extractKeyInfo ?? false;
+    const safeMaxResults = maxResults ?? 5;
+    const safeIncludeRawContent = includeRawContent ?? false;
+
     // Calculate and display credit usage
     const estimatedCredits = calculateCreditUsage(
-      searchDepth,
-      maxResults,
-      includeRawContent,
+      safeSearchDepth,
+      safeMaxResults,
+      safeIncludeRawContent,
     );
     if (showCreditUsage) {
       console.log(
-        `[tavilySearch] 💳 Estimated credit usage: ${estimatedCredits} credits (${searchDepth} depth)`,
+        `[tavilySearch] 💳 Estimated credit usage: ${estimatedCredits} credits (${safeSearchDepth} depth)`,
       );
     }
 
     console.log(
-      `[tavilySearch] 🔍 ENHANCED search: "${query}" (${maxResults} results, ${searchDepth} depth, score ≥ ${scoreThreshold})`,
+      `[tavilySearch] 🔍 ENHANCED search: "${query}" (${safeMaxResults} results, ${safeSearchDepth} depth, score ≥ ${safeScoreThreshold})`,
     );
 
     // Track tool usage
@@ -368,15 +375,15 @@ export const tavilySearchTool = new DynamicStructuredTool({
       properties: {
         toolName: 'tavilySearch',
         query: query.substring(0, 100), // Truncate for privacy
-        maxResults,
-        searchDepth,
+        maxResults: safeMaxResults,
+        searchDepth: safeSearchDepth,
         includeAnswer,
         includeImages,
-        includeRawContent,
+        includeRawContent: safeIncludeRawContent,
         chunksPerSource,
-        scoreThreshold,
+        scoreThreshold: safeScoreThreshold,
         timeRange,
-        extractKeyInfo,
+        extractKeyInfo: safeExtractKeyInfo,
         estimatedCredits,
         timestamp: new Date().toISOString(),
       },
@@ -386,11 +393,11 @@ export const tavilySearchTool = new DynamicStructuredTool({
       // Build request payload with enhanced parameters
       const requestBody: any = {
         query,
-        search_depth: searchDepth,
-        max_results: maxResults,
+        search_depth: safeSearchDepth,
+        max_results: safeMaxResults,
         include_answer: includeAnswer,
         include_images: includeImages,
-        include_raw_content: includeRawContent,
+        include_raw_content: safeIncludeRawContent,
         chunks_per_source: chunksPerSource,
       };
 
@@ -451,16 +458,16 @@ export const tavilySearchTool = new DynamicStructuredTool({
 
       // Process results with score filtering
       const results = data.results || [];
-      const filteredResults = filterByScore(results, scoreThreshold);
+      const filteredResults = filterByScore(results, safeScoreThreshold);
 
       console.log(
-        `[tavilySearch] 📊 Filtered ${results.length} → ${filteredResults.length} results (score ≥ ${scoreThreshold})`,
+        `[tavilySearch] 📊 Filtered ${results.length} → ${filteredResults.length} results (score ≥ ${safeScoreThreshold})`,
       );
 
       const processedResult = processAdvancedResults(
         filteredResults,
         query,
-        extractKeyInfo,
+        safeExtractKeyInfo,
       );
 
       // Add credit usage info to result if requested

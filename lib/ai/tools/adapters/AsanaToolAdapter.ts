@@ -384,7 +384,7 @@ export class AsanaToolAdapter {
             throw new Error('Asana MCP client not initialized');
           }
 
-          const result = await this.mcpClient.getTaskDetails(params.task_gid);
+          const result = await this.mcpClient.getTask(params.task_gid);
 
           return {
             success: true,
@@ -453,7 +453,7 @@ export class AsanaToolAdapter {
             throw new Error('Asana MCP client not initialized');
           }
 
-          const result = await this.mcpClient.createTask(params);
+          const result = await this.mcpClient.createTask(params as any);
 
           return {
             success: true,
@@ -522,7 +522,7 @@ export class AsanaToolAdapter {
             throw new Error('Asana MCP client not initialized');
           }
 
-          const result = await this.mcpClient.createProject(params);
+          const result = await this.mcpClient.createProject(params as any);
 
           return {
             success: true,

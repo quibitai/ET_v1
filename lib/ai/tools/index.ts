@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { queryDocumentRowsTool } from './query-document-rows';
 import { searchAndRetrieveKnowledgeBase } from './search-internal-knowledge-base';
 import { requestSuggestionsTool } from './request-suggestions';
-import { googleCalendarTool } from './googleCalendarTool';
+
 import { getMessagesFromOtherChatTool } from './getMessagesFromOtherChatTool';
 import { listDocumentsTool } from './list-documents';
 import { getDocumentContentsTool } from './get-document-contents';
@@ -258,7 +258,6 @@ export async function getAvailableTools(session?: any) {
     tavilySearchThenExtractTool,
     tavilyCrawlTool,
     // Integration Tools
-    googleCalendarTool,
     getMessagesFromOtherChatTool,
   ];
 
@@ -356,7 +355,6 @@ export async function getAvailableToolsV2(session?: any) {
     tavilySearchThenExtractTool,
     tavilyCrawlTool,
     // Integration Tools
-    googleCalendarTool,
     getMessagesFromOtherChatTool,
   ];
 
@@ -400,7 +398,6 @@ function getAvailableToolsSync() {
     tavilySearchThenExtractTool,
     tavilyCrawlTool,
     // Integration Tools
-    googleCalendarTool,
     getMessagesFromOtherChatTool,
   ];
 
@@ -419,7 +416,6 @@ export {
   multiDocumentRetrievalTool,
   searchAndRetrieveKnowledgeBase,
   requestSuggestionsTool,
-  googleCalendarTool,
   getMessagesFromOtherChatTool,
   // Tavily Web Search Tools
   tavilySearchTool,

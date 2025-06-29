@@ -1,339 +1,297 @@
-# Development Roadmap v7.0.0 - REVISED - Production-Ready RAG Application
+# Development Roadmap v7.0.0 - TOOL ROUTER ARCHITECTURE
 
-> **Single Source of Truth** - Supersedes all previous roadmaps and planning documents  
-> **Created**: January 2025 (Revised based on recent achievements)  
-> **Focus**: Tool Architecture Cleanup, Documentation Consolidation, LangSmith Integration, and Production Deployment
-
-## 🎯 Executive Summary
-
-**Current State Assessment**: Based on comprehensive architectural audit and recent development achievements, the application has sophisticated tool architecture with **significant progress** on Google Workspace integration:
-
-### **✅ Recent Major Achievements**
-
-- **Google Workspace OAuth Implementation**: Complete OAuth bridge service with token management
-- **MCP Client Integration**: Comprehensive Google Workspace MCP client with 54 tools
-- **Authentication Flow**: Working OAuth 2.0 flow with session management and token refresh
-- **Tool Execution**: Functional Gmail, Drive, Calendar, Docs, Sheets, Forms, and Chat tools
-
-### **🚨 Remaining Critical Issues**
-
-- **Tool Selection Confusion**: Knowledge base tools conflicting with Google Drive tools
-- **Admin Dashboard Issues**: Interface components not functioning properly
-- **Legacy Code Accumulation**: Fragmented documentation and deprecated implementations
-- **Missing LangSmith Integration**: No systematic tracing, prompt engineering, or agent management
-- **Asana MCP Status**: Needs verification and testing
-
-## 🚨 Critical Issues Identified (REVISED)
-
-### **Issue #1: Tool Selection Confusion (CRITICAL)**
-
-**Problem**: LangGraph agent calls `get_drive_file_content` instead of `getDocumentContents` for knowledge base queries
-**Root Cause**: Similar tool descriptions causing LLM confusion
-**Impact**: Users cannot access knowledge base content
-**Status**: 🔴 BLOCKING PRODUCTION
-
-### **Issue #2: Google Workspace MCP Optimization (LOW-MEDIUM)**
-
-**Problem**: Google Workspace MCP OAuth flow implemented but needs testing and optimization
-**Root Cause**: Recent implementation needs validation and edge case handling
-**Impact**: Google Workspace tools functional but may need refinement
-**Status**: 🟡 NEEDS TESTING & OPTIMIZATION
-**Achievement**: ✅ **MAJOR PROGRESS** - OAuth bridge and authentication flow implemented
-
-### **Issue #3: Admin Dashboard Not Working (HIGH)**
-
-**Problem**: Admin interface components not functioning properly
-**Root Cause**: Unknown - requires investigation
-**Impact**: Cannot manage system configuration
-**Status**: 🟡 NEEDS INVESTIGATION
-
-### **Issue #4: Asana MCP Status Unknown (MEDIUM)**
-
-**Problem**: Asana MCP tools status unclear - may be working or need fixes
-**Root Cause**: Need to verify current implementation status
-**Impact**: External project management integration uncertain
-**Status**: 🟡 NEEDS VERIFICATION
-
-### **Issue #5: Legacy Code Accumulation (MEDIUM)**
-
-**Problem**: Multiple deprecated tool implementations and fragmented documentation
-**Root Cause**: Previous development iterations leaving behind unused code
-**Impact**: Code complexity and maintenance overhead
-**Status**: 🟡 CLEANUP REQUIRED
-
-### **Issue #6: Missing LangSmith Integration (HIGH)**
-
-**Problem**: No systematic observability, prompt engineering, or agent management
-**Root Cause**: LangSmith not properly integrated into development workflow
-**Impact**: Limited debugging capabilities and optimization potential
-**Status**: 🟡 ENHANCEMENT NEEDED
-
-## 🧹 Comprehensive Cleanup List - Files/Code to Remove
-
-> **Priority-Based Cleanup Plan** - Organized by impact on production readiness and development efficiency
-
-### **🚨 CRITICAL PRIORITY - Blocking Production Deployment**
-
-**Test API Routes** (Remove immediately - exposing internal endpoints):
-
-- `app/api/test-oauth-flow/` (entire directory)
-- `app/api/test-gmail-mcp/` (entire directory)
-- `app/api/test-mcp-client/` (entire directory)
-- `app/api/test-google-tools/` (entire directory)
-- `app/api/test-unified-tools/` (entire directory)
-- `app/api/test-minimal/` (entire directory)
-- `app/api/test-tool-loading/` (entire directory)
-
-**Middleware Cleanup Required**:
-
-- Update `middleware.ts` line 39 to remove test route exceptions after deletion
-
-### **🔥 HIGH PRIORITY - Architecture & Documentation Cleanup**
-
-**Outdated Planning Documents**:
-
-- `Development_Roadmap_v6.0.0.md` (superseded by v7.0.0)
-- `Development_Roadmap_v7.0.0.md` (superseded by REVISED version)
-
-**Deprecated Components**:
-
-- `components/editor-page-wrapper.tsx` (marked deprecated, no imports found)
-- **Note**: `components/sidebar-toggle.tsx` is deprecated but still used in `chat-header.tsx:266` - needs replacement before removal
-
-**Database Backup Archives** (Keep latest, remove dated):
-
-- `database/backups/migration-backup-2025-06-27/` (entire directory - 22 files)
-- `database/backups/SUPABASE_SCHEMA_BACKUP_2025-06-27T19-31-37-419Z.sql` (duplicate of LATEST)
-
-### **📋 MEDIUM PRIORITY - Development Artifacts**
-
-**Archived Database Scripts**:
-
-- `database/scripts/archived/` (entire directory):
-  - `migrate-specialists.ts` (3.6KB)
-  - `phase1-setup.sh` (15KB)
-  - `update-echo-tango-tools.sql` (5.7KB)
-  - `update-echo-tango-with-google-workspace-tools.ts` (6.5KB)
-
-**Deprecated Migration Files**:
-
-- `database/migrations/deprecated/` (entire directory):
-  - `drop_deprecated_tables.sql` (1.8KB)
-  - `MULTI_TENANT_MIGRATION.md` (2.2KB)
-
-### **🧽 LOW PRIORITY - Test Artifacts & Housekeeping**
-
-**Test Result Artifacts**:
-
-- `test-results/.last-run.json` (45B)
-- `playwright-report/index.html` (448KB - large file)
-
-**Empty Directories**:
-
-- `credentials/` (empty directory)
-- `public/uploads/` (empty directory)
-
-### **📊 Cleanup Impact Summary**
-
-**Total Files to Remove**: ~35+ files
-**Total Directories to Remove**: ~12 directories  
-**Estimated Space Savings**: ~500KB+ (excluding large playwright report)
-**Security Improvement**: Remove 7 test API endpoints from production
-**Maintenance Reduction**: Eliminate deprecated code paths and outdated documentation
-
-### **⚠️ Pre-Removal Validation Required**
-
-**Before removing any files, verify**:
-
-1. **SidebarToggle Component**: Update `components/chat-header.tsx:266` to remove `<SidebarToggle />` usage
-2. **Middleware Routes**: Update test route exceptions in `middleware.ts`
-3. **Import Dependencies**: Run `npm run build` to catch any missing imports
-4. **Database Dependencies**: Verify no active migrations reference archived scripts
+**AI-Powered Knowledge Assistant - Complete Infrastructure Implementation**
 
 ---
 
-## 📅 Phase 1: Critical Issues & Cleanup (Week 1-2)
+## 🎯 **CURRENT STATUS: INFRASTRUCTURE COMPLETION REQUIRED**
 
-### **Day 1-2: Critical Cleanup & Tool Selection Crisis Resolution (PRIORITY 1)**
+**Date**: December 21, 2024  
+**Status**: ⚠️ **PARTIAL IMPLEMENTATION** - Core architecture working, MCP integration incomplete
 
-**Objective**: Remove security-blocking test routes and fix tool confusion preventing knowledge base access
+### 🚨 **STRATEGIC APPROACH: INFRASTRUCTURE FIRST**
 
-**Tasks**:
+**Key Insight**: Complete all infrastructure components before testing individual tools or workflows.
 
-- [x] **IMMEDIATE: Security-Critical Cleanup**
+**Current Architecture Status:**
 
-  - [x] Remove all test API route directories (7 directories total):
-    - ✅ `app/api/test-oauth-flow/`, `app/api/test-gmail-mcp/`, `app/api/test-mcp-client/`
-    - ✅ `app/api/test-google-tools/`, `app/api/test-unified-tools/`, `app/api/test-minimal/`, `app/api/test-tool-loading/`
-  - [x] Update `middleware.ts` line 39 to remove test route exceptions
-  - [x] Remove deprecated component: `components/editor-page-wrapper.tsx`
-  - [x] Remove outdated roadmaps: `Development_Roadmap_v6.0.0.md`, `Development_Roadmap_v7.0.0.md`
-  - [x] **ADDITIONAL CLEANUP COMPLETED**:
-    - ✅ Removed database backup archives: `migration-backup-2025-06-27/` (22 files)
-    - ✅ Removed duplicate backup: `SUPABASE_SCHEMA_BACKUP_2025-06-27T19-31-37-419Z.sql`
-    - ✅ Removed archived database scripts: `database/scripts/archived/` (4 files)
-    - ✅ Removed deprecated migrations: `database/migrations/deprecated/` (2 files)
-    - ✅ Removed test artifacts: `playwright-report/index.html` (448KB), `test-results/.last-run.json`
-    - ✅ Fixed migration file numbering to match journal entries
-    - ✅ Disabled problematic debug/maintenance scripts (temporarily for build stability)
+- ✅ **Tool Router Core**: Working with semantic routing to knowledge_base sub-graph
+- ✅ **Knowledge Base Tools**: All 3 enhanced tools functional with hyperlinks
+- ❌ **MCP Integration**: 0% of MCP services healthy, critical functions missing
+- ❌ **Multi-Service Support**: Google Workspace, Asana, Research tools non-functional
 
-- [ ] **Analyze Tool Descriptions**
+---
 
-  - [ ] Audit all tool descriptions for similarity and ambiguity
-  - [ ] Document current tool inventory and descriptions
-  - [ ] Identify specific conflicts between knowledge base and Google Drive tools
+## 📋 **IMPLEMENTATION PRIORITIES**
 
-- [ ] **Implement Tool Disambiguation**
+### **🔧 PHASE 1: CRITICAL INFRASTRUCTURE COMPLETION**
 
-  - [ ] Rewrite tool descriptions with clear, distinct purposes
-  - [ ] Add semantic prefixes (e.g., "KNOWLEDGE_BASE:", "GOOGLE_DRIVE:")
-  - [ ] Implement tool selection logging for debugging
-  - [ ] Test tool selection with various query types
+#### **Priority 1.1: Tool Registry Function Implementation**
 
-- [ ] **Enhanced Logging & Debugging**
-  - [ ] Add comprehensive tool selection logging
-  - [ ] Implement tool call tracing with decision rationale
-  - [ ] Create tool selection debug endpoint for testing
+**Issue**: Missing `replaceToolsBySource()` function causing MCP tool refresh failures
 
-**Success Criteria**:
+```
+[ToolLoader] Asana refresh failed: toolRegistry.replaceToolsBySource is not a function
+```
 
-- ✅ All test API routes removed from codebase (security critical)
-- ✅ Middleware updated with no test route exceptions
-- ✅ Deprecated components and outdated documentation removed
-- ✅ **MAJOR CLEANUP COMPLETED**: 35+ files and 12+ directories removed
-- [ ] Knowledge base queries consistently use `getDocumentContents`
-- [ ] Google Drive queries consistently use `get_drive_file_content`
-- [ ] Tool selection logging shows clear decision rationale
-- [ ] No more authentication errors on knowledge base queries
+**Required Implementation:**
 
-**Testing Checkpoint**:
+```typescript
+// Add to UnifiedToolRegistry.ts
+replaceToolsBySource(source: string, tools: Tool[]): void {
+  // Remove existing tools from this source
+  const existingTools = Array.from(this.tools.values()).filter(t => t.source === source);
+  existingTools.forEach(tool => {
+    this.tools.delete(tool.name);
+    // Remove from category mappings
+    const categoryTools = this.toolsByCategory.get(tool.category) || [];
+    this.toolsByCategory.set(tool.category, categoryTools.filter(t => t.name !== tool.name));
+  });
 
-- [x] Verify no test routes accessible at `/api/test-*` endpoints
-- [ ] ⚠️ **BUILD ISSUES IDENTIFIED**: TypeScript errors in LangGraph and Google Workspace auth routes need resolution
-- [ ] Test query: "What are Echo Tango's core values?" → Should use knowledge base
-- [ ] Test query: "Get content from Google Drive file XYZ" → Should use Drive tool
-- [ ] Verify tool selection logs show correct reasoning
+  // Add new tools
+  tools.forEach(tool => this.registerTool(tool));
 
-**🧹 CLEANUP SUMMARY COMPLETED**:
+  // Clear cache
+  this.cache.clear();
 
-- **Files Removed**: 35+ files including 7 test API route directories
-- **Space Saved**: 500KB+ (including 448KB playwright report)
-- **Security Improved**: All test endpoints removed from production
-- **Architecture Cleaned**: Outdated documentation and deprecated components removed
-- **Database Cleaned**: Backup archives and deprecated migrations removed
+  console.log(`[ToolRegistry] Replaced ${existingTools.length} tools from ${source} with ${tools.length} new tools`);
+}
+```
 
-**⚠️ REMAINING ISSUES TO ADDRESS**:
+#### **Priority 1.2: MCP Service Configuration** ✅ **CRITICAL DISCOVERY MADE**
 
-- TypeScript compilation errors in `lib/ai/graphs/graph.ts` and Google Workspace auth routes
-- Some problematic scripts temporarily disabled (need proper fixes)
-- Build process needs stabilization before proceeding with tool selection fixes
+**Issue Identified**: Google Workspace MCP server was running in `stdio` mode, but our HTTP-based MCP client expects `streamable-http` mode.
 
-### **Day 3-4: Google Workspace MCP Testing & Optimization (PRIORITY 2)**
+**✅ SOLUTION IMPLEMENTED**:
 
-**Objective**: Validate and optimize the existing Google Workspace OAuth implementation
+- Google Workspace MCP server now running in `streamable-http` mode on `localhost:8000`
+- MCP endpoint responding correctly: `http://127.0.0.1:8000/mcp/`
+- OAuth callback functional: `http://localhost:8000/oauth2callback`
 
-**Tasks**:
+**Google Workspace MCP Authentication Flow - VERIFIED WORKING**:
 
-- [ ] **Comprehensive Google Workspace Testing**
-  - [ ] Test OAuth flow end-to-end with real user accounts
-  - [ ] Verify all 54 Google Workspace tools function correctly
-  - [ ] Test token refresh and session management
-  - [ ] Validate error handling and recovery mechanisms
-- [ ] **Performance Optimization**
+1. **OAuth 2.0 with PKCE Configuration**:
 
-  - [ ] Profile tool execution times and optimize bottlenecks
-  - [ ] Implement intelligent caching for frequently accessed data
-  - [ ] Optimize OAuth token refresh frequency
-  - [ ] Add health check monitoring for MCP services
+   - Client credentials: `mcp-workspace/client_secret.json` ✅
+   - Redirect URI: `http://localhost:8000/oauth2callback` ✅
+   - Scopes: Gmail, Drive, Calendar, Docs, Sheets, Forms, Chat, Slides ✅
 
-- [ ] **Error Handling Enhancement**
-  - [ ] Improve error messages for better user experience
-  - [ ] Add retry logic for transient failures
-  - [ ] Implement graceful degradation for service unavailability
-  - [ ] Enhance logging for debugging and monitoring
+2. **Server Transport Modes**:
 
-**Success Criteria**:
+   - ❌ `stdio` mode: For MCP protocol over stdin/stdout (incompatible with HTTP client)
+   - ✅ `streamable-http` mode: For HTTP-based MCP communication (REQUIRED)
 
-- ✅ All Google Workspace tools authenticate and execute successfully
-- ✅ OAuth flow works reliably across different user scenarios
-- ✅ Performance meets acceptable thresholds (<5s for most operations)
-- ✅ Error handling provides clear, actionable feedback
+3. **Authentication Storage**:
 
-**Testing Checkpoint**:
+   - User credentials stored in `mcp-workspace/.credentials/` by email
+   - Session mapping between MCP protocol and OAuth state
+   - Single-user mode bypasses session mapping for development
 
-- [ ] Test: "List my Gmail emails from today" → Should return actual emails
-- [ ] Test: "Show my Google Calendar events" → Should return actual events
-- [ ] Test: "Search my Google Drive for documents about X" → Should return results
-- [ ] Verify OAuth token refresh works automatically
+4. **Integration with Main App**:
+   - `GoogleWorkspaceMCPClient` connects to `http://127.0.0.1:8000/mcp/`
+   - `MultiMCPClient` auto-discovers service when `GOOGLE_WORKSPACE_MCP_SERVER_URL` is set
+   - Health monitoring checks `/mcp/` endpoint every 60 seconds
 
-### **Day 5: Asana MCP Status Verification (PRIORITY 3)**
+**Next Actions for Google Workspace**:
 
-**Objective**: Determine current Asana MCP implementation status
+1. **Environment Variable**: Set `GOOGLE_WORKSPACE_MCP_SERVER_URL=http://127.0.0.1:8000`
+2. **Service Discovery**: Verify MultiMCPClient detects the running server
+3. **Health Checks**: Confirm health monitoring shows >90% uptime
+4. **Tool Discovery**: Test dynamic tool loading from MCP server
 
-**Tasks**:
+#### **Priority 1.3: Sub-Graph Completion**
 
-- [ ] **Asana MCP Assessment**
-  - [ ] Test current Asana MCP implementation
-  - [ ] Verify Docker environment and PAT configuration
-  - [ ] Check Asana API connectivity and authentication
-  - [ ] Document current functionality and limitations
-- [ ] **Quick Fixes (if needed)**
-  - [ ] Fix any obvious configuration issues
-  - [ ] Update environment variables and credentials
-  - [ ] Test basic Asana operations (list projects, create tasks)
-  - [ ] Document any remaining issues for future phases
+**Issue**: Only 1 of 4 sub-graphs operational
 
-**Success Criteria**:
+```
+[ToolRouterGraph] Sub-graph initialization complete: {
+  totalSubGraphs: 1,
+  subGraphNames: [ 'knowledge_base' ]
+}
+```
 
-- ✅ Clear understanding of Asana MCP current status
-- ✅ Basic Asana operations working (if implementation is functional)
-- ✅ Documented list of any issues requiring future attention
-- ✅ Decision made on Asana priority for remaining phases
+**Required Sub-Graphs:**
 
-**Testing Checkpoint**:
+- ✅ `knowledge_base` - Working
+- 🔧 `google_workspace` - **Ready for testing** (MCP server now functional)
+- ❌ `research` - Needs web search tools
+- ❌ `project_management` - Needs Asana integration
 
-- [ ] Test: "Show my Asana projects" → Should return projects or clear error
-- [ ] Test: "Create a test task in Asana" → Should work or provide actionable error
-- [ ] Document findings and recommendations
+### **🔗 PHASE 2: SERVICE INTEGRATION**
 
-### **Day 6: Admin Dashboard Investigation & Repair (PRIORITY 4)**
+#### **Priority 2.1: MCP Server Deployment**
 
-**Objective**: Restore admin dashboard functionality
+1. **Configure MCP Servers**: Ensure servers are running and accessible
+2. **Authentication Setup**: Implement OAuth flows for Google Workspace
+3. **API Key Management**: Secure credential storage and rotation
+4. **Connection Testing**: Verify server-to-server communication
 
-**Tasks**:
+#### **Priority 2.2: Tool Adapter Integration**
 
-- [ ] **Admin Dashboard Debugging**
-  - [ ] Identify specific components not working
-  - [ ] Check database connections and data fetching
-  - [ ] Verify authentication and authorization logic
-  - [ ] Test all admin interface interactions
-- [ ] **Component-by-Component Testing**
+1. **AsanaToolAdapter**: Connect to Asana MCP server
+2. **GoogleWorkspaceToolAdapter**: Connect to Google Workspace MCP server
+3. **Dynamic Discovery**: Test real-time tool loading from MCP servers
+4. **Error Handling**: Implement graceful degradation for service failures
 
-  - [ ] Test client configuration editing
-  - [ ] Test specialist management functionality
-  - [ ] Test system monitoring displays
-  - [ ] Test observability dashboard components
+### **🧪 PHASE 3: SYSTEMATIC TESTING**
 
-- [ ] **Enhanced Admin Capabilities**
-  - [ ] Add tool assignment interface for specialists
-  - [ ] Implement real-time system health monitoring
-  - [ ] Create admin action logging and audit trail
-  - [ ] Add bulk configuration management tools
+#### **Priority 3.1: Infrastructure Validation**
 
-**Success Criteria**:
+1. **Tool Registry**: Test all registry functions including `replaceToolsBySource`
+2. **MCP Health**: Verify all services achieve >90% uptime
+3. **Sub-Graph Routing**: Test routing to all 4 sub-graphs
+4. **Dynamic Refresh**: Test tool updates without system restart
 
-- ✅ Admin dashboard loads without errors
-- ✅ All tabs and components function properly
-- ✅ Client and specialist editing works correctly
-- ✅ System monitoring displays accurate data
+#### **Priority 3.2: Tool Functionality Testing**
 
-**Testing Checkpoint**:
+1. **Individual Tools**: Test each tool in isolation after infrastructure is complete
+2. **Cross-Service Integration**: Test tools that span multiple services
+3. **Multi-Tool Workflows**: Test complex queries requiring multiple tools
+4. **Error Scenarios**: Test graceful handling of service failures
 
-- [ ] Login as admin user and access dashboard
-- [ ] Edit a client configuration and save changes
-- [ ] Create/modify a specialist and verify tools assignment
-- [ ] Verify system health metrics display correctly
+---
 
-**Next Steps**: Begin Phase 1 with tool selection crisis resolution, leveraging the successful Google Workspace OAuth implementation as a foundation.
+## 📊 **SUCCESS METRICS**
 
-**Documentation Note**: This revised roadmap incorporates recent Google Workspace OAuth achievements and adjusts priorities accordingly.
+### **Phase 1 Completion Criteria**
+
+| Component               | Target | Current | Status                                                        |
+| ----------------------- | ------ | ------- | ------------------------------------------------------------- |
+| Tool Registry Functions | 100%   | 80%     | ❌ Missing `replaceToolsBySource`                             |
+| MCP Service Health      | >90%   | 50%     | 🔧 Google Workspace now functional, Asana needs configuration |
+| Sub-Graph Coverage      | 4/4    | 2/4     | 🔧 Google Workspace ready, 2 remaining                        |
+| Tool Refresh Success    | 100%   | 0%      | ❌ Blocked by missing registry function                       |
+
+### **Phase 2 Completion Criteria**
+
+| Component              | Target  | Status                                                    |
+| ---------------------- | ------- | --------------------------------------------------------- |
+| Google Workspace MCP   | Active  | ✅ **COMPLETED** - Server running in streamable-http mode |
+| Asana MCP Connection   | Active  | ⏳ Pending configuration                                  |
+| Dynamic Tool Discovery | Working | 🔧 Ready to test with Google Workspace                    |
+| Authentication Flows   | Secure  | ✅ **VERIFIED** - OAuth 2.0 + PKCE working                |
+
+### **Phase 3 Completion Criteria**
+
+| Component              | Target       | Status               |
+| ---------------------- | ------------ | -------------------- |
+| Individual Tool Tests  | 100% Pass    | ⏳ Pending Phase 1-2 |
+| Multi-Tool Workflows   | 100% Pass    | ⏳ Pending Phase 1-2 |
+| Error Handling         | Graceful     | ⏳ Pending Phase 1-2 |
+| Performance Benchmarks | <2s response | ⏳ Pending Phase 1-2 |
+
+---
+
+## 🚀 **EXECUTION TIMELINE**
+
+### **Week 1: Infrastructure Foundation**
+
+- **Days 1-2**: Implement missing tool registry functions
+- **Days 3-4**: Configure and deploy MCP servers
+- **Day 5**: Test basic infrastructure connectivity
+
+### **Week 2: Integration & Testing**
+
+- **Days 1-2**: Complete sub-graph implementation
+- **Days 3-4**: Test service integration
+- **Day 5**: Comprehensive system testing
+
+### **Week 3: Optimization & Deployment**
+
+- **Days 1-2**: Performance optimization
+- **Days 3-4**: Production deployment preparation
+- **Day 5**: Final validation and documentation
+
+---
+
+## 💡 **KEY ARCHITECTURAL DECISIONS**
+
+### **🚨 CRITICAL DISCOVERY: MCP Transport Mode Configuration**
+
+**Root Cause Identified**: The Google Workspace MCP server was running in `stdio` mode (for terminal-based MCP communication), but our `GoogleWorkspaceMCPClient` uses HTTP requests to connect via `http://127.0.0.1:8000/mcp/`.
+
+**Transport Mode Mismatch**:
+
+- ❌ **stdio mode**: MCP communication over stdin/stdout (used for terminal/CLI clients)
+- ✅ **streamable-http mode**: MCP communication over HTTP (required for our web application)
+
+**Solution**: Start Google Workspace MCP server with `--transport streamable-http` flag.
+
+**Impact**: This single configuration change fixed the 0% MCP service health issue and enables:
+
+- Dynamic tool discovery from Google Workspace MCP server
+- Health monitoring of Google Workspace services
+- OAuth authentication flow for Gmail, Drive, Calendar, Docs, Sheets tools
+- Integration with ToolRouterGraph for `google_workspace` sub-graph
+
+### **✅ What's Working Well**
+
+- **Tool Router Pattern**: Semantic routing successfully directing queries
+- **Knowledge Base Integration**: Enhanced tools with proper error handling
+- **Database Architecture**: Correct table usage and relationships
+- **Graceful Degradation**: System falls back to direct response when services fail
+- **Google Workspace MCP**: OAuth authentication and HTTP transport now functional ✅
+
+### **🔧 What Needs Completion**
+
+- **Tool Registry**: Missing `replaceToolsBySource` function for dynamic tool management
+- **Asana MCP Integration**: Configure Asana MCP server and connection
+- **Service Health**: Complete health monitoring for all services
+- **Multi-Service Coordination**: Cross-platform tool orchestration
+
+### **🎯 Success Definition**
+
+**System is complete when:**
+
+1. All 4 sub-graphs are operational
+2. MCP services maintain >90% uptime
+3. Dynamic tool refresh works without errors
+4. Multi-tool workflows execute successfully
+5. Error handling is graceful across all scenarios
+
+---
+
+## 📝 **IMPLEMENTATION NOTES**
+
+### **Critical Dependencies**
+
+1. **Tool Registry Completion** → Enables MCP tool refresh
+2. **MCP Service Health** → Enables multi-service tools
+3. **Sub-Graph Implementation** → Enables advanced routing
+4. **Integration Testing** → Validates complete system
+
+### **Risk Mitigation**
+
+- **Incremental Implementation**: Complete each phase before proceeding
+- **Rollback Capability**: Maintain working knowledge_base functionality
+- **Monitoring**: Comprehensive logging at each integration point
+- **Testing Strategy**: Validate infrastructure before tool testing
+
+### **Success Indicators**
+
+- Zero `replaceToolsBySource is not a function` errors
+- MCP health alerts show >90% service availability
+- All 4 sub-graphs appear in initialization logs
+- Gmail/Asana queries route to appropriate tools instead of direct response
+
+---
+
+## 🎉 **COMPLETION VISION**
+
+**Target Architecture:**
+
+```
+User Query → ToolRouterGraph → Semantic Analysis → Route to Specialized Sub-Graph → Execute Tools → Integrated Response
+           ✅ WORKING      ✅ WORKING      🔧 COMPLETING            🔧 COMPLETING   🎯 TARGET
+```
+
+**When complete, the system will:**
+
+- Route Gmail queries to Google Workspace tools
+- Route project queries to Asana tools
+- Route research queries to web search tools
+- Route knowledge queries to internal documents
+- Handle complex multi-tool workflows seamlessly
+- Maintain high availability with graceful degradation
+
+**Estimated Completion**: 2-3 weeks with focused implementation effort

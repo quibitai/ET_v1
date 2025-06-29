@@ -5,6 +5,9 @@ import { db } from '@/lib/db';
 import { analyticsEvents } from '@/lib/db/schema';
 import type { AnalyticsEvent } from '@/lib/db/schema';
 
+// Re-export logger for modules that expect to import it from observabilityService
+export { logger };
+
 /**
  * ObservabilityService
  *

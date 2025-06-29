@@ -13,9 +13,13 @@
  * - Implements Plan-and-Execute pattern for improved efficiency
  */
 
-import { type BaseMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
-import { type ChatOpenAI } from '@langchain/openai';
-import { type DynamicStructuredTool } from '@langchain/core/tools';
+import {
+  type BaseMessage,
+  SystemMessage,
+  AIMessage,
+} from '@langchain/core/messages';
+import type { ChatOpenAI } from '@langchain/openai';
+import type { DynamicStructuredTool } from '@langchain/core/tools';
 import type { RequestLogger } from '../../../services/observabilityService';
 import type { GraphState } from '../state';
 import { getLastHumanMessage, getToolMessages, hasToolCalls } from '../state';
@@ -155,16 +159,69 @@ export async function agentNode(
         : 'no plan available',
     });
 
-    // Get the agent's response
-    const response = await modelWithTools.invoke(messages);
+    // Get the agent's response with LangSmith tracing
+    const response = await modelWithTools.invoke(messages, {
+      tags: ['agent_node', 'tool_selection'],
+      metadata: {
+        userQuery: getLastHumanMessage(state)?.substring(0, 100),
+        availableTools: tools.map((t) => t.name),
+        responseType,
+        hasExecutionPlan: !!executionPlan,
+        iterationCount: state.iterationCount || 0,
+      },
+    });
 
     const duration = Date.now() - startTime;
 
-    // Log the agent's decision
+    // CRITICAL: Enhanced tool call logging for disambiguation debugging
     const hasToolCallsInResponse = !!(response as AIMessage).tool_calls?.length;
+    const toolCalls = (response as AIMessage).tool_calls || [];
+
+    if (hasToolCallsInResponse) {
+      // Analyze tool call types for debugging
+      const knowledgeBaseToolCalls = toolCalls.filter(
+        (tc) =>
+          tc.name?.includes('Document') ||
+          tc.name?.includes('Knowledge') ||
+          tc.name?.includes('Internal') ||
+          tc.name?.includes('listDocuments') ||
+          tc.name?.includes('getDocumentContents') ||
+          tc.name?.includes('searchInternalKnowledgeBase'),
+      );
+
+      const googleDriveToolCalls = toolCalls.filter(
+        (tc) =>
+          tc.name?.includes('drive') ||
+          tc.name?.includes('get_drive_file_content') ||
+          tc.name?.includes('search_drive_files') ||
+          tc.name?.includes('list_drive_items'),
+      );
+
+      logger.info('🤖 AGENT TOOL CALL DECISION', {
+        totalToolCalls: toolCalls.length,
+        knowledgeBaseToolCalls: knowledgeBaseToolCalls.length,
+        googleDriveToolCalls: googleDriveToolCalls.length,
+        toolCallDetails: toolCalls.map((tc) => ({
+          name: tc.name,
+          type: tc.name?.includes('drive')
+            ? 'GOOGLE_DRIVE'
+            : tc.name?.includes('Document') ||
+                tc.name?.includes('Knowledge') ||
+                tc.name?.includes('Internal')
+              ? 'KNOWLEDGE_BASE'
+              : 'OTHER',
+          args: Object.keys(tc.args || {}),
+        })),
+        // Flag potential tool confusion
+        toolConfusion:
+          knowledgeBaseToolCalls.length > 0 && googleDriveToolCalls.length > 0,
+        userQuery: getLastHumanMessage(state)?.substring(0, 100) || 'unknown',
+      });
+    }
+
     logger.info('[Agent] Response generated with strategic context', {
       hasToolCalls: hasToolCallsInResponse,
-      toolCallCount: (response as AIMessage).tool_calls?.length || 0,
+      toolCallCount: toolCalls.length,
       duration,
       responseType,
       planAlignment: executionPlan

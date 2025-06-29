@@ -9,7 +9,7 @@ alias deactivate 'test $?_OLD_VIRTUAL_PATH != 0 && setenv PATH "$_OLD_VIRTUAL_PA
 # Unset irrelevant variables.
 deactivate nondestructive
 
-setenv VIRTUAL_ENV /Users/adamhayden/Documents/Apps/Quibit_RAG/ET_v001/mcp-server-google-workspace
+setenv VIRTUAL_ENV /Users/adamhayden/Documents/Apps/Quibit_RAG/ET_v001/mcp-workspace
 
 set _OLD_VIRTUAL_PATH="$PATH"
 setenv PATH "$VIRTUAL_ENV/"bin":$PATH"
@@ -18,8 +18,8 @@ setenv PATH "$VIRTUAL_ENV/"bin":$PATH"
 set _OLD_VIRTUAL_PROMPT="$prompt"
 
 if (! "$?VIRTUAL_ENV_DISABLE_PROMPT") then
-    set prompt = '(mcp-server-google-workspace) '"$prompt"
-    setenv VIRTUAL_ENV_PROMPT '(mcp-server-google-workspace) '
+    set prompt = '(mcp-workspace) '"$prompt"
+    setenv VIRTUAL_ENV_PROMPT '(mcp-workspace) '
 endif
 
 alias pydoc python -m pydoc

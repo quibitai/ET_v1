@@ -214,3 +214,181 @@ async def create_doc(
     msg = f"Created Google Doc '{title}' (ID: {doc_id}) for {user_google_email}. Link: {link}"
     logger.info(f"Successfully created Google Doc '{title}' (ID: {doc_id}) for {user_google_email}. Link: {link}")
     return msg
+
+
+@server.tool()
+@require_google_service("drive", "drive_read")
+@handle_http_errors("read_doc_comments")
+async def read_doc_comments(
+    service,
+    user_google_email: str,
+    document_id: str,
+) -> str:
+    """
+    Read all comments from a Google Doc.
+
+    Args:
+        document_id: The ID of the Google Document
+
+    Returns:
+        str: A formatted list of all comments and replies in the document.
+    """
+    logger.info(f"[read_doc_comments] Reading comments for document {document_id}")
+
+    response = await asyncio.to_thread(
+        service.comments().list(
+            fileId=document_id,
+            fields="comments(id,content,author,createdTime,modifiedTime,resolved,replies(content,author,id,createdTime,modifiedTime))"
+        ).execute
+    )
+    
+    comments = response.get('comments', [])
+    
+    if not comments:
+        return f"No comments found in document {document_id}"
+    
+    output = [f"Found {len(comments)} comments in document {document_id}:\n"]
+    
+    for comment in comments:
+        author = comment.get('author', {}).get('displayName', 'Unknown')
+        content = comment.get('content', '')
+        created = comment.get('createdTime', '')
+        resolved = comment.get('resolved', False)
+        comment_id = comment.get('id', '')
+        status = " [RESOLVED]" if resolved else ""
+        
+        output.append(f"Comment ID: {comment_id}")
+        output.append(f"Author: {author}")
+        output.append(f"Created: {created}{status}")
+        output.append(f"Content: {content}")
+        
+        # Add replies if any
+        replies = comment.get('replies', [])
+        if replies:
+            output.append(f"  Replies ({len(replies)}):")
+            for reply in replies:
+                reply_author = reply.get('author', {}).get('displayName', 'Unknown')
+                reply_content = reply.get('content', '')
+                reply_created = reply.get('createdTime', '')
+                reply_id = reply.get('id', '')
+                output.append(f"    Reply ID: {reply_id}")
+                output.append(f"    Author: {reply_author}")
+                output.append(f"    Created: {reply_created}")
+                output.append(f"    Content: {reply_content}")
+        
+        output.append("")  # Empty line between comments
+    
+    return "\n".join(output)
+
+
+@server.tool()
+@require_google_service("drive", "drive_file")
+@handle_http_errors("reply_to_comment")
+async def reply_to_comment(
+    service,
+    user_google_email: str,
+    document_id: str,
+    comment_id: str,
+    reply_content: str,
+) -> str:
+    """
+    Reply to a specific comment in a Google Doc.
+
+    Args:
+        document_id: The ID of the Google Document
+        comment_id: The ID of the comment to reply to
+        reply_content: The content of the reply
+
+    Returns:
+        str: Confirmation message with reply details.
+    """
+    logger.info(f"[reply_to_comment] Replying to comment {comment_id} in document {document_id}")
+
+    body = {'content': reply_content}
+    
+    reply = await asyncio.to_thread(
+        service.replies().create(
+            fileId=document_id,
+            commentId=comment_id,
+            body=body,
+            fields="id,content,author,createdTime,modifiedTime"
+        ).execute
+    )
+    
+    reply_id = reply.get('id', '')
+    author = reply.get('author', {}).get('displayName', 'Unknown')
+    created = reply.get('createdTime', '')
+    
+    return f"Reply posted successfully!\nReply ID: {reply_id}\nAuthor: {author}\nCreated: {created}\nContent: {reply_content}"
+
+
+@server.tool()
+@require_google_service("drive", "drive_file")
+@handle_http_errors("create_doc_comment")
+async def create_doc_comment(
+    service,
+    user_google_email: str,
+    document_id: str,
+    comment_content: str,
+) -> str:
+    """
+    Create a new comment on a Google Doc.
+
+    Args:
+        document_id: The ID of the Google Document
+        comment_content: The content of the comment
+
+    Returns:
+        str: Confirmation message with comment details.
+    """
+    logger.info(f"[create_doc_comment] Creating comment in document {document_id}")
+
+    body = {"content": comment_content}
+    
+    comment = await asyncio.to_thread(
+        service.comments().create(
+            fileId=document_id,
+            body=body,
+            fields="id,content,author,createdTime,modifiedTime"
+        ).execute
+    )
+    
+    comment_id = comment.get('id', '')
+    author = comment.get('author', {}).get('displayName', 'Unknown')
+    created = comment.get('createdTime', '')
+    
+    return f"Comment created successfully!\nComment ID: {comment_id}\nAuthor: {author}\nCreated: {created}\nContent: {comment_content}"
+
+
+@server.tool()
+@require_google_service("drive", "drive_file")
+@handle_http_errors("resolve_comment")
+async def resolve_comment(
+    service,
+    user_google_email: str,
+    document_id: str,
+    comment_id: str,
+) -> str:
+    """
+    Resolve a comment in a Google Doc.
+
+    Args:
+        document_id: The ID of the Google Document
+        comment_id: The ID of the comment to resolve
+
+    Returns:
+        str: Confirmation message.
+    """
+    logger.info(f"[resolve_comment] Resolving comment {comment_id} in document {document_id}")
+
+    body = {"resolved": True}
+    
+    await asyncio.to_thread(
+        service.comments().update(
+            fileId=document_id,
+            commentId=comment_id,
+            body=body
+        ).execute
+    )
+    
+    return f"Comment {comment_id} has been resolved successfully."

@@ -645,8 +645,10 @@ export class GoogleWorkspaceToolAdapter {
     return {
       name: 'get_drive_file_content',
       displayName: 'Get Drive File Content',
-      description: 'Retrieve the content of a specific Google Drive file',
-      usage: 'Use when user wants to read the contents of a Drive file',
+      description:
+        "☁️ GOOGLE_DRIVE: Retrieve the content of a specific file from user's EXTERNAL Google Drive cloud storage. NEVER use for internal company documents or knowledge base content - use getDocumentContents for those!",
+      usage:
+        'Use when user specifically wants to read contents from their personal Google Drive files, NOT for internal knowledge base documents',
       examples: [
         'read file content',
         'get document text',
@@ -1254,9 +1256,10 @@ export class GoogleWorkspaceToolAdapter {
     return {
       name: 'get_docs_content',
       displayName: 'Get Google Docs Content',
-      description: 'Get the content of a Google Docs document',
+      description:
+        "☁️ GOOGLE_DOCS: Get the content of a Google Docs document from user's EXTERNAL Google Drive. NEVER use for internal company documents or knowledge base content - use getDocumentContents for those!",
       usage:
-        'Use when user wants to retrieve the content of a document in Docs',
+        'Use when user specifically wants to retrieve content from their personal Google Docs, NOT for internal knowledge base documents',
       examples: [
         'get content of',
         'retrieve document content',

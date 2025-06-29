@@ -15,7 +15,7 @@ import socket
 from fastapi import FastAPI, Request
 import uvicorn
 
-from auth.google_auth import handle_auth_callback, CONFIG_CLIENT_SECRETS_PATH
+from auth.google_auth import handle_auth_callback, check_client_secrets
 from auth.scopes import OAUTH_STATE_TO_SESSION_ID_MAP, SCOPES
 from auth.oauth_responses import create_error_response, create_success_response, create_server_error_response
 
@@ -59,6 +59,11 @@ class MinimalOAuthServer:
                 return create_error_response(error_message)
 
             try:
+                # Check if we have credentials available (environment variables or file)
+                error_message = check_client_secrets()
+                if error_message:
+                    return create_server_error_response(error_message)
+
                 logger.info(f"OAuth callback: Received code (state: {state}). Attempting to exchange for tokens.")
 
                 mcp_session_id: Optional[str] = OAUTH_STATE_TO_SESSION_ID_MAP.pop(state, None)
@@ -69,7 +74,6 @@ class MinimalOAuthServer:
 
                 # Exchange code for credentials
                 verified_user_id, credentials = handle_auth_callback(
-                    client_secrets_path=CONFIG_CLIENT_SECRETS_PATH,
                     scopes=SCOPES,
                     authorization_response=str(request.url),
                     redirect_uri=f"{self.base_uri}:{self.port}/oauth2callback",
@@ -106,7 +110,7 @@ class MinimalOAuthServer:
             hostname = parsed_uri.hostname or 'localhost'
         except Exception:
             hostname = 'localhost'
-            
+
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.bind((hostname, self.port))

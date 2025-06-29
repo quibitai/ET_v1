@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # Asana MCP Server
@@ -7,7 +7,7 @@ services:
     build:
       context: ./mcp-server-asana
     ports:
-      - '8002:8080'
+      - "8002:8080"
     volumes:
       - ./mcp-server-asana:/app
       - ./mcp-server-asana/.credentials:/app/.credentials
@@ -30,7 +30,7 @@ services:
 
   # Next.js Application (optional - you can also run this separately)
   nextjs-app:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
       target: development
@@ -41,7 +41,6 @@ services:
       - .env.local
     environment:
       - ASANA_MCP_SERVER_URL=http://asana-mcp:8080/mcp/
-      - GOOGLE_WORKSPACE_MCP_URL=http://google-workspace-mcp:8000/mcp/
       - NODE_ENV=development
     volumes:
       # Mount source code for hot reload
@@ -59,7 +58,7 @@ services:
     image: postgres:16
     container_name: postgres
     ports:
-      - '5432:5432'
+      - "5432:5432"
     environment:
       - POSTGRES_DB=postgres
       - POSTGRES_USER=postgres
@@ -69,38 +68,10 @@ services:
     networks:
       - quibit-network
 
-  google-workspace-mcp:
-    container_name: google-workspace-mcp
-    build:
-      context: ./mcp-server-google-workspace
-      dockerfile: Dockerfile
-    ports:
-      - '8000:8000'
-    env_file:
-      - .env
-      - .env.local
-    environment:
-      - PORT=8000
-      - WORKSPACE_MCP_PORT=8000
-      - WORKSPACE_MCP_BASE_URI=http://localhost
-      - OAUTHLIB_INSECURE_TRANSPORT=1
-    command: ["uv", "run", "main.py", "--single-user", "--transport", "streamable-http", "--tools", "gmail", "drive", "calendar", "docs", "sheets", "forms", "chat", "slides"]
-    volumes:
-      - ./mcp-server-google-workspace:/app
-      - ./credentials:/app/.credentials
-    networks:
-      - quibit-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
 networks:
   quibit-network:
-    driver: bridge 
+    driver: bridge
 
 volumes:
   postgres_data:
-  redis_data: 
+  redis_data:

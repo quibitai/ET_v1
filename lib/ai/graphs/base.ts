@@ -68,6 +68,8 @@ export class BaseLangGraphFactory {
 
   /**
    * Select relevant tools based on context and query
+   * ENHANCED: Added comprehensive logging for tool disambiguation debugging
+   * CRITICAL: Added contextual tool filtering to prevent Google Workspace vs Knowledge Base confusion
    */
   protected async selectTools(userQuery: string): Promise<any[]> {
     if (!this.config.enableToolExecution) {
@@ -82,12 +84,51 @@ export class BaseLangGraphFactory {
       };
 
       // Use the modern tool service to select relevant tools
-      const selectedTools = await selectRelevantTools(toolContext, null, 10);
+      let selectedTools = await selectRelevantTools(toolContext, null, 10);
 
-      this.logger.info('Selected tools for LangGraph', {
-        toolCount: selectedTools.length,
-        toolNames: selectedTools.map((t) => t.name),
+      // CRITICAL: Apply contextual tool filtering to prevent confusion
+      selectedTools = this.applyContextualToolFiltering(
+        userQuery,
+        selectedTools,
+      );
+
+      // CRITICAL: Enhanced logging for tool disambiguation debugging
+      const knowledgeBaseTools = selectedTools.filter(
+        (t) =>
+          t.name?.includes('Document') ||
+          t.name?.includes('Knowledge') ||
+          t.name?.includes('Internal') ||
+          t.description?.includes('🗂️ KNOWLEDGE_BASE'),
+      );
+
+      const googleDriveTools = selectedTools.filter(
+        (t) =>
+          t.name?.includes('drive') ||
+          t.description?.includes('☁️ GOOGLE_DRIVE'),
+      );
+
+      // Log tool selection with disambiguation analysis
+      this.logger.info('🔧 TOOL SELECTION ANALYSIS', {
+        totalTools: selectedTools.length,
+        knowledgeBaseTools: knowledgeBaseTools.length,
+        googleDriveTools: googleDriveTools.length,
         userQuery: userQuery.substring(0, 100),
+        // CRITICAL: Track which type of tools were selected for debugging
+        toolTypes: {
+          knowledgeBase: knowledgeBaseTools.map((t) => t.name),
+          googleDrive: googleDriveTools.map((t) => t.name),
+          other: selectedTools
+            .filter(
+              (t) =>
+                !knowledgeBaseTools.includes(t) &&
+                !googleDriveTools.includes(t),
+            )
+            .map((t) => t.name),
+        },
+        // Flag potential confusion cases
+        potentialConfusion:
+          knowledgeBaseTools.length > 0 && googleDriveTools.length > 0,
+        queryIntent: this.analyzeQueryIntent(userQuery),
       });
 
       return selectedTools;
@@ -98,6 +139,136 @@ export class BaseLangGraphFactory {
       });
       return [];
     }
+  }
+
+  /**
+   * Apply contextual tool filtering to prevent Google Workspace vs Knowledge Base confusion
+   * CRITICAL: When query is clearly for internal knowledge base content, exclude Google Workspace document tools
+   */
+  private applyContextualToolFiltering(userQuery: string, tools: any[]): any[] {
+    const queryLower = userQuery.toLowerCase();
+
+    // Detect if this is a definite internal knowledge base query
+    const isInternalKnowledgeQuery =
+      queryLower.includes('echo tango') ||
+      queryLower.includes('company') ||
+      queryLower.includes('our ') ||
+      queryLower.includes('internal') ||
+      queryLower.includes('knowledge base') ||
+      queryLower.includes('core values') ||
+      queryLower.includes('policy') ||
+      queryLower.includes('policies') ||
+      queryLower.includes('business') ||
+      queryLower.includes('organizational');
+
+    // Detect if this is a definite Google Workspace query
+    const isGoogleWorkspaceQuery =
+      queryLower.includes('google') ||
+      queryLower.includes('gmail') ||
+      queryLower.includes('calendar') ||
+      queryLower.includes('drive') ||
+      queryLower.includes('sheets') ||
+      queryLower.includes('my personal') ||
+      queryLower.includes('my google');
+
+    let filteredTools = tools;
+
+    if (isInternalKnowledgeQuery && !isGoogleWorkspaceQuery) {
+      // For internal knowledge queries, EXCLUDE Google Workspace document tools that cause confusion
+      const conflictingGoogleTools = [
+        'get_docs_content', // Google Docs content (conflicts with getDocumentContents)
+        'search_docs', // Google Docs search (conflicts with searchInternalKnowledgeBase)
+        'list_docs', // Google Docs list (conflicts with listDocuments)
+        'get_drive_file_content', // Google Drive content (conflicts with getDocumentContents)
+      ];
+
+      filteredTools = tools.filter(
+        (tool) => !conflictingGoogleTools.includes(tool.name),
+      );
+
+      this.logger.info('🎯 CONTEXTUAL TOOL FILTERING APPLIED', {
+        queryType: 'INTERNAL_KNOWLEDGE_BASE',
+        originalToolCount: tools.length,
+        filteredToolCount: filteredTools.length,
+        excludedTools: conflictingGoogleTools.filter((name) =>
+          tools.some((tool) => tool.name === name),
+        ),
+        retainedKnowledgeTools: filteredTools
+          .filter(
+            (tool) =>
+              tool.name?.includes('Document') ||
+              tool.name?.includes('getDocument') ||
+              tool.name?.includes('listDocument') ||
+              tool.name?.includes('searchInternal'),
+          )
+          .map((tool) => tool.name),
+      });
+    } else if (isGoogleWorkspaceQuery && !isInternalKnowledgeQuery) {
+      // For Google Workspace queries, could potentially exclude knowledge base tools
+      // (but this is less critical since Google Workspace tools are more specific)
+      this.logger.info('🎯 GOOGLE WORKSPACE QUERY DETECTED', {
+        queryType: 'GOOGLE_WORKSPACE',
+        toolCount: filteredTools.length,
+        note: 'No filtering applied - Google Workspace tools are more specific',
+      });
+    } else {
+      // Ambiguous or general query - keep all tools but log the ambiguity
+      this.logger.info('🎯 AMBIGUOUS QUERY DETECTED', {
+        queryType: 'AMBIGUOUS',
+        toolCount: filteredTools.length,
+        note: 'No filtering applied - keeping all tools available',
+      });
+    }
+
+    return filteredTools;
+  }
+
+  /**
+   * Analyze query intent to help with tool disambiguation debugging
+   */
+  private analyzeQueryIntent(query: string): string {
+    const lowerQuery = query.toLowerCase();
+
+    // ENHANCED: Strong knowledge base indicators
+    if (
+      lowerQuery.includes('echo tango') ||
+      lowerQuery.includes('company') ||
+      lowerQuery.includes('our ') ||
+      lowerQuery.includes('internal') ||
+      lowerQuery.includes('knowledge base') ||
+      lowerQuery.includes('core values') ||
+      lowerQuery.includes('policy') ||
+      lowerQuery.includes('policies') ||
+      lowerQuery.includes('template') ||
+      lowerQuery.includes('guideline') ||
+      lowerQuery.includes('business') ||
+      lowerQuery.includes('organizational')
+    ) {
+      return 'DEFINITE_KNOWLEDGE_BASE';
+    }
+
+    // Strong Google Drive indicators
+    if (
+      lowerQuery.includes('google drive') ||
+      lowerQuery.includes('my drive') ||
+      lowerQuery.includes('shared drive') ||
+      lowerQuery.includes('gdrive') ||
+      lowerQuery.includes('personal files')
+    ) {
+      return 'DEFINITE_GOOGLE_DRIVE';
+    }
+
+    // CRITICAL: Ambiguous file/document references that cause confusion
+    if (
+      lowerQuery.includes('file') ||
+      lowerQuery.includes('document') ||
+      lowerQuery.includes('doc') ||
+      lowerQuery.includes('content')
+    ) {
+      return 'AMBIGUOUS_FILE_REFERENCE';
+    }
+
+    return 'general_query';
   }
 
   /**

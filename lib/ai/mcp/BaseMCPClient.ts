@@ -489,7 +489,8 @@ export abstract class BaseMCPClient {
       let oldestKey: string | null = null;
       let oldestTime = Date.now();
 
-      for (const [key, value] of this.requestCache.entries()) {
+      const cacheEntries = Array.from(this.requestCache.entries());
+      for (const [key, value] of cacheEntries) {
         if (value.timestamp < oldestTime) {
           oldestTime = value.timestamp;
           oldestKey = key;

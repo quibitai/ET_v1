@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: uvicorn
-Version: 0.34.3
+Version: 0.35.0
 Summary: The lightning-fast ASGI server.
 Project-URL: Changelog, https://www.uvicorn.org/release-notes
 Project-URL: Funding, https://github.com/sponsors/encode

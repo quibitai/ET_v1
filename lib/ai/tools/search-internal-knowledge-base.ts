@@ -56,7 +56,12 @@ type SearchResponse = {
 
 export const searchAndRetrieveKnowledgeBase = new DynamicStructuredTool({
   name: 'searchInternalKnowledgeBase',
-  description: `Searches the internal knowledge base and returns the FULL CONTENT of the most relevant document. Use this to answer questions, retrieve examples, get templates, or find client research. When a user asks for "the contents of a file," this is the primary tool to use.`,
+  description: `🗂️ KNOWLEDGE_BASE: Searches the INTERNAL knowledge base and returns the FULL CONTENT of the most relevant document. 
+    
+    CRITICAL: Use this for internal company documents, policies, templates, and knowledge stored in the RAG system.
+    DO NOT use for Google Drive files - use Google Drive tools for external cloud storage.
+    
+    Use this to answer questions, retrieve examples, get templates, or find client research. When a user asks for "the contents of a file," this is the primary tool to use for INTERNAL documents.`,
   schema: z.object({
     query: z
       .string()
@@ -113,11 +118,7 @@ export const searchAndRetrieveKnowledgeBase = new DynamicStructuredTool({
         },
       });
 
-      return JSON.stringify({
-        success: false,
-        error: 'Supabase credentials are not configured.',
-        metadata: { reason: 'configuration_error' },
-      });
+      return 'Error: Supabase credentials are not configured for knowledge base access.';
     }
 
     if (!process.env.OPENAI_API_KEY) {
@@ -135,11 +136,7 @@ export const searchAndRetrieveKnowledgeBase = new DynamicStructuredTool({
         },
       });
 
-      return JSON.stringify({
-        success: false,
-        error: 'OpenAI API key is not configured for embeddings.',
-        metadata: { reason: 'configuration_error' },
-      });
+      return 'Error: OpenAI API key is not configured for embedding generation.';
     }
 
     try {
@@ -173,15 +170,7 @@ export const searchAndRetrieveKnowledgeBase = new DynamicStructuredTool({
           },
         });
 
-        return JSON.stringify({
-          success: false,
-          error: `Error during vector search: ${rpcError.message}`,
-          metadata: {
-            errorType: 'rpc_error',
-            code: rpcError.code,
-            details: rpcError.details,
-          },
-        });
+        return `Error: Unable to search knowledge base: ${rpcError.message}`;
       }
 
       // 3) format results
@@ -223,14 +212,11 @@ export const searchAndRetrieveKnowledgeBase = new DynamicStructuredTool({
         },
       });
 
-      const result = {
-        title: title,
-        content: content, // Return the FULL content
-        similarity: similarity,
-        metadata: topDoc.metadata || {},
-      };
+      const response = `📄 **Search Result: ${title}** (Similarity: ${similarity.toFixed(2)})
 
-      const response = `Successfully retrieved document titled "${title}" (Similarity: ${similarity.toFixed(2)}).\n\nFULL CONTENT:\n${content}`;
+**FULL CONTENT:**
+
+${content}`;
 
       console.log(
         `[searchAndRetrieveKnowledgeBase] Returning full content of "${title}"`,
@@ -253,14 +239,7 @@ export const searchAndRetrieveKnowledgeBase = new DynamicStructuredTool({
         },
       });
 
-      return JSON.stringify({
-        success: false,
-        error: `Unexpected error during search: ${err.message}`,
-        metadata: {
-          errorType: err.name || 'Unknown',
-          query,
-        },
-      });
+      return `Error: Unexpected error during knowledge base search: ${err.message}`;
     }
   },
 });

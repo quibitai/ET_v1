@@ -11,7 +11,7 @@ from mcp import types
 from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
 
-from auth.google_auth import handle_auth_callback, start_auth_flow, CONFIG_CLIENT_SECRETS_PATH
+from auth.google_auth import handle_auth_callback, start_auth_flow, check_client_secrets
 from auth.oauth_callback_server import get_oauth_redirect_uri, ensure_oauth_callback_available
 from auth.oauth_responses import create_error_response, create_success_response, create_server_error_response
 
@@ -119,11 +119,10 @@ async def oauth2_callback(request: Request) -> HTMLResponse:
         return create_error_response(error_message)
 
     try:
-        client_secrets_path = CONFIG_CLIENT_SECRETS_PATH
-        if not os.path.exists(client_secrets_path):
-            logger.error(f"OAuth client secrets file not found at {client_secrets_path}")
-            # This is a server configuration error, should not happen in a deployed environment.
-            return HTMLResponse(content="Server Configuration Error: Client secrets not found.", status_code=500)
+        # Check if we have credentials available (environment variables or file)
+        error_message = check_client_secrets()
+        if error_message:
+            return create_server_error_response(error_message)
 
         logger.info(f"OAuth callback: Received code (state: {state}). Attempting to exchange for tokens.")
 
@@ -136,7 +135,6 @@ async def oauth2_callback(request: Request) -> HTMLResponse:
         # Exchange code for credentials. handle_auth_callback will save them.
         # The user_id returned here is the Google-verified email.
         verified_user_id, credentials = handle_auth_callback(
-            client_secrets_path=client_secrets_path,
             scopes=SCOPES, # Ensure all necessary scopes are requested
             authorization_response=str(request.url),
             redirect_uri=get_oauth_redirect_uri_for_current_mode(),
