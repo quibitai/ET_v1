@@ -42,6 +42,8 @@ export interface ServiceStatus {
   health?: HealthStatus;
   lastChecked: Date;
   supportedTools: string[];
+  consecutiveFailures?: number;
+  circuitBreakerOpenUntil?: Date;
 }
 
 export interface ToolRoutingInfo {
@@ -207,7 +209,8 @@ export class MultiMCPClient {
     this.healthMonitor.stopMonitoring(name);
 
     // Remove from tool routing
-    for (const [toolName, routes] of this.toolRouting.entries()) {
+    const toolRoutingEntries = Array.from(this.toolRouting.entries());
+    for (const [toolName, routes] of toolRoutingEntries) {
       const filtered = routes.filter((route) => route.service !== name);
       if (filtered.length === 0) {
         this.toolRouting.delete(toolName);
@@ -279,7 +282,7 @@ export class MultiMCPClient {
   }
 
   /**
-   * Execute a tool on the appropriate service
+   * Enhanced execute tool with circuit breaker awareness
    */
   async executeTool(toolName: string, args?: any): Promise<any> {
     const routes = this.toolRouting.get(toolName);
@@ -287,13 +290,16 @@ export class MultiMCPClient {
       throw new Error(`No service registered for tool: ${toolName}`);
     }
 
-    // Try services in priority order
+    // Try services in priority order, respecting circuit breaker state
     let lastError: Error | null = null;
     for (const route of routes) {
       const status = this.serviceStatus.get(route.service);
 
-      // Skip unavailable services
-      if (status && !status.available) {
+      // Skip unavailable services or those in circuit breaker state
+      if (
+        status &&
+        (!status.available || this.isServiceInCircuitBreaker(status))
+      ) {
         continue;
       }
 
@@ -308,9 +314,22 @@ export class MultiMCPClient {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error('Unknown error');
 
-        // Mark service as potentially unavailable
+        // Mark service as potentially unavailable and update failure count
         if (status) {
           status.available = false;
+          status.consecutiveFailures = (status.consecutiveFailures || 0) + 1;
+
+          // Open circuit breaker if too many failures
+          if (status.consecutiveFailures >= 3) {
+            const circuitBreakerDuration = 5 * 60 * 1000; // 5 minutes
+            status.circuitBreakerOpenUntil = new Date(
+              Date.now() + circuitBreakerDuration,
+            );
+            console.warn(
+              `[MultiMCPClient] CIRCUIT BREAKER OPENED for ${route.service} due to tool execution failure`,
+            );
+          }
+
           // Trigger immediate health check
           this.checkServiceHealth(route.service).catch(console.error);
         }
@@ -333,7 +352,8 @@ export class MultiMCPClient {
   }> {
     const toolMap = new Map<string, Set<string>>();
 
-    for (const [toolName, routes] of this.toolRouting.entries()) {
+    const toolRoutingEntries = Array.from(this.toolRouting.entries());
+    for (const [toolName, routes] of toolRoutingEntries) {
       const services = new Set<string>();
       let available = false;
 
@@ -360,24 +380,60 @@ export class MultiMCPClient {
 
   /**
    * Check health of a specific service
+   * ENHANCED: Circuit breaker pattern for failed services
    */
   private async checkServiceHealth(serviceName: string): Promise<void> {
     const registration = this.services.get(serviceName);
     if (!registration) return;
 
     try {
-      const health = await registration.client.healthCheck();
-      const isAvailable = health.status === 'ok';
+      // Check if service is in circuit breaker state
+      const existingStatus = this.serviceStatus.get(serviceName);
+      if (existingStatus && this.isServiceInCircuitBreaker(existingStatus)) {
+        console.log(
+          `[MultiMCPClient] Service ${serviceName} in circuit breaker - skipping health check`,
+        );
+        return;
+      }
 
-      this.serviceStatus.set(serviceName, {
+      const health = await registration.client.healthCheck();
+      const isAvailable = health.status === 'ok' || health.status === 'healthy';
+
+      const serviceStatus: ServiceStatus = {
         name: serviceName,
         available: isAvailable,
         health,
         lastChecked: new Date(),
         supportedTools: registration.client.supportedTools,
-      });
+      };
+
+      // Reset consecutive failures on success
+      if (isAvailable) {
+        serviceStatus.consecutiveFailures = 0;
+        serviceStatus.circuitBreakerOpenUntil = undefined;
+      } else {
+        // Increment failure count
+        const currentFailures = existingStatus?.consecutiveFailures || 0;
+        serviceStatus.consecutiveFailures = currentFailures + 1;
+
+        // Open circuit breaker after 3 consecutive failures
+        if (serviceStatus.consecutiveFailures >= 3) {
+          const circuitBreakerDuration = 5 * 60 * 1000; // 5 minutes
+          serviceStatus.circuitBreakerOpenUntil = new Date(
+            Date.now() + circuitBreakerDuration,
+          );
+          console.warn(
+            `[MultiMCPClient] CIRCUIT BREAKER OPENED for ${serviceName} - will retry in 5 minutes`,
+          );
+        }
+      }
+
+      this.serviceStatus.set(serviceName, serviceStatus);
     } catch (error) {
-      this.serviceStatus.set(serviceName, {
+      const existingStatus = this.serviceStatus.get(serviceName);
+      const currentFailures = existingStatus?.consecutiveFailures || 0;
+
+      const serviceStatus: ServiceStatus = {
         name: serviceName,
         available: false,
         health: {
@@ -388,8 +444,52 @@ export class MultiMCPClient {
         },
         lastChecked: new Date(),
         supportedTools: registration.client.supportedTools,
-      });
+        consecutiveFailures: currentFailures + 1,
+      };
+
+      // Open circuit breaker after 3 consecutive failures
+      if ((serviceStatus.consecutiveFailures || 0) >= 3) {
+        const circuitBreakerDuration = 5 * 60 * 1000; // 5 minutes
+        serviceStatus.circuitBreakerOpenUntil = new Date(
+          Date.now() + circuitBreakerDuration,
+        );
+        console.warn(
+          `[MultiMCPClient] CIRCUIT BREAKER OPENED for ${serviceName} - will retry in 5 minutes`,
+        );
+      }
+
+      this.serviceStatus.set(serviceName, serviceStatus);
     }
+  }
+
+  /**
+   * Check if service is in circuit breaker state
+   */
+  private isServiceInCircuitBreaker(status: ServiceStatus): boolean {
+    if (!status.circuitBreakerOpenUntil) return false;
+
+    const now = new Date();
+    if (now < status.circuitBreakerOpenUntil) {
+      return true; // Circuit breaker still open
+    } else {
+      // Circuit breaker can be closed - reset state
+      status.circuitBreakerOpenUntil = undefined;
+      status.consecutiveFailures = 0;
+      console.log(
+        `[MultiMCPClient] Circuit breaker closed for ${status.name} - attempting recovery`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Enhanced service status interface with circuit breaker support
+   */
+  private updateServiceStatusInterface(): void {
+    // This method exists to document the enhanced ServiceStatus interface
+    // ServiceStatus now includes:
+    // - consecutiveFailures?: number
+    // - circuitBreakerOpenUntil?: Date
   }
 
   /**
@@ -409,7 +509,8 @@ export class MultiMCPClient {
     if (this.config.healthCheckInterval <= 0) return;
 
     // Register all services with the health monitor
-    for (const [name, registration] of this.services.entries()) {
+    const serviceEntries = Array.from(this.services.entries());
+    for (const [name, registration] of serviceEntries) {
       this.healthMonitor.startMonitoring(
         name,
         () => registration.client.healthCheck(),
@@ -457,7 +558,8 @@ export class MultiMCPClient {
    * Clear all caches across services
    */
   clearAllCaches(): void {
-    for (const registration of this.services.values()) {
+    const registrations = Array.from(this.services.values());
+    for (const registration of registrations) {
       registration.client.clearCache();
     }
   }
@@ -475,7 +577,8 @@ export class MultiMCPClient {
   } {
     const stats: any = {};
 
-    for (const [name, registration] of this.services.entries()) {
+    const serviceEntries = Array.from(this.services.entries());
+    for (const [name, registration] of serviceEntries) {
       stats[name] = registration.client.getCacheStats();
     }
 
@@ -541,10 +644,18 @@ export class MultiMCPClient {
       throw new Error(`Tool ${request.toolName} not available in any service`);
     }
 
-    // Try services in priority order
+    // Try services in priority order, respecting circuit breaker state
     for (const route of routes) {
       const service = this.services.get(route.service);
-      if (!service?.enabled) continue;
+      const status = this.serviceStatus.get(route.service);
+
+      if (
+        !service?.enabled ||
+        !status?.available ||
+        this.isServiceInCircuitBreaker(status)
+      ) {
+        continue;
+      }
 
       try {
         // Get tool manifest
@@ -594,9 +705,15 @@ export class MultiMCPClient {
       const allStreamingTools = await this.toolRegistry.getStreamingTools();
 
       for (const manifest of allStreamingTools) {
-        // Check if service is available
+        // Check if service is available and not in circuit breaker
         const service = this.services.get(manifest.service);
-        if (service?.enabled) {
+        const status = this.serviceStatus.get(manifest.service);
+
+        if (
+          service?.enabled &&
+          status?.available &&
+          !this.isServiceInCircuitBreaker(status)
+        ) {
           streamingTools.push({
             toolName: manifest.id,
             service: manifest.service,
@@ -627,6 +744,33 @@ export class MultiMCPClient {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Get enhanced service health summary with circuit breaker information
+   */
+  getServiceHealthSummary(): any {
+    const serviceStatuses = Array.from(this.serviceStatus.values());
+
+    return {
+      totalServices: serviceStatuses.length,
+      availableServices: serviceStatuses.filter((s) => s.available).length,
+      healthyServices: serviceStatuses.filter(
+        (s) => s.available && !this.isServiceInCircuitBreaker(s),
+      ).length,
+      circuitBreakerOpen: serviceStatuses.filter((s) =>
+        this.isServiceInCircuitBreaker(s),
+      ),
+      recentFailures: serviceStatuses.filter(
+        (s) => (s.consecutiveFailures || 0) > 0,
+      ),
+      healthyServiceNames: serviceStatuses
+        .filter((s) => s.available && !this.isServiceInCircuitBreaker(s))
+        .map((s) => s.name),
+      unhealthyServiceNames: serviceStatuses
+        .filter((s) => !s.available || this.isServiceInCircuitBreaker(s))
+        .map((s) => s.name),
+    };
   }
 
   /**
