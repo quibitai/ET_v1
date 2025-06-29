@@ -18,8 +18,8 @@ export type {
 } from './ToolExecutionService';
 
 // Phase 2: Response Strategy Services
-export { QueryIntentAnalyzer } from './QueryIntentAnalyzer';
-export type { QueryIntent, GraphState } from './QueryIntentAnalyzer';
+// QueryIntentAnalyzer removed - consolidated into QueryClassifier
+// Types moved to ResponseRouter for now to maintain compatibility
 
 export { ResponseRouter } from './ResponseRouter';
 export type { RouteDecision, RouteContext } from './ResponseRouter';

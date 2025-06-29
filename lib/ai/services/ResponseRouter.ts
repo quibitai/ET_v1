@@ -14,7 +14,29 @@ import {
   type QueryClassificationResult,
 } from '../../services/queryClassifier';
 import { SynthesisValidator } from '../core/SynthesisValidator';
-import type { GraphState } from './QueryIntentAnalyzer'; // Keep GraphState type for now
+import type { BaseMessage } from '@langchain/core/messages';
+
+// Types moved from deleted QueryIntentAnalyzer
+export interface QueryIntent {
+  intentType:
+    | 'analysis'
+    | 'research'
+    | 'simple_lookup'
+    | 'conversational'
+    | 'creative';
+  complexity: 'high' | 'medium' | 'low';
+  requiresDeepAnalysis: boolean;
+  suggestedResponseType:
+    | 'synthesis'
+    | 'simple_response'
+    | 'conversational_response';
+}
+
+export interface GraphState {
+  messages: BaseMessage[];
+  input?: string;
+  [key: string]: any;
+}
 
 export type RouteDecision =
   | 'use_tools'
@@ -59,12 +81,7 @@ export class ResponseRouter {
   /**
    * Convert QueryClassifier result to QueryIntent format for compatibility
    */
-  private async analyzeQueryIntent(state: GraphState): Promise<{
-    intentType: string;
-    complexity: string;
-    requiresDeepAnalysis: boolean;
-    suggestedResponseType: string;
-  }> {
+  private async analyzeQueryIntent(state: GraphState): Promise<QueryIntent> {
     // Get the original user query
     const userMessages = state.messages.filter(
       (msg) => msg._getType() === 'human',
@@ -81,39 +98,49 @@ export class ResponseRouter {
       await this.queryClassifier.classifyQuery(originalQuery);
 
     // Convert to QueryIntent format
-    let intentType = 'conversational';
-    let complexity = 'low';
+    let intentType: QueryIntent['intentType'] = 'conversational';
+    let complexity: QueryIntent['complexity'] = 'low';
     let requiresDeepAnalysis = false;
-    let suggestedResponseType = 'conversational_response';
+    let suggestedResponseType: QueryIntent['suggestedResponseType'] =
+      'conversational_response';
 
-    // Map QueryClassifier results to QueryIntent format
-    if (classification.complexity > 0.7) {
+    // Map QueryClassifier results to QueryIntent format using correct properties
+    if (classification.complexityScore > 0.7) {
       complexity = 'high';
       requiresDeepAnalysis = true;
       suggestedResponseType = 'synthesis';
-    } else if (classification.complexity > 0.4) {
+    } else if (classification.complexityScore > 0.4) {
       complexity = 'medium';
       suggestedResponseType = 'simple_response';
     }
 
-    // Determine intent type based on patterns
+    // Determine intent type based on detectedPatterns
     if (
-      classification.patterns.includes('analysis') ||
-      classification.patterns.includes('comparison')
+      classification.detectedPatterns.includes('analysis') ||
+      classification.detectedPatterns.includes('comparison')
     ) {
       intentType = 'analysis';
       requiresDeepAnalysis = true;
     } else if (
-      classification.patterns.includes('research') ||
-      classification.patterns.includes('report')
+      classification.detectedPatterns.includes('research') ||
+      classification.detectedPatterns.includes('report')
     ) {
       intentType = 'research';
       requiresDeepAnalysis = true;
-    } else if (classification.patterns.includes('simple_lookup')) {
+    } else if (classification.detectedPatterns.includes('simple_lookup')) {
       intentType = 'simple_lookup';
-    } else if (classification.patterns.includes('creative')) {
+    } else if (classification.detectedPatterns.includes('creative')) {
       intentType = 'creative';
       requiresDeepAnalysis = true;
+    }
+
+    // Override based on workflow detection if available
+    if (
+      classification.workflowDetection?.isWorkflow &&
+      classification.workflowDetection.complexity === 'high'
+    ) {
+      requiresDeepAnalysis = true;
+      suggestedResponseType = 'synthesis';
     }
 
     return {
@@ -127,7 +154,10 @@ export class ResponseRouter {
   /**
    * Determine the next step in the LangGraph workflow
    */
-  routeNextStep(state: GraphState, context: RouteContext): RouteDecision {
+  async routeNextStep(
+    state: GraphState,
+    context: RouteContext,
+  ): Promise<RouteDecision> {
     this.logger.info('[ResponseRouter] Evaluating next step...', {
       messageCount: state.messages.length,
       needsSynthesis: state.needsSynthesis,
@@ -332,7 +362,7 @@ export class ResponseRouter {
     const hasToolResults = state.messages.some((m) => m._getType() === 'tool');
 
     if (hasToolResults) {
-      return this.routeWithToolResults(state, context);
+      return await this.routeWithToolResults(state, context);
     }
 
     // 3. Handle scenarios with no tool results
@@ -432,8 +462,24 @@ export class ResponseRouter {
     state: GraphState,
     lastMessage: any,
   ): RouteDecision {
-    // Use intent analysis for no-tool scenarios
-    const queryIntent = this.intentAnalyzer.analyzeQueryIntent(state);
+    // Use intent analysis for no-tool scenarios (synchronous fallback)
+    // For now, use simple heuristics since we can't await in this context
+    const userMessages = state.messages.filter(
+      (msg) => msg._getType() === 'human',
+    );
+    const originalQuery =
+      userMessages.length > 0
+        ? typeof userMessages[0].content === 'string'
+          ? userMessages[0].content
+          : JSON.stringify(userMessages[0].content)
+        : state.input || '';
+
+    const queryIntent: QueryIntent = {
+      intentType: 'conversational',
+      complexity: 'low',
+      requiresDeepAnalysis: false,
+      suggestedResponseType: 'conversational_response',
+    };
 
     // Check if the last message is an AI response without tool calls (conversational response)
     if (lastMessage && lastMessage._getType() === 'ai' && lastMessage.content) {
@@ -528,7 +574,7 @@ export class ResponseRouter {
 
   private applyIntentOverrides(
     needsSynthesis: boolean,
-    queryIntent: QueryClassificationResult,
+    queryIntent: QueryIntent,
     multiDocResults: any,
   ): boolean {
     // Apply intent-based routing overrides
