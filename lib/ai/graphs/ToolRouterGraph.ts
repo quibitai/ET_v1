@@ -379,6 +379,7 @@ export class ToolRouterGraph {
 
   /**
    * Categorize MCP tools into routing domains based on service name and tool patterns
+   * ENHANCED: Mutually exclusive categorization to prevent tool redundancy
    */
   private categorizeMCPTools(
     serviceName: string,
@@ -392,40 +393,76 @@ export class ToolRouterGraph {
       direct_response: [],
     };
 
-    // Service-based categorization
+    // Track categorized tools to prevent duplicates
+    const categorizedTools = new Set<string>();
+
+    // Service-based categorization (highest priority)
     if (
       serviceName.toLowerCase().includes('google') ||
       serviceName.toLowerCase().includes('workspace')
     ) {
-      // Google Workspace tools
-      categorized.google_workspace = toolNames.filter(
-        (toolName) =>
-          toolName.includes('drive') ||
-          toolName.includes('docs') ||
-          toolName.includes('gmail') ||
-          toolName.includes('sheets') ||
-          toolName.includes('calendar') ||
-          toolName.includes('chat'),
-      );
+      // Google Workspace tools - categorize by function
+      for (const toolName of toolNames) {
+        if (categorizedTools.has(toolName)) continue;
+
+        const toolLower = toolName.toLowerCase();
+
+        // Search tools → research
+        if (toolLower.includes('search')) {
+          categorized.research.push(toolName);
+          categorizedTools.add(toolName);
+        }
+        // File/document tools → knowledge_base
+        else if (
+          toolLower.includes('drive') ||
+          toolLower.includes('docs') ||
+          toolLower.includes('file')
+        ) {
+          categorized.knowledge_base.push(toolName);
+          categorizedTools.add(toolName);
+        }
+        // Communication tools → google_workspace
+        else if (
+          toolLower.includes('gmail') ||
+          toolLower.includes('chat') ||
+          toolLower.includes('calendar')
+        ) {
+          categorized.google_workspace.push(toolName);
+          categorizedTools.add(toolName);
+        }
+        // Spreadsheet tools → google_workspace
+        else if (
+          toolLower.includes('sheets') ||
+          toolLower.includes('forms') ||
+          toolLower.includes('slides')
+        ) {
+          categorized.google_workspace.push(toolName);
+          categorizedTools.add(toolName);
+        }
+        // Default to google_workspace for unmatched google tools
+        else {
+          categorized.google_workspace.push(toolName);
+          categorizedTools.add(toolName);
+        }
+      }
     }
 
     if (
       serviceName.toLowerCase().includes('asana') ||
       serviceName.toLowerCase().includes('project')
     ) {
-      // Project Management tools
-      categorized.project_management = toolNames.filter(
-        (toolName) =>
-          toolName.includes('task') ||
-          toolName.includes('project') ||
-          toolName.includes('workspace') ||
-          toolName.includes('team') ||
-          serviceName.toLowerCase().includes('asana'),
-      );
+      // Project Management tools - all go to project_management
+      for (const toolName of toolNames) {
+        if (categorizedTools.has(toolName)) continue;
+        categorized.project_management.push(toolName);
+        categorizedTools.add(toolName);
+      }
     }
 
-    // Tool name pattern-based categorization (fallback)
+    // Only do pattern-based categorization for uncategorized tools
     for (const toolName of toolNames) {
+      if (categorizedTools.has(toolName)) continue;
+
       const toolLower = toolName.toLowerCase();
 
       if (
@@ -434,48 +471,74 @@ export class ToolRouterGraph {
         toolLower.includes('research')
       ) {
         categorized.research.push(toolName);
+        categorizedTools.add(toolName);
       } else if (
         toolLower.includes('document') ||
         toolLower.includes('file') ||
         toolLower.includes('knowledge')
       ) {
         categorized.knowledge_base.push(toolName);
+        categorizedTools.add(toolName);
       }
+      // If no pattern matches, don't categorize (prevents random assignments)
     }
 
+    // Remove empty categories
+    Object.keys(categorized).forEach((key) => {
+      if (categorized[key as RouteDecision].length === 0) {
+        delete categorized[key as RouteDecision];
+      }
+    });
+
     console.log(
-      `[ToolRouterGraph] Categorized ${serviceName} tools:`,
-      categorized,
+      `[ToolRouterGraph] OPTIMIZED categorization for ${serviceName}:`,
+      {
+        totalTools: toolNames.length,
+        categorizedCount: categorizedTools.size,
+        uncategorized: toolNames.filter((t) => !categorizedTools.has(t)),
+        categories: Object.fromEntries(
+          Object.entries(categorized).map(([k, v]) => [k, v.length]),
+        ),
+      },
     );
+
     return categorized;
   }
 
   /**
    * Create sub-graphs for MCP tools by domain
+   * ENHANCED: Optimized to reduce redundancy and limit tools per sub-graph
    */
   private createMCPSubGraphs(
     serviceName: string,
     categorizedTools: Record<RouteDecision, string[]>,
   ): void {
+    console.log(
+      `[ToolRouterGraph] Creating optimized sub-graphs for ${serviceName}...`,
+    );
+
     for (const [domain, toolNames] of Object.entries(categorizedTools)) {
       if (toolNames.length === 0) continue;
 
       const routeDecision = domain as RouteDecision;
 
+      // Limit tools per domain for optimal performance (max 2 per domain)
+      const limitedToolNames = toolNames.slice(0, 2);
+
       // First try to get tools from allTools (for standard tools)
       let domainTools = this.allTools.filter((tool) =>
-        toolNames.includes(tool.name),
+        limitedToolNames.includes(tool.name),
       );
 
-      // If no tools found in allTools, create tool objects from MCP service
+      // If no tools found in allTools, create minimal tool objects from MCP service
       if (domainTools.length === 0 && this.mcpClient) {
         try {
           // Get the service registration to access tool manifests
           const service = this.mcpClient.getService(serviceName);
           if (service) {
-            domainTools = toolNames.map((toolName) => ({
+            domainTools = limitedToolNames.map((toolName) => ({
               name: toolName,
-              description: `${toolName} tool from ${serviceName}`,
+              description: `${toolName} via ${serviceName}`,
               // Create a simple tool function that delegates to MCP client
               func: async (args: any) => {
                 try {
@@ -496,7 +559,7 @@ export class ToolRouterGraph {
             }));
 
             console.log(
-              `[ToolRouterGraph] Created ${domainTools.length} MCP tool objects for ${serviceName}`,
+              `[ToolRouterGraph] Created ${domainTools.length} optimized MCP tool objects for ${serviceName} ${domain}:`,
               domainTools.map((t) => t.name),
             );
           }
@@ -516,46 +579,63 @@ export class ToolRouterGraph {
         continue;
       }
 
-      // Limit tools per sub-graph (max 3 for optimal LLM performance)
-      const limitedTools = domainTools.slice(0, 3);
-
-      // Create or enhance existing sub-graph
+      // Create or enhance existing sub-graph with limited tools
       const existingSubGraph = this.subGraphs.get(routeDecision);
 
       if (existingSubGraph) {
-        // Merge with existing sub-graph
-        const combinedTools = [...existingSubGraph.tools, ...limitedTools];
-        const finalTools = combinedTools.slice(0, 3); // Maintain 3-tool limit
+        // For existing sub-graphs, only add if we have fewer than 3 tools total
+        if (existingSubGraph.tools.length < 3) {
+          const slotsAvailable = 3 - existingSubGraph.tools.length;
+          const toolsToAdd = domainTools.slice(0, slotsAvailable);
 
-        this.subGraphs.set(routeDecision, {
-          ...existingSubGraph,
-          tools: finalTools,
-          description: `${existingSubGraph.description} (Enhanced with ${serviceName})`,
-          compiledGraph: createReactAgent({
-            llm: this.llm,
-            tools: finalTools,
-          }),
-        });
+          const combinedTools = [...existingSubGraph.tools, ...toolsToAdd];
 
-        console.log(
-          `[ToolRouterGraph] Enhanced ${routeDecision} sub-graph with ${serviceName} tools:`,
-          limitedTools.map((t) => t.name),
-        );
+          this.subGraphs.set(routeDecision, {
+            ...existingSubGraph,
+            tools: combinedTools,
+            description: `${existingSubGraph.description} (Enhanced with ${serviceName})`,
+            compiledGraph: createReactAgent({
+              llm: this.llm,
+              tools: combinedTools,
+            }),
+          });
+
+          console.log(
+            `[ToolRouterGraph] Enhanced ${routeDecision} sub-graph with ${toolsToAdd.length} tools from ${serviceName}:`,
+            toolsToAdd.map((t) => t.name),
+          );
+        } else {
+          console.log(
+            `[ToolRouterGraph] Skipping ${routeDecision} enhancement - already has ${existingSubGraph.tools.length} tools (max 3)`,
+          );
+        }
       } else {
-        // Create new sub-graph
+        // Create new sub-graph with limited tools
+        const finalTools = domainTools.slice(0, 3);
         const subGraphConfig = this.createSubGraphConfig(
           routeDecision,
-          limitedTools,
+          finalTools,
           serviceName,
         );
         this.subGraphs.set(routeDecision, subGraphConfig);
 
         console.log(
-          `[ToolRouterGraph] Created new ${routeDecision} sub-graph with ${serviceName} tools:`,
-          limitedTools.map((t) => t.name),
+          `[ToolRouterGraph] Created new ${routeDecision} sub-graph with ${finalTools.length} tools from ${serviceName}:`,
+          finalTools.map((t) => t.name),
         );
       }
     }
+
+    // Log optimization summary
+    const totalSubGraphs = this.subGraphs.size;
+    const totalTools = Array.from(this.subGraphs.values()).reduce(
+      (sum, sg) => sum + sg.tools.length,
+      0,
+    );
+
+    console.log(
+      `[ToolRouterGraph] Sub-graph optimization complete for ${serviceName}: ${totalSubGraphs} sub-graphs, ${totalTools} total tools (optimized from ${Object.values(categorizedTools).flat().length} possible)`,
+    );
   }
 
   /**
