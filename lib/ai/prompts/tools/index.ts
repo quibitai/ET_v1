@@ -62,8 +62,7 @@ BUDGET CREATION WORKFLOW: When users ask to create budgets or estimates:
   // Document Management Tools
   // createDocument and updateDocument removed as part of Echo Tango v1 simplification
 
-  // Integration Tools
-  googleCalendar: `Use this tool ONLY for Google Calendar related tasks and operations. This tool is now dedicated to calendar management. For any calendar-related requests, provide a clear natural language description of what you need.`,
+  // Integration Tools - Google Calendar now handled by Google Workspace MCP tools
 
   // Content Processing Instructions
   createBudget: `Use this tool to structure and calculate detailed budgets for video production projects. Pass project scope from uploaded content, rate card information from knowledge base searches, and additional project details. Always use this for budget creation requests.`,

@@ -188,20 +188,7 @@ export const enhancedDataAnalysisInstructions = {
  * Optimized for cross-platform intelligence
  */
 export const enhancedIntegrationInstructions = {
-  googleCalendar: `CALENDAR MANAGEMENT TOOL:
-  
-  **ENHANCED INTEGRATION**: Calendar operations with context awareness
-  
-  **INTELLIGENT OPERATIONS**:
-  1. Natural language processing for calendar requests
-  2. **NEW**: Context-aware scheduling suggestions
-  3. Conflict detection and resolution
-  
-  **STRUCTURED OUTPUT**: Include:
-  - Operation success confirmation
-  - Context preservation for follow-up actions
-  - Related scheduling opportunities
-  - Integration with project management context`,
+  // googleCalendar removed - now handled by Google Workspace MCP tools
 
   asana_tools: `ASANA INTEGRATION TOOLS:
   
@@ -278,8 +265,7 @@ export const enhancedToolInstructionMap: Record<string, string> = {
   // Enhanced Data Analysis Tools
   queryDocumentRows: enhancedDataAnalysisInstructions.queryDocumentRows,
 
-  // Enhanced Integration Tools
-  googleCalendar: enhancedIntegrationInstructions.googleCalendar,
+  // Enhanced Integration Tools - Google Calendar now handled by Google Workspace MCP
   ...Object.fromEntries(
     [
       'asana_get_project_details',
