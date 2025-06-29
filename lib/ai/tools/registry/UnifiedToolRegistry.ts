@@ -68,15 +68,31 @@ export class UnifiedToolRegistry {
   /**
    * Replace all tools from a specific source with new tools
    * Critical for MCP tool refresh functionality
+   * Enhanced with detailed logging and correlation ID support
    */
-  replaceToolsBySource(source: string, tools: Tool[]): void {
-    console.log(`[ToolRegistry] Replacing tools from source: ${source}`);
+  replaceToolsBySource(
+    source: string,
+    tools: Tool[],
+    correlationId?: string,
+  ): void {
+    const logger = correlationId
+      ? (msg: string) => console.log(`[${correlationId}] [ToolRegistry] ${msg}`)
+      : (msg: string) => console.log(`[ToolRegistry] ${msg}`);
+
+    logger(`Starting tool replacement for source: ${source}`);
+    logger(`New tools to register: ${tools.length}`);
 
     // Remove existing tools from this source
     const existingTools = Array.from(this.tools.values()).filter(
       (t) => t.source === source,
     );
+
+    logger(
+      `Found ${existingTools.length} existing tools from source: ${source}`,
+    );
+
     existingTools.forEach((tool) => {
+      logger(`Removing tool: ${tool.name} (category: ${tool.category})`);
       this.tools.delete(tool.name);
 
       // Remove from category mappings
@@ -87,14 +103,24 @@ export class UnifiedToolRegistry {
       );
     });
 
-    // Add new tools
-    tools.forEach((tool) => this.registerTool(tool));
+    // Add new tools with detailed logging
+    logger(`Adding ${tools.length} new tools from source: ${source}`);
+    tools.forEach((tool) => {
+      logger(`Adding tool: ${tool.name} (category: ${tool.category})`);
+      this.registerTool(tool);
+    });
 
     // Clear cache
     this.cache.clear();
+    logger(`Tool replacement complete. Cache cleared.`);
+
+    // Summary logging
+    const finalStats = this.getStats();
+    logger(`Registry now contains ${finalStats.totalTools} total tools`);
+    logger(`Tools by source: ${JSON.stringify(finalStats.toolsBySource)}`);
 
     console.log(
-      `[ToolRegistry] Replaced ${existingTools.length} tools from ${source} with ${tools.length} new tools`,
+      `[ToolRegistry] Successfully replaced ${existingTools.length} tools from ${source} with ${tools.length} new tools`,
     );
   }
 

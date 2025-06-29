@@ -18,8 +18,8 @@ import { AIMessage, type ToolMessage } from '@langchain/core/messages';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { ToolCache } from './ToolCache';
 import type { ToolCall } from './ToolCache';
-import { ToolRegistry } from './ToolRegistry';
-import type { ToolDefinition } from './ToolRegistry';
+import { toolRegistry } from '../tools/registry';
+import type { Tool } from '../tools/registry/types';
 
 export interface ToolExecutionResult {
   toolMessages: ToolMessage[];
@@ -41,7 +41,6 @@ export interface ToolExecutionConfig {
 
 export class ToolExecutionService {
   private toolCache: ToolCache;
-  private toolRegistry: ToolRegistry;
   private tools: any[];
   private config: ToolExecutionConfig;
 
@@ -52,7 +51,6 @@ export class ToolExecutionService {
     config: ToolExecutionConfig = {},
   ) {
     this.toolCache = new ToolCache(logger);
-    this.toolRegistry = new ToolRegistry(logger);
     this.tools = tools;
     this.config = {
       enableCaching: true,
@@ -62,39 +60,39 @@ export class ToolExecutionService {
       ...config,
     };
 
-    // Register all tools
+    // Register all tools with the unified registry
     this.initializeTools();
   }
 
   /**
-   * Initialize and register all tools
+   * Initialize and register all tools with the unified registry
    */
   private initializeTools(): void {
-    const toolDefinitions: ToolDefinition[] = this.tools.map((tool) => ({
+    const tools: Tool[] = this.tools.map((tool) => ({
       name: tool.name || 'unnamed',
-      description: tool.description,
-      schema: tool.schema,
-      func: tool.func,
+      displayName: tool.displayName || tool.name || 'unnamed',
+      description: tool.description || '',
+      usage: tool.usage || tool.description || '',
+      category: tool.category || 'GENERAL',
+      source: 'standard',
+      isEnabled: true,
+      requiresAuth: tool.requiresAuth || false,
+      examples: tool.examples || [],
+      parameters: tool.parameters || [],
+      execute:
+        tool.func ||
+        tool.execute ||
+        (() => Promise.resolve({ success: false, error: 'No implementation' })),
       ...tool,
     }));
 
-    const result = this.toolRegistry.registerAll(toolDefinitions);
+    // Register tools with the unified registry
+    toolRegistry.registerTools(tools);
 
     this.logger.info('[Tool Execution Service] Initialized', {
       totalTools: this.tools.length,
-      successful: result.successful.length,
-      failed: result.failed.length,
-      warnings: result.warnings.length,
+      registeredTools: tools.length,
     });
-
-    if (result.failed.length > 0) {
-      this.logger.warn(
-        '[Tool Execution Service] Some tools failed to register',
-        {
-          failedTools: result.failed.map((f) => f.tool.name),
-        },
-      );
-    }
   }
 
   /**
@@ -314,7 +312,7 @@ export class ToolExecutionService {
   } {
     return {
       cache: this.toolCache.getStats(),
-      registry: this.toolRegistry.getStats(),
+      registry: toolRegistry.getStats(),
       execution: {
         totalExecutions: 0, // TODO: Track this
         averageExecutionTime: 0, // TODO: Track this
@@ -345,21 +343,21 @@ export class ToolExecutionService {
   /**
    * Get registered tool by name
    */
-  getTool(name: string): ToolDefinition | undefined {
-    return this.toolRegistry.get(name);
+  getTool(name: string): Tool | undefined {
+    return toolRegistry.getTool(name);
   }
 
   /**
    * Get all registered tools
    */
-  getAllTools(): ToolDefinition[] {
-    return this.toolRegistry.getAll();
+  getAllTools(): Tool[] {
+    return toolRegistry.getTools();
   }
 
   /**
    * Check if a tool is registered
    */
   hasTool(name: string): boolean {
-    return this.toolRegistry.has(name);
+    return toolRegistry.getTool(name) !== undefined;
   }
 }

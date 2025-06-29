@@ -15,7 +15,7 @@ import { GoogleWorkspaceMCPClient } from './GoogleWorkspaceMCPClient';
 import { HealthMonitor } from './health/HealthMonitor';
 import type { HealthAlert } from './health/HealthMonitor';
 import { StreamingMCPWrapper } from './streaming/StreamingMCPWrapper';
-import { ToolRegistry } from '../tools/registry/ToolRegistry';
+import { toolRegistry } from '../tools/registry';
 import type {
   StreamingToolRequest,
   StreamingToolResponse,
@@ -62,7 +62,7 @@ export class MultiMCPClient {
   private serviceStatus: Map<string, ServiceStatus> = new Map();
   private healthMonitor: HealthMonitor;
   private config: Required<MultiMCPConfig>;
-  private toolRegistry: ToolRegistry;
+  // Using global toolRegistry instead of instance
   private streamingWrappers: Map<string, StreamingMCPWrapper> = new Map();
 
   constructor(config: MultiMCPConfig = {}) {
@@ -72,8 +72,7 @@ export class MultiMCPClient {
       autoDiscovery: config.autoDiscovery !== false,
     };
 
-    // Initialize tool registry for streaming support
-    this.toolRegistry = new ToolRegistry();
+    // Using global toolRegistry for streaming support
 
     // Initialize health monitor
     this.healthMonitor = new HealthMonitor({
