@@ -39,13 +39,13 @@
 - [ ] **VERIFY** Google Workspace MCP calendar tools are functional replacement
 - [ ] **TEST** calendar functionality with MCP tools (`get_events`, `create_event`, etc.)
 
-**Files requiring import updates**:
+**Files requiring import updates**: ✅ **COMPLETED**
 
 ```
-lib/ai/tools/index.ts                    # Lines 13, 260, 358, 402, 421
-lib/ai/tools/registry/ToolLoader.ts      # Lines 421, 477
-scripts/updateClientToolConfigs.ts       # Line 287
-scripts/testAllTools.ts                  # Line 367
+lib/ai/tools/index.ts                    # ✅ Updated - removed imports/exports
+lib/ai/tools/registry/ToolLoader.ts      # ✅ Updated - removed references
+scripts/updateClientToolConfigs.ts       # ✅ Updated - removed config/validation
+scripts/testAllTools.ts                  # ✅ Updated - removed testing code
 ```
 
 #### **Tool Registry Consolidation**

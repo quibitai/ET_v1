@@ -58,7 +58,7 @@ async function testToolConfigurations(): Promise<void> {
   await testAsanaConfig(toolConfigs.asana, 'Modern Asana (asana)');
   // Legacy nativeAsana removed - using new MCP implementation
   // await testAsanaConfig(toolConfigs.nativeAsana, 'Legacy Asana (nativeAsana)');
-  await testGoogleCalendarConfig(toolConfigs.googleCalendar);
+  // Google Calendar testing removed - now handled by Google Workspace MCP
   await testTavilyConfig(toolConfigs.tavily);
   await testN8NConfig(toolConfigs.n8n);
   await testKnowledgeBaseConfig(toolConfigs.internalKnowledgeBase);
@@ -107,46 +107,7 @@ async function testAsanaConfig(config: any, toolName: string): Promise<void> {
   }
 }
 
-/**
- * Test Google Calendar configuration
- */
-async function testGoogleCalendarConfig(config: any): Promise<void> {
-  console.log('📅 Testing Google Calendar Configuration:');
-
-  if (!config) {
-    console.log('❌ No Google Calendar configuration found');
-    return;
-  }
-
-  const tests = [
-    { name: 'Webhook URL', value: config.webhookUrl, required: true },
-    { name: 'Auth Token', value: config.authToken, required: true },
-    { name: 'Auth Header', value: config.authHeader, required: true },
-    { name: 'Timeout (ms)', value: config.timeoutMs, required: false },
-  ];
-
-  let validConfig = true;
-  tests.forEach((test) => {
-    if (test.required && (!test.value || test.value === null)) {
-      console.log(`❌ ${test.name}: Missing (Required)`);
-      validConfig = false;
-    } else if (test.value && test.value !== null) {
-      const displayValue =
-        test.name.includes('Token') || test.name.includes('URL')
-          ? '***configured***'
-          : test.value;
-      console.log(`✅ ${test.name}: ${displayValue}`);
-    } else {
-      console.log(`⚠️  ${test.name}: Not set (Optional)`);
-    }
-  });
-
-  if (validConfig) {
-    console.log('✅ Google Calendar configuration is valid\n');
-  } else {
-    console.log('❌ Google Calendar configuration has issues\n');
-  }
-}
+// testGoogleCalendarConfig function removed - Google Calendar now handled by Google Workspace MCP
 
 /**
  * Test Tavily configuration
@@ -365,7 +326,7 @@ async function generateToolAccessSummary(): Promise<void> {
 
   console.log('🎯 Total Tools Available: 26 (All tools in the registry)');
   console.log(
-    '🔧 Client-Specific Configs: 5 (asana, googleCalendar, tavily, n8n, internalKnowledgeBase)',
+    '🔧 Client-Specific Configs: 4 (asana, tavily, n8n, internalKnowledgeBase) + Google Workspace MCP',
   );
   console.log('📋 Default Tools: 21 (Available to all clients)');
   console.log(

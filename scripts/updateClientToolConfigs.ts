@@ -45,13 +45,7 @@ const COMPLETE_TOOL_CONFIGS = {
     timeoutMs: Number(process.env.NATIVE_ASANA_TIMEOUT_MS || '30000'),
   },
 
-  // Google Calendar Integration
-  googleCalendar: {
-    webhookUrl: process.env.GOOGLE_CALENDAR_WEBHOOK_URL || null,
-    authToken: process.env.GOOGLE_CALENDAR_AUTH_TOKEN || null,
-    authHeader: process.env.GOOGLE_CALENDAR_AUTH_HEADER || null,
-    timeoutMs: Number(process.env.GOOGLE_CALENDAR_TIMEOUT_MS || '30000'),
-  },
+  // Google Calendar Integration - REMOVED: Now handled by Google Workspace MCP
 
   // Tavily Web Search
   tavily: {
@@ -212,19 +206,7 @@ function validateEnvironmentVariables(): void {
     { name: 'ASANA_PAT', purpose: 'Asana Personal Access Token' },
     { name: 'DEFAULT_WORKSPACE_ID', purpose: 'Asana Workspace ID' },
 
-    // Google Calendar
-    {
-      name: 'GOOGLE_CALENDAR_WEBHOOK_URL',
-      purpose: 'Google Calendar Webhook URL',
-    },
-    {
-      name: 'GOOGLE_CALENDAR_AUTH_TOKEN',
-      purpose: 'Google Calendar Auth Token',
-    },
-    {
-      name: 'GOOGLE_CALENDAR_AUTH_HEADER',
-      purpose: 'Google Calendar Auth Header',
-    },
+    // Google Calendar - REMOVED: Now handled by Google Workspace MCP
 
     // Tavily
     { name: 'TAVILY_API_KEY', purpose: 'Tavily Web Search API Key' },
