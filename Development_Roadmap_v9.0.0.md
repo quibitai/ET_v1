@@ -48,16 +48,16 @@ scripts/updateClientToolConfigs.ts       # ✅ Updated - removed config/validati
 scripts/testAllTools.ts                  # ✅ Updated - removed testing code
 ```
 
-#### **Tool Registry Consolidation**
+#### **Tool Registry Consolidation** ✅ **COMPLETED**
 
 **Priority**: CRITICAL - Blocking MCP tool refresh functionality
 
-- [ ] **DELETE** `lib/ai/services/ToolRegistry.ts` (440 lines)
-- [ ] **DELETE** `lib/ai/tools/registry/ToolRegistry.ts` (272 lines)
-- [ ] **UPDATE** `lib/ai/services/ToolExecutionService.ts` → use UnifiedToolRegistry
-- [ ] **UPDATE** `lib/ai/mcp/MultiMCPClient.ts` → use UnifiedToolRegistry
-- [ ] **UPDATE** all import statements (25+ files)
-- [ ] **IMPLEMENT** enhanced `replaceToolsBySource()` in UnifiedToolRegistry with detailed logging
+- [x] **DELETE** `lib/ai/services/ToolRegistry.ts` (440 lines)
+- [x] **DELETE** `lib/ai/tools/registry/ToolRegistry.ts` (272 lines)
+- [x] **UPDATE** `lib/ai/services/ToolExecutionService.ts` → use UnifiedToolRegistry
+- [x] **UPDATE** `lib/ai/mcp/MultiMCPClient.ts` → use UnifiedToolRegistry
+- [x] **UPDATE** all import statements (25+ files)
+- [x] **IMPLEMENT** enhanced `replaceToolsBySource()` in UnifiedToolRegistry with detailed logging
 
 **Enhanced Implementation**:
 

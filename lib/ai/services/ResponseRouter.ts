@@ -10,11 +10,11 @@
 
 import type { RequestLogger } from '../../services/observabilityService';
 import {
-  QueryIntentAnalyzer,
-  type QueryIntent,
-  type GraphState,
-} from './QueryIntentAnalyzer';
+  QueryClassifier,
+  type QueryClassificationResult,
+} from '../../services/queryClassifier';
 import { SynthesisValidator } from '../core/SynthesisValidator';
+import type { GraphState } from './QueryIntentAnalyzer'; // Keep GraphState type for now
 
 export type RouteDecision =
   | 'use_tools'
@@ -47,13 +47,13 @@ export interface RouteContext {
  */
 export class ResponseRouter {
   private logger: RequestLogger;
-  private intentAnalyzer: QueryIntentAnalyzer;
+  private queryClassifier: QueryClassifier;
   private readonly MAX_ITERATIONS = 3;
   private readonly MAX_TOOL_FORCING = 2;
 
   constructor(logger: RequestLogger) {
     this.logger = logger;
-    this.intentAnalyzer = new QueryIntentAnalyzer(logger);
+    this.queryClassifier = new QueryClassifier(logger);
   }
 
   /**
@@ -460,7 +460,7 @@ export class ResponseRouter {
 
   private applyIntentOverrides(
     needsSynthesis: boolean,
-    queryIntent: QueryIntent,
+    queryIntent: QueryClassificationResult,
     multiDocResults: any,
   ): boolean {
     // Apply intent-based routing overrides
