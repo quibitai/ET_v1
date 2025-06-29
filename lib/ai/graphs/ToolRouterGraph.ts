@@ -604,6 +604,7 @@ export class ToolRouterGraph {
 
   /**
    * Master router node - analyzes query intent and routes to appropriate sub-graph
+   * ENHANCED: Now considers file context to avoid unnecessary tool calls
    */
   private async routerNode(state: RouterGraphState): Promise<RouterGraphState> {
     const messages = state.messages || [];
@@ -611,6 +612,40 @@ export class ToolRouterGraph {
 
     console.log('[ToolRouterGraph] Router analyzing query:', userQuery);
 
+    // 🚀 CRITICAL FIX: Check for file context first
+    const fileContext = state.metadata?.fileContext;
+    const hasFileContent = !!(
+      fileContext?.extractedText && fileContext.extractedText.length > 0
+    );
+
+    if (hasFileContent) {
+      console.log('[ToolRouterGraph] File context detected:', {
+        filename: fileContext.filename,
+        contentLength: fileContext.extractedText.length,
+        contentType: fileContext.contentType,
+      });
+
+      // Check if query is about the uploaded file
+      const isFileQuery = this.isQueryAboutFile(userQuery, fileContext);
+
+      if (isFileQuery) {
+        console.log(
+          '[ToolRouterGraph] File-related query detected - routing to direct_response',
+        );
+        return {
+          ...state,
+          route_decision: 'direct_response',
+          routing_metadata: {
+            confidence: 1.0,
+            reasoning:
+              'File context available - using file content directly instead of searching',
+            keywords: ['file_context', 'direct_content'],
+          },
+        };
+      }
+    }
+
+    // If no file context or query not about file, use standard routing
     const intent = this.analyzeQueryIntent(userQuery);
 
     console.log('[ToolRouterGraph] Routing decision:', {
@@ -628,6 +663,73 @@ export class ToolRouterGraph {
         keywords: intent.keywords,
       },
     };
+  }
+
+  /**
+   * Check if the user query is asking about the uploaded file
+   */
+  private isQueryAboutFile(query: string, fileContext: any): boolean {
+    const queryLower = query.toLowerCase();
+    const filename = fileContext.filename?.toLowerCase() || '';
+
+    // File-specific query patterns
+    const fileQueryPatterns = [
+      'summarize this',
+      'summarize the',
+      'what is this',
+      'what does this say',
+      'analyze this',
+      'analyze the',
+      'explain this',
+      'explain the',
+      'review this',
+      'review the',
+      'tell me about this',
+      'describe this',
+      'describe the',
+      "what's in this",
+      'content of this',
+      'overview of this',
+      'summary of this',
+      'details about this',
+      'information in this',
+    ];
+
+    // Check for general file query patterns
+    for (const pattern of fileQueryPatterns) {
+      if (queryLower.includes(pattern)) {
+        return true;
+      }
+    }
+
+    // Check if query mentions the filename
+    if (filename) {
+      const baseFilename = filename.replace(/\.[^/.]+$/, ''); // Remove extension
+      const filenameWords = baseFilename.split(/[_\-\s]+/);
+
+      for (const word of filenameWords) {
+        if (word.length > 2 && queryLower.includes(word)) {
+          return true;
+        }
+      }
+    }
+
+    // Check for contextual pronouns suggesting reference to uploaded content
+    const contextualPronouns = [
+      'this document',
+      'this file',
+      'the document',
+      'the file',
+      'it says',
+      'this content',
+    ];
+    for (const pronoun of contextualPronouns) {
+      if (queryLower.includes(pronoun)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -1012,17 +1114,59 @@ export class ToolRouterGraph {
 
   /**
    * Direct response node for queries that don't need tools
+   * ENHANCED: Now uses file content when available for file-related queries
    */
   private async directResponseNode(
     state: RouterGraphState,
   ): Promise<RouterGraphState> {
     const messages = state.messages || [];
+    const fileContext = state.metadata?.fileContext;
+    const hasFileContent = !!(
+      fileContext?.extractedText && fileContext.extractedText.length > 0
+    );
 
     console.log('[ToolRouterGraph] Direct response - no tools needed');
 
     try {
+      let responseMessages = [...messages];
+
+      // 🚀 CRITICAL FIX: If file content is available, include it in the context
+      if (hasFileContent) {
+        const userQuery = this.extractUserQuery(messages);
+
+        console.log(
+          '[ToolRouterGraph] Using file content for direct response:',
+          {
+            filename: fileContext.filename,
+            contentLength: fileContext.extractedText.length,
+            userQuery: userQuery.substring(0, 100),
+          },
+        );
+
+        // Create an enhanced system message with file content
+        const fileContentPrompt = `You have been provided with the content of a file: "${fileContext.filename}"
+
+FILE CONTENT:
+---
+${fileContext.extractedText}
+---
+
+Please respond to the user's query about this file content. Use the file content directly to answer their question. Do not search for external information or mention that you need to look up anything - you have all the information needed in the file content above.
+
+User Query: ${userQuery}`;
+
+        // Replace or enhance the user's message with file-aware context
+        responseMessages = [
+          ...messages.slice(0, -1), // All messages except the last user message
+          {
+            _getType: () => 'human',
+            content: fileContentPrompt,
+          } as any,
+        ];
+      }
+
       // Use LLM without any tools for direct response
-      const response = await this.llm.invoke(messages);
+      const response = await this.llm.invoke(responseMessages);
 
       return {
         ...state,
