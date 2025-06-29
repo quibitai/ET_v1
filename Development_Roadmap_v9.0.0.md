@@ -62,14 +62,14 @@ scripts/testAllTools.ts                  # Line 367
 ```typescript
 // Add to UnifiedToolRegistry.ts
 replaceToolsBySource(source: string, tools: Tool[], correlationId?: string): void {
-  const logger = correlationId ? 
+  const logger = correlationId ?
     (msg: string) => console.log(`[${correlationId}] [ToolRegistry] ${msg}`) :
     (msg: string) => console.log(`[ToolRegistry] ${msg}`);
 
   // Remove existing tools from this source
   const existingTools = Array.from(this.tools.values()).filter(t => t.source === source);
   logger(`Removing ${existingTools.length} existing tools from source: ${source}`);
-  
+
   existingTools.forEach(tool => {
     logger(`Removing tool: ${tool.name} (category: ${tool.category})`);
     this.tools.delete(tool.name);
@@ -118,13 +118,18 @@ export class RequestCorrelationService {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  logWithCorrelation(correlationId: string, level: 'info' | 'warn' | 'error', message: string, metadata?: any): void {
+  logWithCorrelation(
+    correlationId: string,
+    level: "info" | "warn" | "error",
+    message: string,
+    metadata?: any
+  ): void {
     const logEntry = {
       correlationId,
       timestamp: new Date().toISOString(),
       level,
       message,
-      ...metadata
+      ...metadata,
     };
     console.log(`[${correlationId}] ${JSON.stringify(logEntry)}`);
   }
@@ -222,7 +227,10 @@ interface GraphState {
 
 // Update all service calls to pass correlation ID
 const tracePromptFlow = (correlationId: string, step: string, data: any) => {
-  console.log(`[${correlationId}] [PromptFlow] ${step}:`, JSON.stringify(data, null, 2));
+  console.log(
+    `[${correlationId}] [PromptFlow] ${step}:`,
+    JSON.stringify(data, null, 2)
+  );
 };
 ```
 
@@ -372,11 +380,11 @@ class UniversalLinkFormatter {
     if (!formatter) {
       throw new Error(`No formatter registered for type: ${type}`);
     }
-    
+
     if (!formatter.validate(data)) {
       throw new Error(`Invalid data for formatter type: ${type}`);
     }
-    
+
     return formatter.format(data);
   }
 
@@ -443,8 +451,15 @@ class GmailLinkFormatter implements LinkFormatter {
 
 ```typescript
 // User-scoped cache key generation
-const generateCacheKey = (userId: string, toolName: string, args: any): string => {
-  const argsHash = crypto.createHash('sha256').update(JSON.stringify(args)).digest('hex');
+const generateCacheKey = (
+  userId: string,
+  toolName: string,
+  args: any
+): string => {
+  const argsHash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(args))
+    .digest("hex");
   return `tool:${userId}:${toolName}:${argsHash}`;
 };
 
@@ -477,13 +492,13 @@ const getCachedResult = async (userId: string, toolName: string, args: any) => {
 
 ### **Phase 1 Completion Criteria**
 
-| Metric                    | Target           | Current | Status      |
-| ------------------------- | ---------------- | ------- | ----------- |
-| Redundant Code Removed    | 1,288+ lines     | 0       | ❌ Pending  |
-| Tool Registry Unification | 1 implementation | 3       | ❌ Critical |
-| Legacy Tool Removal       | 100%             | 0%      | ❌ Pending  |
-| Import Updates            | 30+ files        | 0       | ❌ Pending  |
-| Correlation ID Integration| 100%             | 0%      | ❌ Pending  |
+| Metric                     | Target           | Current | Status      |
+| -------------------------- | ---------------- | ------- | ----------- |
+| Redundant Code Removed     | 1,288+ lines     | 0       | ❌ Pending  |
+| Tool Registry Unification  | 1 implementation | 3       | ❌ Critical |
+| Legacy Tool Removal        | 100%             | 0%      | ❌ Pending  |
+| Import Updates             | 30+ files        | 0       | ❌ Pending  |
+| Correlation ID Integration | 100%             | 0%      | ❌ Pending  |
 
 ### **Phase 2 Completion Criteria**
 
@@ -497,14 +512,14 @@ const getCachedResult = async (userId: string, toolName: string, args: any) => {
 
 ### **Phase 3 Completion Criteria**
 
-| Metric                 | Target        | Current          | Status               |
-| ---------------------- | ------------- | ---------------- | -------------------- |
-| Google Workspace Tools | 35/35 working | 35/35 registered | 🔧 Testing required  |
-| Asana Tools            | 9/9 working   | 9/9 registered   | ❌ Not configured    |
-| MCP Service Uptime     | >95%          | ~60%             | ⚠️ Needs improvement |
-| Tool Discovery Success | 100%          | 100%             | ✅ Working           |
-| Docker Deployment      | Ready         | Not implemented  | ❌ Critical          |
-| Security Compliance    | 100%          | ~40%             | ⚠️ Needs secrets mgmt|
+| Metric                 | Target        | Current          | Status                |
+| ---------------------- | ------------- | ---------------- | --------------------- |
+| Google Workspace Tools | 35/35 working | 35/35 registered | 🔧 Testing required   |
+| Asana Tools            | 9/9 working   | 9/9 registered   | ❌ Not configured     |
+| MCP Service Uptime     | >95%          | ~60%             | ⚠️ Needs improvement  |
+| Tool Discovery Success | 100%          | 100%             | ✅ Working            |
+| Docker Deployment      | Ready         | Not implemented  | ❌ Critical           |
+| Security Compliance    | 100%          | ~40%             | ⚠️ Needs secrets mgmt |
 
 ### **Phase 4 Completion Criteria** 🆕
 
