@@ -57,6 +57,74 @@ export class ResponseRouter {
   }
 
   /**
+   * Convert QueryClassifier result to QueryIntent format for compatibility
+   */
+  private async analyzeQueryIntent(state: GraphState): Promise<{
+    intentType: string;
+    complexity: string;
+    requiresDeepAnalysis: boolean;
+    suggestedResponseType: string;
+  }> {
+    // Get the original user query
+    const userMessages = state.messages.filter(
+      (msg) => msg._getType() === 'human',
+    );
+    const originalQuery =
+      userMessages.length > 0
+        ? typeof userMessages[0].content === 'string'
+          ? userMessages[0].content
+          : JSON.stringify(userMessages[0].content)
+        : state.input || '';
+
+    // Use QueryClassifier for analysis
+    const classification =
+      await this.queryClassifier.classifyQuery(originalQuery);
+
+    // Convert to QueryIntent format
+    let intentType = 'conversational';
+    let complexity = 'low';
+    let requiresDeepAnalysis = false;
+    let suggestedResponseType = 'conversational_response';
+
+    // Map QueryClassifier results to QueryIntent format
+    if (classification.complexity > 0.7) {
+      complexity = 'high';
+      requiresDeepAnalysis = true;
+      suggestedResponseType = 'synthesis';
+    } else if (classification.complexity > 0.4) {
+      complexity = 'medium';
+      suggestedResponseType = 'simple_response';
+    }
+
+    // Determine intent type based on patterns
+    if (
+      classification.patterns.includes('analysis') ||
+      classification.patterns.includes('comparison')
+    ) {
+      intentType = 'analysis';
+      requiresDeepAnalysis = true;
+    } else if (
+      classification.patterns.includes('research') ||
+      classification.patterns.includes('report')
+    ) {
+      intentType = 'research';
+      requiresDeepAnalysis = true;
+    } else if (classification.patterns.includes('simple_lookup')) {
+      intentType = 'simple_lookup';
+    } else if (classification.patterns.includes('creative')) {
+      intentType = 'creative';
+      requiresDeepAnalysis = true;
+    }
+
+    return {
+      intentType,
+      complexity,
+      requiresDeepAnalysis,
+      suggestedResponseType,
+    };
+  }
+
+  /**
    * Determine the next step in the LangGraph workflow
    */
   routeNextStep(state: GraphState, context: RouteContext): RouteDecision {
@@ -274,10 +342,10 @@ export class ResponseRouter {
   /**
    * Route when tool results are present
    */
-  private routeWithToolResults(
+  private async routeWithToolResults(
     state: GraphState,
     context: RouteContext,
-  ): RouteDecision {
+  ): Promise<RouteDecision> {
     let needsSynthesis = state.needsSynthesis ?? true; // Default to true for backward compatibility
     const toolForcingCount = state.toolForcingCount || 0;
 
@@ -291,8 +359,8 @@ export class ResponseRouter {
       },
     );
 
-    // Analyze query intent for better routing
-    const queryIntent = this.intentAnalyzer.analyzeQueryIntent(state);
+    // Analyze query intent for better routing using QueryClassifier
+    const queryIntent = await this.analyzeQueryIntent(state);
 
     // Force synthesis for multi-document scenarios
     const multiDocResults = context.multiDocDetector(state);
