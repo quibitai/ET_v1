@@ -138,12 +138,14 @@ export async function POST(req: NextRequest) {
               assistantContent += text;
             }
 
-            // Format as data stream part with proper JSON escaping
-            const dataStreamPart = `0:${JSON.stringify(text)}\n`;
+            // Format as data stream part with proper JSON escaping (RESTORED ORIGINAL)
+            const escapedText = JSON.stringify(text).slice(1, -1); // Remove outer quotes from JSON.stringify
+            const dataStreamPart = `0:"${escapedText}"\n`;
             controller.enqueue(encoder.encode(dataStreamPart));
 
-            // REAL-TIME STREAMING: No artificial delays - stream immediately
-            // This ensures character-by-character streaming without buffering
+            // CRITICAL: Add small delay to ensure visible streaming
+            // This prevents chunks from being batched together
+            await new Promise((resolve) => setTimeout(resolve, 10));
           }
 
           console.log(

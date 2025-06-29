@@ -1,6 +1,6 @@
 'use client';
 
-import { useChat, type Message } from 'ai/react';
+import { useChat, type UseChatHelpers, type Message } from 'ai/react';
 import { generateUUID } from '@/lib/utils';
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Chat, type ChatRef } from '@/components/chat';
@@ -128,16 +128,16 @@ export function ChatWrapper({
 
   const {
     messages,
-    input,
-    isLoading,
-    error,
-    append,
-    data,
-    setInput,
     setMessages,
-    stop,
+    input,
+    setInput,
+    append,
     reload,
+    stop,
+    isLoading,
     status,
+    error,
+    data,
     handleSubmit: originalHandleSubmit,
   } = useChat({
     id,
@@ -146,7 +146,6 @@ export function ChatWrapper({
     generateId: generateUUID,
     sendExtraMessageFields: true,
     streamProtocol: 'data',
-
     onError: (error) => {
       console.error('🚨 [ChatWrapper useChat Error]', error);
     },
@@ -159,35 +158,19 @@ export function ChatWrapper({
         id: id,
         chatId: id,
         messages: messages,
-        fileContext: fileContext, // This ensures the current fileContext is included
+        fileContext: fileContext,
         artifactContext: null,
         collapsedArtifactsContext: null,
-        activeBitContextId: effectiveActiveBitContextId, // Use the current specialist selection
-        ...requestBody, // Include any additional request body data
+        activeBitContextId: effectiveActiveBitContextId,
+        ...requestBody,
       };
 
       console.log('🔍 [DEBUG] experimental_prepareRequestBody called with:', {
         hasFileContext: !!fileContext,
         fileContextFilename: fileContext?.filename,
         messagesCount: messages.length,
-        requestDataKeys: requestData ? Object.keys(requestData) : [],
-        requestBodyKeys: requestBody ? Object.keys(requestBody) : [],
         activeBitContextId: effectiveActiveBitContextId,
         currentActiveSpecialistId: currentActiveSpecialistId,
-      });
-
-      console.log('🔍 [DEBUG] Final body being returned:', {
-        hasFileContext: !!body.fileContext,
-        fileContextKeys: body.fileContext ? Object.keys(body.fileContext) : [],
-        bodyKeys: Object.keys(body),
-        activeBitContextId: body.activeBitContextId,
-        fileContextPreview: body.fileContext
-          ? {
-              filename: body.fileContext.filename,
-              contentType: body.fileContext.contentType,
-              extractedTextLength: body.fileContext.extractedText?.length || 0,
-            }
-          : null,
       });
 
       return body;
@@ -200,7 +183,6 @@ export function ChatWrapper({
       });
     },
     onFinish: async (message) => {
-      // FIXED: Prevent multiple onFinish calls for the same message
       const messageKey = `${message.id}-${message.role}`;
       if (onFinishProcessedRef.current.has(messageKey)) {
         console.log(
@@ -215,71 +197,28 @@ export function ChatWrapper({
         chatId: id,
         messageRole: message.role,
       });
-      console.log('✅ [ChatWrapper Stream Finished]', {
-        messageId: message.id,
-        role: message.role,
-        contentLength: message.content.length,
-        status: 'completed',
-        hadFileContextWhenFinished: !!fileContext,
-        chatId: id,
-      });
 
-      // CRITICAL DEBUG: Log the current messages array
-      console.log('🔍 [DEBUG] Messages array in onFinish:', {
-        messagesDirectLength: messages.length,
-        messagesArray: messages.map((m) => ({
-          role: m.role,
-          content: m.content?.substring(0, 50),
-          id: m.id?.substring(0, 8),
-        })),
-        hasUserMessage: messages.some((m) => m.role === 'user'),
-        firstUserMessage: messages
-          .find((m) => m.role === 'user')
-          ?.content?.substring(0, 50),
-      });
-
-      // Check if this is a new chat (first assistant message)
-      // Note: onFinish may run before messages array is updated, so we check if this is the first assistant response
-      // and if we started with no initial messages
       const isNewChat =
         message.role === 'assistant' && initialMessages.length === 0;
 
-      console.log('[ChatWrapper] New chat detection:', {
-        messagesLength: messages.length,
-        messageRole: message.role,
-        isNewChat,
-        initialMessagesLength: initialMessages.length,
-        chatId: id,
-      });
-
       if (isNewChat) {
-        // PERFORMANCE FIX: Make cache refresh non-blocking to avoid delaying input field re-enable
-        // This allows the UI to become responsive immediately after streaming completes
         setTimeout(async () => {
           try {
             console.log('[ChatWrapper] Starting async cache refresh...');
-
-            // Add a small delay to ensure database operations are complete
             await new Promise((resolve) => setTimeout(resolve, 100));
-
-            // Call SWR's mutate function directly to refresh the cache
             await mutateChatHistory();
-
             console.log('[ChatWrapper] Cache refresh completed');
           } catch (error) {
             console.error(
               '[ChatWrapper] Failed to refresh chat history:',
               error,
             );
-            // Don't break the UI if cache invalidation fails
           }
         }, 0);
       }
 
-      // Clear file context after the request completes
       clearFileContext();
 
-      // Clean up processed message key after a delay
       setTimeout(() => {
         onFinishProcessedRef.current.delete(messageKey);
       }, 5000);
@@ -392,7 +331,7 @@ export function ChatWrapper({
   }, []);
 
   // Wrapper function to capture user input before submission
-  const handleSubmit = useCallback(
+  const handleSubmitWrapper = useCallback(
     (event?: { preventDefault?: () => void }, chatRequestOptions?: any) => {
       console.log('🚨 [WRAPPER] handleSubmit wrapper function called!', {
         timestamp: new Date().toISOString(),
@@ -531,7 +470,7 @@ export function ChatWrapper({
         stop={stop}
         reload={reload}
         status={status}
-        handleSubmit={handleSubmit}
+        handleSubmit={handleSubmitWrapper}
         append={append}
         onFileProcessed={handleFileProcessed}
       />
