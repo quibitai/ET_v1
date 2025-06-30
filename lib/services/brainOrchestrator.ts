@@ -587,14 +587,12 @@ export class BrainOrchestrator {
 
       // Enhanced graph input with file context and processed context
       const graphInput = {
-        messages: messages,
-        input: userQuery, // Required by StateType
+        input: userQuery,
+        messages: messages, // Pass the full message list
         response_mode: (request.responseMode as string) || 'synthesis',
         specialist_id: request.activeBitContextId || '', // Must be string, not undefined
-        // Phase 2.1: Pass correlation ID for request tracing
-        correlationId: this.logger.correlationId,
-        // NEW: Pass file context and processed context to graph
         metadata: {
+          correlationId: this.logger.correlationId, // CRITICAL: Pass correlation ID for StateValidator
           fileContext: processedContext.fileContext || undefined,
           brainRequest: request,
           processedContext: processedContext,

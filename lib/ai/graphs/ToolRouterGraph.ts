@@ -13,9 +13,16 @@
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
 import type { ChatOpenAI } from '@langchain/openai';
 import type { BaseMessage } from '@langchain/core/messages';
-import { AIMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import type { MultiMCPClient } from '../mcp/MultiMCPClient';
+import {
+  cleanGraphState,
+  validateGraphState,
+  getStatePerformanceMetrics,
+  deduplicateMessages,
+} from './state/StateValidator';
+import { ChatPromptTemplate } from '@langchain/core/prompts';
 
 // Router state annotation following LangGraph best practices
 const RouterStateAnnotation = Annotation.Root({
@@ -98,6 +105,15 @@ type RouteDecision =
   | 'project_management'
   | 'direct_response';
 
+type GraphState = {
+  input: string;
+  messages: BaseMessage[];
+  route_decision: RouteDecision | null;
+  routing_metadata: any;
+  // ... other properties
+  [key: string]: any;
+};
+
 type QueryIntent = {
   type: RouteDecision;
   confidence: number;
@@ -179,7 +195,7 @@ export class ToolRouterGraph {
           llm: this.llm,
           tools: knowledgeBaseTools,
           messageModifier: (messages: BaseMessage[]) => {
-            return messages;
+            return deduplicateMessages(messages);
           },
         }),
       });
@@ -204,7 +220,8 @@ export class ToolRouterGraph {
           llm: this.llm,
           tools: googleWorkspaceTools.slice(0, 3),
           messageModifier: (messages: BaseMessage[]) => {
-            return messages;
+            // CRITICAL: Fix for LangChain message duplication bug
+            return deduplicateMessages(messages);
           },
         }),
       });
@@ -224,7 +241,8 @@ export class ToolRouterGraph {
           llm: this.llm,
           tools: researchTools.slice(0, 3),
           messageModifier: (messages: BaseMessage[]) => {
-            return messages;
+            // CRITICAL: Fix for LangChain message duplication bug
+            return deduplicateMessages(messages);
           },
         }),
       });
@@ -602,6 +620,10 @@ export class ToolRouterGraph {
             compiledGraph: createReactAgent({
               llm: this.llm,
               tools: combinedTools,
+              messageModifier: (messages: BaseMessage[]) => {
+                // CRITICAL: Fix for LangChain message duplication bug
+                return deduplicateMessages(messages);
+              },
             }),
           });
 
@@ -683,6 +705,10 @@ export class ToolRouterGraph {
       compiledGraph: createReactAgent({
         llm: this.llm,
         tools: tools,
+        messageModifier: (messages: BaseMessage[]) => {
+          // CRITICAL: Fix for LangChain message duplication bug
+          return deduplicateMessages(messages);
+        },
       }),
     };
   }
@@ -690,19 +716,35 @@ export class ToolRouterGraph {
   /**
    * Master router node - analyzes query intent and routes to appropriate sub-graph
    * ENHANCED: Now considers file context to avoid unnecessary tool calls
+   * CRITICAL FIX: Added state validation to prevent message duplication
    */
   private async routerNode(state: RouterGraphState): Promise<RouterGraphState> {
-    const messages = state.messages || [];
-    const userQuery = this.extractUserQuery(messages);
-
     const correlationId = state.correlationId || 'unknown';
+
+    // 🚨 CRITICAL FIX: Clean state to prevent message duplication
+    const cleanedState = cleanGraphState(
+      state as any,
+      correlationId,
+    ) as RouterGraphState;
+
+    // Log performance metrics for monitoring
+    const metrics = getStatePerformanceMetrics(cleanedState as any);
+    console.log(`[${correlationId}] [ToolRouterGraph] State metrics:`, {
+      messageCount: metrics.messageCount,
+      estimatedTokens: metrics.estimatedTokens,
+      duplicateMessages: metrics.duplicateMessages,
+      metadataSize: metrics.metadataSize,
+    });
+
+    const userQuery = cleanedState.input;
+
     console.log(
       `[${correlationId}] [ToolRouterGraph] Router analyzing query:`,
       userQuery,
     );
 
     // 🚀 CRITICAL FIX: Check for file context first
-    const fileContext = state.metadata?.fileContext;
+    const fileContext = cleanedState.metadata?.fileContext;
     const hasFileContent = !!(
       fileContext?.extractedText && fileContext.extractedText.length > 0
     );
@@ -725,7 +767,7 @@ export class ToolRouterGraph {
           '[ToolRouterGraph] File-related query detected - routing to direct_response',
         );
         return {
-          ...state,
+          ...cleanedState,
           route_decision: 'direct_response',
           routing_metadata: {
             confidence: 1.0,
@@ -747,7 +789,7 @@ export class ToolRouterGraph {
     });
 
     return {
-      ...state,
+      ...cleanedState,
       route_decision: intent.type,
       routing_metadata: {
         confidence: intent.confidence,
@@ -1207,12 +1249,21 @@ export class ToolRouterGraph {
   /**
    * Direct response node for queries that don't need tools
    * ENHANCED: Now uses file content when available for file-related queries
+   * CRITICAL FIX: Added state validation to prevent message duplication
    */
   private async directResponseNode(
     state: RouterGraphState,
   ): Promise<RouterGraphState> {
-    const messages = state.messages || [];
-    const fileContext = state.metadata?.fileContext;
+    const correlationId = state.correlationId || 'unknown';
+
+    // 🚨 CRITICAL FIX: Clean state to prevent message duplication
+    const cleanedState = cleanGraphState(
+      state as any,
+      correlationId,
+    ) as RouterGraphState;
+
+    const messages = cleanedState.messages || [];
+    const fileContext = cleanedState.metadata?.fileContext;
     const hasFileContent = !!(
       fileContext?.extractedText && fileContext.extractedText.length > 0
     );
@@ -1257,11 +1308,23 @@ User Query: ${userQuery}`;
         ];
       }
 
-      // Use LLM without any tools for direct response
-      const response = await this.llm.invoke(responseMessages);
+      // Combine history with the current user query for a complete prompt
+      if (
+        cleanedState.input &&
+        (messages.length === 0 ||
+          messages[messages.length - 1].content !== cleanedState.input)
+      ) {
+        responseMessages.push(new HumanMessage(cleanedState.input));
+      }
+
+      // Create a new prompt with the updated messages
+      const prompt = ChatPromptTemplate.fromMessages(responseMessages);
+
+      const chain = prompt.pipe(this.llm);
+      const response = await chain.invoke({});
 
       return {
-        ...state,
+        ...cleanedState,
         messages: [...messages, response],
         agent_outcome: response,
       };
@@ -1275,7 +1338,7 @@ User Query: ${userQuery}`;
       });
 
       return {
-        ...state,
+        ...cleanedState,
         messages: [...messages, errorMessage],
         agent_outcome: errorMessage,
       };
@@ -1319,24 +1382,59 @@ User Query: ${userQuery}`;
     const subGraphEntries = Array.from(this.subGraphs.entries());
     for (const [route, config] of subGraphEntries) {
       graphBuilder.addNode(route, async (state: RouterGraphState) => {
-        console.log(`[ToolRouterGraph] Executing ${route} sub-graph`);
+        const correlationId = state.metadata?.correlationId || 'unknown';
+        console.log(
+          `[${correlationId}] [ToolRouterGraph] Executing ${route} sub-graph`,
+        );
 
         try {
-          // Execute the sub-graph with the current state
-          const result = await config.compiledGraph.invoke(state);
+          // CRITICAL: Apply state validation before sub-graph execution
+          const cleanedState = cleanGraphState(state, correlationId);
 
-          return {
-            ...state,
-            messages: result.messages || state.messages,
+          // CRITICAL FIX: Clear input field to prevent createReactAgent from adding duplicate HumanMessage
+          // The input is already included in the messages array
+          const stateForSubGraph = {
+            ...cleanedState,
+            input: '', // Clear input to prevent duplication
+          };
+
+          // Log state performance metrics before sub-graph execution
+          const beforeMetrics = getStatePerformanceMetrics(state);
+          console.log(
+            `[${correlationId}] [ToolRouterGraph] Pre-${route} state metrics:`,
+            beforeMetrics,
+          );
+
+          // Execute the sub-graph with the cleaned state (no input field)
+          const result = await config.compiledGraph.invoke(stateForSubGraph);
+
+          // CRITICAL: Apply state validation to sub-graph result
+          const cleanedResult = {
+            ...cleanedState,
+            messages: result.messages || cleanedState.messages,
             agent_outcome:
               result.agent_outcome ||
               (result.messages && result.messages.length > 0
                 ? result.messages[result.messages.length - 1]
                 : undefined),
           };
+
+          const finalCleanedState = cleanGraphState(
+            cleanedResult,
+            correlationId,
+          );
+
+          // Log state performance metrics after sub-graph execution
+          const afterMetrics = getStatePerformanceMetrics(finalCleanedState);
+          console.log(
+            `[${correlationId}] [ToolRouterGraph] Post-${route} state metrics:`,
+            afterMetrics,
+          );
+
+          return finalCleanedState;
         } catch (error) {
           console.error(
-            `[ToolRouterGraph] Error in ${route} sub-graph:`,
+            `[${correlationId}] [ToolRouterGraph] Error in ${route} sub-graph:`,
             error,
           );
 
@@ -1346,11 +1444,14 @@ User Query: ${userQuery}`;
             }`,
           });
 
-          return {
+          // Apply state validation even for error cases
+          const errorState = {
             ...state,
             messages: [...(state.messages || []), errorMessage],
             agent_outcome: errorMessage,
           };
+
+          return cleanGraphState(errorState, correlationId);
         }
       });
     }
